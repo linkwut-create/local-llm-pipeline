@@ -190,6 +190,10 @@ class WorkerOutput:
     warnings: list = field(default_factory=list)
     error: Optional[str] = None
     created_at: str = ""
+    truncated_files: list = field(default_factory=list)
+    truncation_report: list = field(default_factory=list)
+    total_input_chars: int = 0
+    included_input_chars: int = 0
 
 
 def is_blocked_path(path: Path) -> bool:
@@ -222,29 +226,97 @@ def read_file_safe(path: Path, max_chars: int) -> tuple[str, list[str]]:
         return "", [f"READ ERROR: {path}: {e}"]
 
 
-def collect_tree(root: Path, max_files: int, max_chars: int) -> tuple[str, list[str]]:
-    warnings = []
-    parts = []
-    file_count = 0
+HIGH_PRIORITY_NAMES = {
+    "readme.md", "agents.md", "claude.md", "package.json", "pyproject.toml",
+    "makefile", "cargo.toml", "go.mod", "main.py", "app.py", "index.ts",
+    "server.ts", "index.js", "server.js",
+}
+HIGH_PRIORITY_PATTERNS = ["_router.", "_worker.", "_tasks.", "_profiles.", "_check."]
+LOW_PRIORITY_EXTENSIONS = {".lock", ".sum", ".log", ".csv"}
 
+
+def _file_priority(path: Path) -> int:
+    name_lower = path.name.lower()
+    if name_lower in HIGH_PRIORITY_NAMES:
+        return 0
+    for pat in HIGH_PRIORITY_PATTERNS:
+        if pat in name_lower:
+            return 1
+    if path.suffix in LOW_PRIORITY_EXTENSIONS:
+        return 3
+    return 2
+
+
+@dataclass
+class _FileEntry:
+    path: Path
+    rel: str
+    size: int
+    priority: int
+
+
+def collect_tree(root: Path, max_files: int, max_chars: int) -> tuple[str, list[str], list[dict]]:
+    """Collect files with adaptive budget allocation. Returns (content, warnings, truncation_report)."""
+    warnings = []
+    truncation_report = []
+
+    candidates: list[_FileEntry] = []
     for dirpath_str, dirnames, filenames in os.walk(root):
         dirpath = Path(dirpath_str)
         dirnames[:] = [d for d in dirnames if d not in BLOCKED_PATHS]
         for fname in sorted(filenames):
-            if file_count >= max_files:
-                warnings.append(f"MAX FILES REACHED: stopped at {max_files}")
-                return "\n\n".join(parts), warnings
             fpath = dirpath / fname
             if is_blocked_path(fpath):
                 continue
-            content, file_warnings = read_file_safe(fpath, max_chars // max(max_files, 1))
-            warnings.extend(file_warnings)
-            if content:
-                rel = fpath.relative_to(root) if fpath.is_relative_to(root) else fpath
-                parts.append(f"=== FILE: {rel} ===\n{content}")
-                file_count += 1
+            if not fpath.is_file():
+                continue
+            try:
+                raw = fpath.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            rel = str(fpath.relative_to(root)) if fpath.is_relative_to(root) else str(fpath)
+            candidates.append(_FileEntry(
+                path=fpath, rel=rel, size=len(raw), priority=_file_priority(fpath)
+            ))
 
-    return "\n\n".join(parts), warnings
+    candidates.sort(key=lambda e: (e.priority, -e.size))
+    selected = candidates[:max_files]
+    if len(candidates) > max_files:
+        warnings.append(f"MAX FILES REACHED: selected {max_files} of {len(candidates)} candidates")
+
+    selected.sort(key=lambda e: e.size)
+
+    budget = max_chars
+    parts = []
+    for entry in selected:
+        raw = entry.path.read_text(encoding="utf-8", errors="replace")
+        header = f"=== FILE: {entry.rel} ===\n"
+        header_cost = len(header) + 2  # newline separators
+
+        if len(raw) + header_cost <= budget:
+            parts.append(header + raw)
+            budget -= len(raw) + header_cost
+        elif budget > header_cost + 200:
+            allowed = budget - header_cost - 50
+            parts.append(header + raw[:allowed] + f"\n\n[TRUNCATED at {allowed} chars of {len(raw)}]")
+            truncation_report.append({
+                "path": entry.rel,
+                "original_chars": len(raw),
+                "included_chars": allowed,
+                "reason": "global_budget_limit",
+            })
+            warnings.append(f"TRUNCATED: {entry.rel} from {len(raw)} to {allowed} chars")
+            budget = 0
+        else:
+            truncation_report.append({
+                "path": entry.rel,
+                "original_chars": len(raw),
+                "included_chars": 0,
+                "reason": "budget_exhausted",
+            })
+            warnings.append(f"SKIPPED: {entry.rel} ({len(raw)} chars) — budget exhausted")
+
+    return "\n\n".join(parts), warnings, truncation_report
 
 
 def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, str]:
@@ -465,8 +537,10 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     return config
 
 
-def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, dict, list[str]]:
+def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, dict, list[str], list[dict]]:
+    """Returns (content, input_meta, warnings, truncation_report)."""
     warnings = []
+    truncation_report = []
     input_meta = {"path": None, "stdin": False, "max_files": None, "max_chars": config.max_chars}
 
     if args.stdin:
@@ -475,11 +549,11 @@ def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, d
             warnings.append(f"STDIN truncated from {len(content)} to {config.max_chars} chars")
             content = content[:config.max_chars]
         input_meta["stdin"] = True
-        return content, input_meta, warnings
+        return content, input_meta, warnings, truncation_report
 
     target = args.target
     if not target:
-        return "", input_meta, ["No target specified and --stdin not used"]
+        return "", input_meta, ["No target specified and --stdin not used"], truncation_report
 
     target_path = Path(target)
     input_meta["path"] = str(target_path)
@@ -487,16 +561,17 @@ def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, d
     if target_path.is_file():
         content, file_warnings = read_file_safe(target_path, config.max_chars)
         warnings.extend(file_warnings)
-        return content, input_meta, warnings
+        return content, input_meta, warnings, truncation_report
 
     if target_path.is_dir():
         max_files = args.max_files or 30
         input_meta["max_files"] = max_files
-        content, tree_warnings = collect_tree(target_path, max_files, config.max_chars)
+        content, tree_warnings, tree_truncation = collect_tree(target_path, max_files, config.max_chars)
         warnings.extend(tree_warnings)
-        return content, input_meta, warnings
+        truncation_report.extend(tree_truncation)
+        return content, input_meta, warnings, truncation_report
 
-    return "", input_meta, [f"Target not found: {target}"]
+    return "", input_meta, [f"Target not found: {target}"], truncation_report
 
 
 def run(args: argparse.Namespace) -> int:
@@ -525,9 +600,13 @@ def run(args: argparse.Namespace) -> int:
         print(f"JSON: {json_path}")
         return 1
 
-    content, input_meta, gather_warnings = gather_input(args, config)
+    content, input_meta, gather_warnings, trunc_report = gather_input(args, config)
     output.input = input_meta
     output.warnings.extend(gather_warnings)
+    output.truncation_report = trunc_report
+    output.truncated_files = [r["path"] for r in trunc_report]
+    output.total_input_chars = len(content) + sum(r.get("original_chars", 0) - r.get("included_chars", 0) for r in trunc_report)
+    output.included_input_chars = len(content)
 
     if not content:
         output.error = "No input content to analyze"
