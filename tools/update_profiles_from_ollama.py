@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+Update local_llm_profiles.json based on currently available Ollama models.
+
+Scans `ollama list`, matches models to profiles using keyword heuristics,
+and writes an updated profiles.json. Existing manual overrides are preserved
+unless --reset is used.
+
+Usage:
+    python tools/update_profiles_from_ollama.py
+    python tools/update_profiles_from_ollama.py --dry-run
+    python tools/update_profiles_from_ollama.py --reset
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent
+PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
+
+SKIP_SUFFIXES = ["-original", "-agentprefill", "-toolfix", "-agent"]
+
+PROFILE_SPECS = {
+    "fast_summary": {
+        "keywords": ["gemma-4-e4b", "gemma4:e4b", "qwen3.5-9b", "gpt-oss-20b", "minicpm", "glm-ocr", "deepseek-ocr"],
+        "prefer_small": True,
+        "temperature": 0.2,
+        "max_chars": 60000,
+        "max_output_chars": 3000,
+        "use_for": ["summarize-file", "summarize-tree", "rewrite-text"],
+        "risk_level": "low",
+    },
+    "code_worker": {
+        "keywords": ["coder", "qwen3-coder", "qwen3.5-9b", "qwen3.6:27b", "gpt-oss-20b"],
+        "prefer_small": False,
+        "temperature": 0.15,
+        "max_chars": 90000,
+        "max_output_chars": 4000,
+        "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "generate-test-draft"],
+        "risk_level": "medium",
+    },
+    "diff_reviewer": {
+        "keywords": ["coder", "qwen3-coder", "qwen3.5-27b", "qwen3.6:27b", "qwen3.5-35b"],
+        "prefer_small": False,
+        "temperature": 0.1,
+        "max_chars": 120000,
+        "max_output_chars": 5000,
+        "use_for": ["review-diff"],
+        "risk_level": "medium",
+    },
+    "deep_reviewer": {
+        "keywords": ["mistral-medium", "mistral-small-4", "qwen3.5-35b", "qwen3-coder-next", "llama4", "nemotron-3-super", "qwen3.5-122b"],
+        "prefer_small": False,
+        "temperature": 0.1,
+        "max_chars": 160000,
+        "max_output_chars": 6000,
+        "use_for": ["deep-code-review", "architecture-review"],
+        "risk_level": "high",
+    },
+    "reasoning_checker": {
+        "keywords": ["reasoning", "deepseek-r1", "qwen3.5-27b-reasoning"],
+        "prefer_small": False,
+        "temperature": 0.1,
+        "max_chars": 100000,
+        "max_output_chars": 5000,
+        "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
+        "risk_level": "medium-high",
+    },
+    "translation": {
+        "keywords": ["translategemma", "qwen3.5-9b", "qwen3.6:27b", "gemma4:26b", "glm-4"],
+        "prefer_small": False,
+        "temperature": 0.2,
+        "max_chars": 80000,
+        "max_output_chars": 6000,
+        "use_for": ["translate-text"],
+        "risk_level": "low",
+    },
+}
+
+
+def get_ollama_models() -> list[str]:
+    try:
+        output = subprocess.check_output(
+            ["ollama", "list"], text=True, stderr=subprocess.DEVNULL
+        )
+        lines = output.strip().splitlines()[1:]
+        return [line.split()[0] for line in lines if line.strip()]
+    except Exception as e:
+        print(f"ERROR: Cannot run ollama list: {e}", file=sys.stderr)
+        return []
+
+
+def is_variant(name: str) -> bool:
+    for suffix in SKIP_SUFFIXES:
+        if name.endswith(suffix) or name.endswith(f"{suffix}:latest"):
+            return True
+    return False
+
+
+def filter_base_models(models: list[str]) -> list[str]:
+    return [m for m in models if not is_variant(m)]
+
+
+def estimate_size(name: str) -> float:
+    match = re.search(r"(\d+\.?\d*)[bB]", name)
+    if match:
+        return float(match.group(1))
+    return 30.0
+
+
+def match_model(profile_name: str, spec: dict, base_models: list[str]) -> str | None:
+    candidates = []
+    for model in base_models:
+        model_lower = model.lower()
+        for kw in spec["keywords"]:
+            if kw.lower() in model_lower:
+                candidates.append(model)
+                break
+
+    if not candidates:
+        return None
+
+    if spec.get("prefer_small"):
+        candidates.sort(key=lambda n: estimate_size(n))
+    else:
+        candidates.sort(key=lambda n: estimate_size(n), reverse=True)
+
+    return candidates[0]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Update profiles.json from Ollama models")
+    parser.add_argument("--dry-run", action="store_true", help="Show changes without writing")
+    parser.add_argument("--reset", action="store_true", help="Ignore existing profiles, regenerate from scratch")
+    args = parser.parse_args()
+
+    all_models = get_ollama_models()
+    if not all_models:
+        print("No Ollama models found. Is Ollama running?")
+        sys.exit(1)
+
+    base_models = filter_base_models(all_models)
+    print(f"Found {len(all_models)} models ({len(base_models)} base models)\n")
+
+    existing = {}
+    if PROFILES_PATH.exists() and not args.reset:
+        data = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
+        existing = data.get("profiles", {})
+
+    new_profiles = {}
+    changes = []
+
+    for profile_name, spec in PROFILE_SPECS.items():
+        recommended = match_model(profile_name, spec, base_models)
+        old_model = existing.get(profile_name, {}).get("model", "")
+
+        if old_model and old_model in all_models and not args.reset:
+            chosen = old_model
+            status = "KEEP"
+        elif recommended:
+            chosen = recommended
+            status = "UPDATE" if old_model else "NEW"
+        else:
+            chosen = old_model or ""
+            status = "NO MATCH"
+
+        new_profiles[profile_name] = {
+            "model": chosen,
+            "temperature": spec["temperature"],
+            "max_chars": spec["max_chars"],
+            "max_output_chars": spec["max_output_chars"],
+            "use_for": spec["use_for"],
+            "risk_level": spec["risk_level"],
+        }
+
+        icon = {"KEEP": "  ", "UPDATE": "->", "NEW": " +", "NO MATCH": " !"}[status]
+        old_str = f" (was: {old_model})" if old_model and status == "UPDATE" else ""
+        print(f"  {icon} {profile_name:20s} = {chosen or '(none)'}{old_str}")
+        changes.append((profile_name, status, old_model, chosen))
+
+    output = {
+        "profiles": new_profiles,
+        "default_profile": "fast_summary",
+    }
+
+    updates = sum(1 for _, s, _, _ in changes if s in ("UPDATE", "NEW"))
+    keeps = sum(1 for _, s, _, _ in changes if s == "KEEP")
+    missing = sum(1 for _, s, _, _ in changes if s == "NO MATCH")
+
+    print(f"\n{updates} updated, {keeps} kept, {missing} unmatched")
+
+    if args.dry_run:
+        print("\nDRY RUN — no files written.")
+        print("\nWould write:")
+        print(json.dumps(output, indent=2, ensure_ascii=False)[:500] + "...")
+    else:
+        PROFILES_PATH.write_text(
+            json.dumps(output, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8"
+        )
+        print(f"\nWritten: {PROFILES_PATH}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,5 @@
+# Project-level Codex configuration.
+# Keep this file free of secrets and machine-specific absolute paths.
+# Project policy lives in AGENTS.md and .codex/local-llm-worker.md.
+# Local model calls are performed through tools/local_llm_router.py.
+# MCP configuration should be added only after the CLI worker is stable (Phase 3).

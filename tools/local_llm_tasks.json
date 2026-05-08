@@ -1,0 +1,130 @@
+{
+  "tasks": {
+    "summarize-file": {
+      "risk": "low",
+      "default_profile": "fast_summary",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 3000,
+      "allowed_use": "Summarize a single file for the controller to quickly understand its purpose and structure.",
+      "forbidden_use": "Must not claim completeness or correctness of the file."
+    },
+    "summarize-tree": {
+      "risk": "low",
+      "default_profile": "fast_summary",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 3000,
+      "allowed_use": "Summarize a directory tree to help the controller navigate the project.",
+      "forbidden_use": "Must not skip files silently; must note what was excluded."
+    },
+    "extract-todos": {
+      "risk": "low",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 4000,
+      "allowed_use": "Extract TODO, FIXME, HACK, XXX comments from source files.",
+      "forbidden_use": "Must not invent TODOs that are not in the source."
+    },
+    "find-related-files": {
+      "risk": "low",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 3000,
+      "allowed_use": "Given a query or file, suggest related files in the project.",
+      "forbidden_use": "Must not fabricate file paths."
+    },
+    "generate-test-plan": {
+      "risk": "medium",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 4000,
+      "allowed_use": "Draft a test plan covering normal, boundary, and error paths.",
+      "forbidden_use": "Must not claim tests already pass. Must not write final test code."
+    },
+    "generate-test-draft": {
+      "risk": "medium",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 5000,
+      "allowed_use": "Draft test skeleton code for the controller to review and finalize.",
+      "forbidden_use": "Must not claim the draft is complete or passing."
+    },
+    "review-diff": {
+      "risk": "medium",
+      "default_profile": "diff_reviewer",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 5000,
+      "allowed_use": "Review a git diff for candidate bugs, risks, and test gaps.",
+      "forbidden_use": "Must not approve changes. Must not claim tests pass."
+    },
+    "deep-code-review": {
+      "risk": "high",
+      "default_profile": "deep_reviewer",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Deep review of code for architectural issues, patterns, and risks.",
+      "forbidden_use": "Must not approve changes. Controller must verify all claims."
+    },
+    "architecture-review": {
+      "risk": "high",
+      "default_profile": "deep_reviewer",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Compare architectural approaches and flag tradeoffs.",
+      "forbidden_use": "Must not make final architecture decisions."
+    },
+    "risk-analysis": {
+      "risk": "medium-high",
+      "default_profile": "reasoning_checker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 5000,
+      "allowed_use": "Analyze failure modes, worst cases, and overlooked edge cases.",
+      "forbidden_use": "Must not approve or reject. Controller makes final call."
+    },
+    "logic-check": {
+      "risk": "medium",
+      "default_profile": "reasoning_checker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 4000,
+      "allowed_use": "Check logical consistency and identify contradictions.",
+      "forbidden_use": "Must not claim certainty on ambiguous logic."
+    },
+    "failure-mode-analysis": {
+      "risk": "medium-high",
+      "default_profile": "reasoning_checker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 5000,
+      "allowed_use": "Enumerate ways a plan or code could fail.",
+      "forbidden_use": "Must not claim exhaustive coverage."
+    },
+    "translate-text": {
+      "risk": "low",
+      "default_profile": "translation",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Translate non-sensitive text between languages.",
+      "forbidden_use": "Must not translate secrets, credentials, or access tokens."
+    },
+    "rewrite-text": {
+      "risk": "low",
+      "default_profile": "fast_summary",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 4000,
+      "allowed_use": "Rewrite or improve documentation text.",
+      "forbidden_use": "Must not alter meaning of technical specifications."
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "profiles": {
+    "fast_summary": {
+      "model": "qwen3.5-9b-q8:latest",
+      "temperature": 0.2,
+      "max_chars": 60000,
+      "max_output_chars": 3000,
+      "use_for": [
+        "summarize-file",
+        "summarize-tree",
+        "rewrite-text"
+      ],
+      "risk_level": "low"
+    },
+    "code_worker": {
+      "model": "qwen3-coder:30b",
+      "temperature": 0.15,
+      "max_chars": 90000,
+      "max_output_chars": 4000,
+      "use_for": [
+        "extract-todos",
+        "find-related-files",
+        "generate-test-plan",
+        "generate-test-draft"
+      ],
+      "risk_level": "medium"
+    },
+    "diff_reviewer": {
+      "model": "qwen3.6:27b-q8-ud",
+      "temperature": 0.1,
+      "max_chars": 120000,
+      "max_output_chars": 5000,
+      "use_for": [
+        "review-diff"
+      ],
+      "risk_level": "medium"
+    },
+    "deep_reviewer": {
+      "model": "qwen3.5-35b-q8:latest",
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "deep-code-review",
+        "architecture-review"
+      ],
+      "risk_level": "high"
+    },
+    "reasoning_checker": {
+      "model": "qwen3.5-27b-reasoning:latest",
+      "temperature": 0.1,
+      "max_chars": 100000,
+      "max_output_chars": 5000,
+      "use_for": [
+        "risk-analysis",
+        "logic-check",
+        "failure-mode-analysis"
+      ],
+      "risk_level": "medium-high"
+    },
+    "translation": {
+      "model": "translategemma-27b-it-q8:latest",
+      "temperature": 0.2,
+      "max_chars": 80000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "translate-text"
+      ],
+      "risk_level": "low"
+    }
+  },
+  "default_profile": "fast_summary"
+}

@@ -1,0 +1,51 @@
+# CLAUDE.md
+
+## Local Multi-Model Worker Policy
+
+This project uses a local multi-model LLM worker for low-risk, read-only assistance.
+Claude Code is the controller. The local worker is advisory only.
+
+### Allowed Local Worker Tasks
+
+- Summarize files.
+- Summarize directories.
+- Find related files.
+- Extract TODO/FIXME/HACK comments.
+- Draft test plans.
+- Draft test skeletons.
+- Draft diff reviews.
+- Draft risk analysis.
+- Logic checks and failure mode analysis.
+- Translate or rewrite non-sensitive text.
+
+### Forbidden Local Worker Tasks
+
+- Editing source code.
+- Reading secrets (.env, keys, tokens, credentials).
+- Handling authentication or authorization final decisions.
+- Handling cryptography final decisions.
+- Handling database migrations.
+- Deployment or release.
+- Final test judgment.
+- Final code approval.
+
+### Claude Code Must
+
+- Verify important worker claims directly.
+- Read relevant source files directly.
+- Run tests before claiming success.
+- Review git diff before final response.
+- Treat worker output as advisory only.
+
+### Available Commands
+
+- `/local-check` — run environment health check.
+- `/local-worker` — run a specific worker task.
+- `/local-route` — auto-route a task to the right model.
+- `/local-review-diff` — initial review of current git diff.
+- `/local-risk` — risk analysis of a file or plan.
+- `/local-test-plan` — generate a test plan for a file.
+
+### Available Subagent
+
+- `local-worker-auditor` — uses the local worker and audits its output.
