@@ -64,3 +64,8 @@ The pipeline exposes 6 read-only MCP tools via `tools/local_llm_mcp_server.py`:
 
 **MCP commands:**
 - `/local-mcp` — MCP integration guide and health check.
+
+**MCP docs:**
+- [MCP Usage Patterns](docs/local-llm-mcp-usage-patterns.md) — MCP vs CLI decision matrix
+- [MCP Client Verification](docs/local-llm-mcp-client-verification.md) — setup guide for Claude Code / Codex
+- [MCP Server Docs](docs/local-llm-mcp.md) — tool reference and security boundaries

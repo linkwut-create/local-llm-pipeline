@@ -134,6 +134,37 @@ tool_timeout_sec = 300
 
 Then verify with `/mcp` inside Codex — you should see `local-llm` active.
 
+## MCP vs CLI
+
+See **[MCP Usage Patterns](local-llm-mcp-usage-patterns.md)** for the full decision matrix.
+
+Summary:
+
+| Use MCP for | Use CLI for |
+|---|---|
+| Quick health check | Debugging |
+| Summarize a file during coding | Large directory summaries |
+| Small diff review | Large diffs (>500 lines) |
+| Small diff debate | Full 3-round debate |
+| Generate test plan | Benchmarking |
+| Interactive use | CI/CD, batch processing |
+
+## Remote Ollama
+
+If Ollama runs on another machine, set before starting:
+
+```bash
+export LOCAL_LLM_BASE_URL=http://<host>:11434
+# or
+export OLLAMA_HOST=<host>:11434
+```
+
+Resolution: `LOCAL_LLM_BASE_URL` → `OLLAMA_HOST` → `http://localhost:11434`.
+
+## Client Verification
+
+See **[MCP Client Verification Guide](local-llm-mcp-client-verification.md)** for step-by-step instructions for Claude Code and Codex.
+
 ## Security Boundaries
 
 ### What MCP does NOT expose
