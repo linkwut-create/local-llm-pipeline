@@ -687,6 +687,20 @@ def main():
                 response = handle_tools_call(msg_id, request.get("params", {}))
                 elapsed = round(time.time() - start, 2)
                 print(f"  [{elapsed}s] {tool_name}", file=sys.stderr)
+                # Structured log
+                try:
+                    content = json.loads(response["result"]["content"][0]["text"])
+                    from local_llm_logging import write_log_entry
+                    write_log_entry({
+                        "source": "mcp", "tool": tool_name,
+                        "task": tool_name.replace("local_", ""),
+                        "ok": content.get("ok", False),
+                        "duration_sec": elapsed,
+                        "error_type": content.get("error_type"),
+                        "error": content.get("error", "")[:200] if content.get("error") else None,
+                    })
+                except Exception:
+                    pass
                 write_json_response(response)
             elif method == "notifications/initialized":
                 pass  # ack silently

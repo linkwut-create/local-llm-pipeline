@@ -782,8 +782,10 @@ def run(args: argparse.Namespace) -> int:
                 print(f"JSON: {json_path}")
                 return 0
 
+    log_start = time.time()
     print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
     raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
+    log_duration = time.time() - log_start
 
     if error_info:
         output.error = error_info.get("error", "unknown error")
@@ -796,6 +798,13 @@ def run(args: argparse.Namespace) -> int:
         if output.suggestion:
             print(f"SUGGESTION: {output.suggestion}", file=sys.stderr)
         print(f"JSON: {json_path}")
+        # Structured log
+        from local_llm_logging import log_failure as lf
+        lf("cli", output.task, output.task, config.profile, config.model,
+           config.provider, log_duration,
+           output.error_type or "unknown_error",
+           output.error or "unknown error",
+           len(user), output.retries)
         return 1
 
     output.ok = True
@@ -826,6 +835,12 @@ def run(args: argparse.Namespace) -> int:
                           "summary": output.summary})
         except Exception:
             pass  # cache write failure is non-fatal
+
+    # Structured log
+    from local_llm_logging import log_success as ls
+    ls("cli", output.task, output.task, config.profile, config.model,
+       config.provider, log_duration, len(user),
+       len(raw_result), cache_hit=False, retries=0)
 
     print(f"OK: {args.task} completed", file=sys.stderr)
     print(f"JSON: {json_path}")
