@@ -42,6 +42,56 @@ python C:\Users\Zero\local-llm-pipeline\install_local_llm_pipeline.py C:\path\to
 - **.gitignore**: `.local_llm_out/` is appended if not already present.
 - **Business code**: Never touched.
 
+## What Does NOT Get Installed
+
+The installer skips these files to avoid leaking local settings:
+
+| Skipped file | Reason |
+|---|---|
+| `.claude/settings.local.json` | Machine-specific MCP enablement |
+| `.claude/settings.json` | Machine-specific Claude Code settings |
+
+These are filtered by `SKIP_FILES` in the installer.
+
+## Real Migration Example (v0.4.0)
+
+Installed into `C:\Users\Zero\local-translator-agent` (Python translation tool):
+
+```powershell
+# 1. Preview
+python install_local_llm_pipeline.py C:\Users\Zero\local-translator-agent --dry-run
+# Output: 36 files would be written, 1 skipped (settings.local.json)
+
+# 2. Install
+python install_local_llm_pipeline.py C:\Users\Zero\local-translator-agent
+# Output: Health check PASSED (58 models via OLLAMA_HOST)
+
+# 3. Verify
+cd C:\Users\Zero\local-translator-agent
+python tools/local_llm_check.py
+python tools/local_llm_router.py summarize-file README.md
+
+# 4. MCP setup
+claude mcp add --transport stdio --scope project local-llm -- python tools/local_llm_mcp_server.py
+claude
+# In Claude Code: /mcp, local_check, local_summarize_file README.md
+
+# 5. Commit the tooling
+git add .gitignore .codex/ .mcp.json AGENTS.md CLAUDE.md docs/ tools/
+git commit -m "Add local LLM development tooling"
+```
+
+### Rolling Back
+
+If this was only a test installation, roll back with:
+
+```powershell
+git restore .gitignore          # revert .gitignore changes
+git clean -fd                   # remove untracked directories (tools/, docs/, .codex/, .claude/)
+# then remove newly created files if any:
+rm -r -fo tools docs .codex .claude AGENTS.md CLAUDE.md .mcp.json .local_llm_out
+```
+
 ## Post-Install Verification
 
 The installer runs `python tools/local_llm_check.py` automatically after installation.

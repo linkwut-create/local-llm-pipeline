@@ -1,11 +1,13 @@
-"""Test installer append and idempotency behavior."""
+"""Test installer append, idempotency, and skip-files behavior."""
 
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from install_local_llm_pipeline import append_policy, update_gitignore, POLICY_MARKER
+from install_local_llm_pipeline import (
+    append_policy, update_gitignore, copy_dir, POLICY_MARKER, SKIP_FILES,
+)
 
 
 PIPELINE_ROOT = Path(__file__).parent.parent
@@ -94,3 +96,60 @@ def test_gitignore_create():
         assert gi.exists()
         content = gi.read_text(encoding="utf-8")
         assert ".local_llm_out/" in content
+
+
+def test_skip_files_contains_local_settings():
+    """SKIP_FILES must include settings.local.json and settings.json."""
+    assert "settings.local.json" in SKIP_FILES
+    assert "settings.json" in SKIP_FILES
+
+
+def test_copy_dir_skips_local_settings():
+    """copy_dir should skip settings.local.json and settings.json."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+
+            (src_path / "normal.txt").write_text("normal", encoding="utf-8")
+            (src_path / "settings.local.json").write_text("{}", encoding="utf-8")
+            (src_path / "settings.json").write_text("{}", encoding="utf-8")
+
+            actions = copy_dir(src_path, dst_path, dry_run=False, force=False)
+
+            assert (dst_path / "normal.txt").exists()
+            assert not (dst_path / "settings.local.json").exists()
+            assert not (dst_path / "settings.json").exists()
+            assert any("SKIP" in a and "settings.local.json" in a for a in actions)
+            assert any("SKIP" in a and "settings.json" in a for a in actions)
+
+
+def test_copy_dir_dry_run_reports_skipped():
+    """Dry-run should report skipped files without copying them."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+
+            (src_path / "settings.local.json").write_text("{}", encoding="utf-8")
+
+            actions = copy_dir(src_path, dst_path, dry_run=True, force=False)
+
+            assert any("SKIP (local config)" in a for a in actions)
+
+
+def test_gitignore_no_duplicate_on_reinstall():
+    """Re-running installer should not duplicate .local_llm_out/."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        gi = target / ".gitignore"
+        gi.write_text("*.pyc\n.local_llm_out/\n", encoding="utf-8")
+
+        # First call
+        update_gitignore(target, dry_run=False)
+        # Second call (simulating reinstall)
+        actions = update_gitignore(target, dry_run=False)
+
+        content = gi.read_text(encoding="utf-8")
+        assert content.count(".local_llm_out/") == 1
+        assert any("SKIP" in a for a in actions)
