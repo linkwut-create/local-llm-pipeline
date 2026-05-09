@@ -3,12 +3,11 @@
 # Project policy lives in AGENTS.md and .codex/local-llm-worker.md.
 # Local model calls are performed through tools/local_llm_router.py.
 
-# Example: Local LLM MCP server (read-only tools for code review).
-# Uncomment and adjust if your Codex build supports MCP servers.
+# Local LLM MCP server (source-non-mutating tools for code review and drafting).
 # See: https://developers.openai.com/codex/mcp
-# [mcp_servers.local-llm]
-# command = "python"
-# args = ["tools/local_llm_mcp_server.py"]
-# cwd = "."
-# startup_timeout_sec = 10
-# tool_timeout_sec = 300
+[mcp_servers.local-llm]
+command = "python"
+args = ["tools/local_llm_mcp_server.py"]
+cwd = "."
+startup_timeout_sec = 30
+tool_timeout_sec = 900
