@@ -123,7 +123,8 @@ def check_gitignore() -> bool:
 
 def check_tool_files_exist() -> bool:
     required = ["local_llm_worker.py", "local_llm_router.py", "local_llm_check.py",
-                 "local_llm_profiles.json", "local_llm_tasks.json"]
+                 "local_llm_profiles.json", "local_llm_tasks.json",
+                 "local_llm_debate.py"]
     missing = [f for f in required if not (TOOLS_DIR / f).exists()]
     ok = len(missing) == 0
     if ok:

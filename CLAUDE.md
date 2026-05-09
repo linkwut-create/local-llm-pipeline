@@ -45,6 +45,7 @@ Claude Code is the controller. The local worker is advisory only.
 - `/local-review-diff` — initial review of current git diff.
 - `/local-risk` — risk analysis of a file or plan.
 - `/local-test-plan` — generate a test plan for a file.
+- `/local-debate` — multi-model cross-review (3 rounds: coder → reasoning → deep).
 
 ### Available Subagent
 

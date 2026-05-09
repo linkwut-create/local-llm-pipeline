@@ -125,6 +125,42 @@
       "max_output_chars": 4000,
       "allowed_use": "Rewrite or improve documentation text.",
       "forbidden_use": "Must not alter meaning of technical specifications."
+    },
+    "debate-review-diff": {
+      "risk": "medium-high",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Multi-model cross-review of a git diff. Three rounds: coder, reasoning, deep reviewer.",
+      "forbidden_use": "Must not approve changes. Must not claim tests pass. Controller makes final call."
+    },
+    "debate-risk-analysis": {
+      "risk": "high",
+      "default_profile": "reasoning_checker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Multi-model cross-review of risk analysis. Multiple models challenge each other's reasoning.",
+      "forbidden_use": "Must not approve or reject. Controller makes final call."
+    },
+    "debate-architecture-review": {
+      "risk": "high",
+      "default_profile": "deep_reviewer",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Multi-model architecture review comparing approaches and flagging tradeoffs.",
+      "forbidden_use": "Must not make final architecture decisions."
+    },
+    "debate-failure-mode-analysis": {
+      "risk": "medium-high",
+      "default_profile": "reasoning_checker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Multi-model failure mode analysis. Models enumerate and challenge each other's failure scenarios.",
+      "forbidden_use": "Must not claim exhaustive coverage."
     }
   }
 }

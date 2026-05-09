@@ -39,6 +39,18 @@ Codex may call `tools/local_llm_router.py` for read-only auxiliary work.
 6. Use worker for initial diff review.
 7. Verify diff directly.
 
+## Multi-Model Debate
+
+Codex may use `tools/local_llm_debate.py` for multi-model cross-review.
+Debate results are NOT final conclusions — Codex must verify all findings.
+
+```bash
+git diff | python tools/local_llm_debate.py review-diff --stdin
+git diff | python tools/local_llm_debate.py review-diff --stdin --fast
+python tools/local_llm_debate.py risk-analysis <path>
+python tools/local_llm_debate.py architecture-review <path>
+```
+
 ## Standard Commands
 
 ```bash

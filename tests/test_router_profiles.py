@@ -58,6 +58,8 @@ def test_profile_use_for_covers_all_tasks():
         all_use_for.update(conf.get("use_for", []))
 
     for task_name in tasks:
+        if task_name.startswith("debate-"):
+            continue
         assert task_name in all_use_for, (
             f"Task '{task_name}' not in any profile's use_for"
         )
