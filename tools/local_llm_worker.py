@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -766,14 +767,14 @@ def run(args: argparse.Namespace) -> int:
     cache_hit = False
     if args.task in CACHEABLE_TASKS:
         cache_key = None
-        if args.task == "summarize-file" and args.path:
-            cache_key = compute_file_key(args.path[0], config.profile, config.model)
-        elif args.task == "summarize-tree" and args.path:
+        if args.task == "summarize-file" and args.target:
+            cache_key = compute_file_key(args.target, config.profile, config.model)
+        elif args.task == "summarize-tree" and args.target:
             # Build file list from already-read content for tree key
             file_entries = []
             for f_path, f_content in content.get("files", {}).items():
                 file_entries.append({"path": f_path, "size": len(f_content), "mtime_ns": 0})
-            cache_key = compute_tree_key(args.path[0], args.max_files,
+            cache_key = compute_tree_key(args.target, args.max_files,
                                           file_entries, config.profile, config.model)
 
         if cache_key:
@@ -834,8 +835,8 @@ def run(args: argparse.Namespace) -> int:
     if args.task in CACHEABLE_TASKS and not cache_hit:
         try:
             cache_key = None
-            if args.task == "summarize-file" and args.path:
-                cache_key = compute_file_key(args.path[0], config.profile, config.model)
+            if args.task == "summarize-file" and args.target:
+                cache_key = compute_file_key(args.target, config.profile, config.model)
             if cache_key:
                 put_cache(cache_key, {"task": args.task, "profile": config.profile,
                           "model": config.model, "result": raw_result,
