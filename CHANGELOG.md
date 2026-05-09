@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.7.1 (2026-05-10)
+
+- Dogfood code drafting on local-translator-agent
+- Add docs/local-llm-code-drafting.md
+- Update VERSION to 0.7.1
+
+## v0.7.0 (2026-05-10)
+
+- Add bounded local code drafting (draft-fix, draft-feature, draft-refactor, suggest-improvements)
+- Add local_draft_code MCP tool (7 total, source-non-mutating)
+- Drafts write only to .local_llm_out/, never source files
+- All draft tasks: may_modify_code=false, controller_must_verify=true
+- Safety verified: 3 draft scenarios, zero source file writes
+
+## v0.6.1 (2026-05-09)
+
+- Solo-test 31 Ollama models (one at a time, no GPU contention)
+- Correct false timeouts from parallel testing
+- Profiles expanded 6→13 with benchmark-backed assignments
+- A/B quality test confirms nemotron-nano-omni best diff_reviewer
+
+## v0.6.0 (2026-05-09)
+
+- Model inventory: 58 Ollama + standalone GGUF models documented
+- Benchmark tool enhanced (--models, --tasks, --repeat, --dry-run, --output-md)
+- 3 new profiles: release_auditor, architecture_reviewer, embedding
+
+## v0.5.3 (2026-05-09)
+
+- Add architecture overview, roadmap, and README
+
 ## v0.5.2 (2026-05-09)
 
 - Release hardening: centralized VERSION file
