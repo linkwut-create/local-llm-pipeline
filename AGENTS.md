@@ -45,6 +45,15 @@ This project includes a local multi-model LLM worker system.
 - Review git diff before final response.
 - Treat worker output as advisory only.
 
+### MCP Integration (v0.3.0+)
+
+The pipeline can be used as an MCP server (`tools/local_llm_mcp_server.py`), exposing
+6 read-only tools: `local_check`, `local_summarize_file`, `local_summarize_tree`,
+`local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`.
+
+MCP tools are read-only. They do NOT expose write, delete, shell, git, or deploy.
+The controller must still verify all MCP output — local models remain advisory.
+
 ### Standard Commands
 
 ```bash

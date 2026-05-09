@@ -2,4 +2,10 @@
 # Keep this file free of secrets and machine-specific absolute paths.
 # Project policy lives in AGENTS.md and .codex/local-llm-worker.md.
 # Local model calls are performed through tools/local_llm_router.py.
-# MCP configuration should be added only after the CLI worker is stable (Phase 3).
+
+# Example: Local LLM MCP server (read-only tools for code review).
+# Uncomment and adjust if your Codex build supports MCP servers.
+# [mcp_servers.local-llm]
+# command = "python"
+# args = ["tools/local_llm_mcp_server.py"]
+# cwd = "."

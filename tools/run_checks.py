@@ -10,6 +10,7 @@ Usage:
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -124,13 +125,40 @@ def check_gitignore() -> bool:
 def check_tool_files_exist() -> bool:
     required = ["local_llm_worker.py", "local_llm_router.py", "local_llm_check.py",
                  "local_llm_profiles.json", "local_llm_tasks.json",
-                 "local_llm_debate.py"]
+                 "local_llm_debate.py", "local_llm_mcp_server.py"]
     missing = [f for f in required if not (TOOLS_DIR / f).exists()]
     ok = len(missing) == 0
     if ok:
         print(f"  [{_status(True)}] Core tool files: all {len(required)} present")
     else:
         print(f"  [{_status(False)}] Core tool files missing: {missing}")
+    return ok
+
+
+def check_mcp_docs_exist() -> bool:
+    doc = PROJECT_ROOT / "docs" / "local-llm-mcp.md"
+    ok = doc.exists()
+    print(f"  [{_status(ok)}] docs/local-llm-mcp.md: {'present' if ok else 'MISSING'}")
+    return ok
+
+
+def check_mcp_no_dangerous_tools() -> bool:
+    """Verify MCP server does not expose dangerous tool names."""
+    tool_file = TOOLS_DIR / "local_llm_mcp_server.py"
+    if not tool_file.exists():
+        print(f"  [SKIP] MCP server file not found")
+        return True
+    forbidden = ["write", "delete", "shell", "exec", "commit", "push", "tag", "deploy"]
+    content = tool_file.read_text(encoding="utf-8")
+    found = []
+    for kw in forbidden:
+        if re.search(r'"local_' + kw, content, re.IGNORECASE):
+            found.append(kw)
+    ok = len(found) == 0
+    if ok:
+        print(f"  [{_status(True)}] MCP: no dangerous tool names exposed")
+    else:
+        print(f"  [{_status(False)}] MCP: dangerous tool names found: {found}")
     return ok
 
 
@@ -151,6 +179,10 @@ def main() -> int:
 
     print("\n[Tool Files]")
     results.append(check_tool_files_exist())
+
+    print("\n[MCP]")
+    results.append(check_mcp_docs_exist())
+    results.append(check_mcp_no_dangerous_tools())
 
     print("\n[JSON Config]")
     results.append(check_json_schema(
