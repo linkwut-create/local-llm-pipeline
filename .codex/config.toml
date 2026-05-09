@@ -5,7 +5,10 @@
 
 # Example: Local LLM MCP server (read-only tools for code review).
 # Uncomment and adjust if your Codex build supports MCP servers.
+# See: https://developers.openai.com/codex/mcp
 # [mcp_servers.local-llm]
 # command = "python"
 # args = ["tools/local_llm_mcp_server.py"]
 # cwd = "."
+# startup_timeout_sec = 10
+# tool_timeout_sec = 300

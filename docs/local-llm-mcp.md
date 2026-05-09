@@ -94,15 +94,26 @@ max_chars:     Max input chars (max: 200K)
 
 ## Claude Code Configuration
 
-Add to `.claude/settings.json` or project `.claude/settings.local.json`:
+Use `claude mcp add` (recommended):
+
+```bash
+cd <project-root>
+claude mcp add --transport stdio --scope project local-llm -- python tools/local_llm_mcp_server.py
+```
+
+This creates `.mcp.json` at the project root (can be committed to share with the team).
+
+Verify with `/mcp` inside Claude Code — you should see `local-llm` with 6 tools.
+
+Manual alternative (add to `.mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "local-llm": {
+      "type": "stdio",
       "command": "python",
-      "args": ["tools/local_llm_mcp_server.py"],
-      "cwd": "."
+      "args": ["tools/local_llm_mcp_server.py"]
     }
   }
 }
@@ -113,13 +124,15 @@ Add to `.claude/settings.json` or project `.claude/settings.local.json`:
 Add to `.codex/config.toml`:
 
 ```toml
-# Example: Local LLM MCP server (read-only tools for code review)
-# Uncomment and adjust paths as needed.
-# [mcp_servers.local-llm]
-# command = "python"
-# args = ["tools/local_llm_mcp_server.py"]
-# cwd = "."
+[mcp_servers.local-llm]
+command = "python"
+args = ["tools/local_llm_mcp_server.py"]
+cwd = "."
+startup_timeout_sec = 10
+tool_timeout_sec = 300
 ```
+
+Then verify with `/mcp` inside Codex — you should see `local-llm` active.
 
 ## Security Boundaries
 

@@ -16,8 +16,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-OLLAMA_BASE = "http://localhost:11434"
+try:
+    import requests
+except ImportError:
+    requests = None
+
+OLLAMA_BASE_DEFAULT = "http://localhost:11434"
 OPENAI_COMPAT_BASE = "http://localhost:8080"
+
+
+def resolve_ollama_base_url() -> tuple[str, str]:
+    """Resolve Ollama base URL from env vars. Returns (base_url, source_description)."""
+    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    if env_base:
+        return env_base, "LOCAL_LLM_BASE_URL"
+    ollama_host = os.environ.get("OLLAMA_HOST", "")
+    if ollama_host:
+        if not ollama_host.startswith("http"):
+            ollama_host = f"http://{ollama_host}"
+        return ollama_host, "OLLAMA_HOST"
+    return OLLAMA_BASE_DEFAULT, "default"
 PROFILES_PATH = Path(__file__).parent / "local_llm_profiles.json"
 OUTPUT_DIR_NAME = ".local_llm_out"
 
@@ -106,15 +124,20 @@ def check_output_dir() -> CheckResult:
 
 
 def check_ollama() -> CheckResult:
+    base_url, source = resolve_ollama_base_url()
+    if requests is None:
+        return CheckResult("ollama", False, f"requests not installed, cannot check {base_url}")
     try:
-        import requests
-        resp = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=10)
+        resp = requests.get(f"{base_url}/api/tags", timeout=10)
         resp.raise_for_status()
         data = resp.json()
         models = [m["name"] for m in data.get("models", [])]
-        return CheckResult("ollama", True, f"{len(models)} models available", data=models)
+        detail = f"{len(models)} models at {base_url}"
+        if source == "OLLAMA_HOST":
+            detail += f" (via OLLAMA_HOST)"
+        return CheckResult("ollama", True, detail, data=models)
     except Exception as e:
-        return CheckResult("ollama", False, f"Ollama not reachable: {e}")
+        return CheckResult("ollama", False, f"Ollama at {base_url} not reachable: {e}")
 
 
 def check_openai_compat() -> CheckResult:

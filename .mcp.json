@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "local-llm": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "tools/local_llm_mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -24,12 +24,14 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from local_llm_worker import is_blocked_path
 
 SERVER_NAME = "local-llm-pipeline"
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.3.2"
 
 MAX_DIFF_CHARS = 100_000
 MAX_PATH_MAX_CHARS = 200_000
 MAX_MAX_FILES = 50
 DEFAULT_TIMEOUT = 600
+DEBATE_TIMEOUT = 900
+DEBATE_FAST_PER_ROUND_TIMEOUT = 350
 
 TOOLS = {
     "local_check": {
@@ -438,8 +440,15 @@ def call_debate_review_diff(params: dict) -> dict:
         return {"tool": "local_debate_review_diff", "ok": False, "result": None,
                 "error": "diff_text is empty", "elapsed_seconds": 0,
                 "created_at": datetime.now(timezone.utc).isoformat()}
+
     if len(diff_text) > MAX_DIFF_CHARS:
-        diff_text = diff_text[:MAX_DIFF_CHARS]
+        return {"tool": "local_debate_review_diff", "ok": False, "result": None,
+                "error": f"diff_text too large ({len(diff_text)} chars, max {MAX_DIFF_CHARS}). "
+                         f"Use CLI debate directly or pass a smaller diff.",
+                "suggestion": "try smaller diff, --fast, or CLI",
+                "elapsed_seconds": 0,
+                "created_at": datetime.now(timezone.utc).isoformat()}
+    diff_text = diff_text[:MAX_DIFF_CHARS]
 
     use_fast = params.get("fast", True)
     use_summary_only = params.get("summary_only", True)
@@ -447,17 +456,39 @@ def call_debate_review_diff(params: dict) -> dict:
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_debate.py"), "review-diff", "--stdin"]
     if use_fast:
         cmd.append("--fast")
+        cmd.extend(["--timeout", str(DEBATE_FAST_PER_ROUND_TIMEOUT)])
     if use_summary_only:
         cmd.append("--summary-only")
     if params.get("max_chars"):
         cmd.extend(["--max-chars", str(min(int(params["max_chars"]), MAX_PATH_MAX_CHARS))])
 
-    result = run_subprocess(cmd, stdin_data=diff_text)
-    latest = find_latest_json_output()
+    result = run_subprocess(cmd, stdin_data=diff_text, timeout=DEBATE_TIMEOUT)
+
+    if not result["ok"] and "timed out" in result["stderr"].lower():
+        return {
+            "tool": "local_debate_review_diff",
+            "ok": False,
+            "result": None,
+            "error": "subprocess timed out",
+            "suggestion": "try smaller diff, --fast, or CLI",
+            "elapsed_seconds": result["elapsed_seconds"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    output = None
+    if result["ok"]:
+        try:
+            output = json.loads(result["stdout"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if output is None and result["ok"]:
+        output = find_latest_json_output()
+
     return {
         "tool": "local_debate_review_diff",
         "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
+        "result": truncate_output(output) if output else {"stdout": result["stdout"][:5000],
+                                                           "stderr": result["stderr"][:1000]},
         "error": None if result["ok"] else result["stderr"][:500],
         "elapsed_seconds": result["elapsed_seconds"],
         "created_at": datetime.now(timezone.utc).isoformat(),

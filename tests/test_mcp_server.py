@@ -100,7 +100,7 @@ def test_handle_initialize():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "local-llm-pipeline"
-    assert response["result"]["serverInfo"]["version"] == "0.3.0"
+    assert response["result"]["serverInfo"]["version"] == "0.3.2"
     assert "tools" in response["result"]["capabilities"]
 
 
@@ -142,11 +142,24 @@ def test_call_debate_empty_diff():
 
 
 def test_call_debate_builds_correct_cmd():
-    """Verify debate is invoked with --fast and --summary-only by default."""
-    cmd = [sys.executable, str(mcp.SCRIPT_DIR / "local_llm_debate.py"),
-           "review-diff", "--stdin", "--fast", "--summary-only"]
-    assert "--fast" in cmd
-    assert "--summary-only" in cmd
+    """Verify debate handler builds command with --fast and --summary-only by default."""
+    captured_cmd = None
+
+    def mock_run(cmd, stdin_data=None, timeout=None):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+
+    original_run = mcp.run_subprocess
+    mcp.run_subprocess = mock_run
+    try:
+        mcp.call_debate_review_diff({"diff_text": "-print('old')\n+print('new')"})
+    finally:
+        mcp.run_subprocess = original_run
+
+    assert captured_cmd is not None
+    assert "--fast" in captured_cmd, f"Expected --fast in command: {captured_cmd}"
+    assert "--summary-only" in captured_cmd, f"Expected --summary-only in command: {captured_cmd}"
 
 
 def test_call_review_diff_empty():
@@ -194,3 +207,101 @@ def test_all_handlers_registered():
 
 def test_handler_count_matches_tools():
     assert len(mcp.TOOL_HANDLERS) == len(mcp.TOOLS)
+
+
+def test_debate_diff_too_large():
+    """Debate should reject diff_text exceeding MAX_DIFF_CHARS."""
+    big_diff = "x" * (mcp.MAX_DIFF_CHARS + 1)
+    result = mcp.call_debate_review_diff({"diff_text": big_diff})
+    assert result["ok"] is False
+    assert "too large" in result["error"].lower()
+    assert "suggestion" in result
+
+
+def test_debate_timeout_structured_error():
+    """Timeout should return structured error with suggestion."""
+    def mock_run(cmd, stdin_data=None, timeout=None):
+        return {"ok": False, "returncode": -1, "stdout": "",
+                "stderr": "Subprocess timed out after 900s", "elapsed_seconds": 900.0}
+
+    original_run = mcp.run_subprocess
+    mcp.run_subprocess = mock_run
+    try:
+        result = mcp.call_debate_review_diff({"diff_text": "-print('old')\n+print('new')"})
+    finally:
+        mcp.run_subprocess = original_run
+
+    assert result["ok"] is False
+    assert result["error"] == "subprocess timed out"
+    assert result["suggestion"] == "try smaller diff, --fast, or CLI"
+    assert result["result"] is None
+
+
+def test_review_diff_empty():
+    result = mcp.call_review_diff({"diff_text": ""})
+    assert result["ok"] is False
+    assert "empty" in result["error"].lower()
+
+
+def test_call_debate_explicit_fast_false():
+    """When fast=False, --fast should NOT be in the command."""
+    captured_cmd = None
+
+    def mock_run(cmd, stdin_data=None, timeout=None):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+
+    original_run = mcp.run_subprocess
+    mcp.run_subprocess = mock_run
+    try:
+        mcp.call_debate_review_diff({"diff_text": "-print('old')\n+print('new')", "fast": False})
+    finally:
+        mcp.run_subprocess = original_run
+
+    assert "--fast" not in captured_cmd
+
+
+def test_debate_timeout_passed_to_cmd():
+    """When fast=True, --timeout should be passed to subprocess with DEBATE_FAST_PER_ROUND_TIMEOUT."""
+    captured_cmd = None
+
+    def mock_run(cmd, stdin_data=None, timeout=None):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+
+    original_run = mcp.run_subprocess
+    mcp.run_subprocess = mock_run
+    try:
+        mcp.call_debate_review_diff({"diff_text": "-print('old')\n+print('new')"})
+    finally:
+        mcp.run_subprocess = original_run
+
+    assert "--timeout" in captured_cmd
+    timeout_idx = captured_cmd.index("--timeout")
+    assert captured_cmd[timeout_idx + 1] == str(mcp.DEBATE_FAST_PER_ROUND_TIMEOUT)
+
+
+def test_call_debate_uses_debate_timeout():
+    """Debate subprocess should use DEBATE_TIMEOUT, not DEFAULT_TIMEOUT."""
+    captured_timeout = None
+
+    def mock_run(cmd, stdin_data=None, timeout=None):
+        nonlocal captured_timeout
+        captured_timeout = timeout
+        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+
+    original_run = mcp.run_subprocess
+    mcp.run_subprocess = mock_run
+    try:
+        mcp.call_debate_review_diff({"diff_text": "-print('old')\n+print('new')"})
+    finally:
+        mcp.run_subprocess = original_run
+
+    assert captured_timeout == mcp.DEBATE_TIMEOUT
+
+
+def test_new_constants():
+    assert mcp.DEBATE_TIMEOUT == 900
+    assert mcp.DEBATE_FAST_PER_ROUND_TIMEOUT == 350
