@@ -138,6 +138,37 @@ Then verify with `/mcp` inside Codex — you should see `local-llm` active.
 
 See **[MCP Usage Patterns](local-llm-mcp-usage-patterns.md)** for the full decision matrix.
 
+## llama.cpp MTP Backend (Gemma 4 acceleration)
+
+Gemma 4 models support speculative decoding via MTP (Multi-Token Prediction).
+The assistant GGUF files are NOT standalone models — they are token drafters
+that accelerate the target model's inference speed.
+
+### Setup
+
+```bash
+# On zero12, start llama.cpp with MTP:
+llama-server \
+  -m /mnt/data/llamacpp-models/google_gemma-4-26B-A4B-it-Q8_0.gguf \
+  --mtp-head /path/to/gemma-4-26B-A4B-it-assistant-F16.gguf \
+  --spec-type mtp \
+  -ngl 99 \
+  --port 8080
+
+# On Windows client, set env:
+$env:LOCAL_LLM_BASE_URL = "http://zero12:8080/v1"
+```
+
+Then use `gemma4_26b_mtp` profile for ~1.5-2x faster inference on summarization and
+improvement-suggestion tasks.
+
+### Drafter Models
+
+| File | Size | For |
+|---|---|---|
+| `gemma-4-26B-A4B-it-assistant-F16.gguf` | 815MB | Gemma 4 26B |
+| `gemma-4-31B-it-assistant-F16.gguf` | 911MB | Gemma 4 31B |
+
 Summary:
 
 | Use MCP for | Use CLI for |
