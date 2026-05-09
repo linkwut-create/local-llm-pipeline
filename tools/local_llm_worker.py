@@ -506,7 +506,10 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
 
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
     if config.provider == "ollama":
-        config.base_url = args.base_url or env_base or "http://localhost:11434"
+        ollama_host = os.environ.get("OLLAMA_HOST", "")
+        if ollama_host and not ollama_host.startswith("http"):
+            ollama_host = f"http://{ollama_host}"
+        config.base_url = args.base_url or env_base or ollama_host or "http://localhost:11434"
     else:
         config.base_url = args.base_url or env_base or "http://localhost:8080/v1"
 
