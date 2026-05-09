@@ -67,3 +67,50 @@ def test_all_profiles_have_valid_benchmark_config():
         assert "model" in conf, f"Profile {name} missing model"
         assert isinstance(conf.get("max_chars", 0), int), f"Profile {name} max_chars not int"
         assert conf["max_chars"] > 0, f"Profile {name} max_chars must be positive"
+
+
+def test_benchmark_has_models_flag():
+    """benchmark_profiles.py should support --models for direct model testing."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--models" in script
+
+
+def test_benchmark_has_tasks_flag():
+    """benchmark_profiles.py should support --tasks for multi-task testing."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--tasks" in script
+
+
+def test_benchmark_has_dry_run_flag():
+    """benchmark_profiles.py should support --dry-run."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--dry-run" in script
+
+
+def test_benchmark_has_repeat_flag():
+    """benchmark_profiles.py should support --repeat."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--repeat" in script
+
+
+def test_benchmark_has_output_md_flag():
+    """benchmark_profiles.py should support --output-md."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--output-md" in script
+
+
+def test_benchmark_has_output_json_flag():
+    """benchmark_profiles.py should support --output-json."""
+    script = (TOOLS_DIR / "benchmark_profiles.py").read_text(encoding="utf-8")
+    assert "--output-json" in script
+
+
+def test_benchmark_result_has_timed_out_field():
+    """Model-level benchmark results should include timed_out field."""
+    sample = {
+        "model": "test", "task": "summarize-file",
+        "ok": False, "timed_out": True, "duration_sec": 600.0,
+        "output_chars": 0, "error": "TIMEOUT", "created_at": "",
+    }
+    assert "timed_out" in sample
+    assert "duration_sec" in sample

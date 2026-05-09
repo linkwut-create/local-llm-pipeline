@@ -71,3 +71,42 @@ def test_default_profile_exists():
     default = data.get("default_profile")
     assert default, "No default_profile defined"
     assert default in data["profiles"], f"default_profile '{default}' not found in profiles"
+
+
+def test_new_profiles_exist():
+    """v0.6.0: release_auditor and architecture_reviewer must exist."""
+    profiles = _load_profiles()["profiles"]
+    assert "release_auditor" in profiles, "release_auditor profile missing"
+    assert "architecture_reviewer" in profiles, "architecture_reviewer profile missing"
+    assert "embedding" in profiles, "embedding profile missing"
+
+
+def test_profile_count():
+    """v0.6.0: should have at least 9 profiles."""
+    profiles = _load_profiles()["profiles"]
+    assert len(profiles) >= 9, f"Expected >= 9 profiles, got {len(profiles)}"
+
+
+def test_high_risk_tasks_require_controller_verify():
+    """High-risk tasks must have controller_must_verify=true."""
+    tasks = _load_tasks()["tasks"]
+    for task_name, task_conf in tasks.items():
+        if task_conf.get("risk") == "high":
+            assert task_conf.get("controller_must_verify") is True, (
+                f"High-risk task '{task_name}' must require controller verification"
+            )
+
+
+def test_release_auditor_profile_high_risk():
+    """release_auditor profile must be high risk."""
+    profiles = _load_profiles()["profiles"]
+    auditor = profiles["release_auditor"]
+    assert auditor["risk_level"] == "high"
+
+
+def test_embedding_profile_low_risk():
+    """embedding profile is low risk (no file mutation)."""
+    profiles = _load_profiles()["profiles"]
+    emb = profiles["embedding"]
+    assert emb["risk_level"] == "low"
+    assert emb["temperature"] == 0.0

@@ -1,7 +1,7 @@
 {
   "profiles": {
     "fast_summary": {
-      "model": "qwen3.5-9b-q8:latest",
+      "model": "gemma4:e4b",
       "temperature": 0.2,
       "max_chars": 60000,
       "max_output_chars": 3000,
@@ -13,7 +13,7 @@
       "risk_level": "low"
     },
     "code_worker": {
-      "model": "qwen3-coder:30b",
+      "model": "qwen3-coder-next-q8:latest",
       "temperature": 0.15,
       "max_chars": 90000,
       "max_output_chars": 4000,
@@ -26,7 +26,7 @@
       "risk_level": "medium"
     },
     "diff_reviewer": {
-      "model": "qwen3.6:27b-q8-ud",
+      "model": "qwen3-coder-next-q8:latest",
       "temperature": 0.1,
       "max_chars": 120000,
       "max_output_chars": 5000,
@@ -41,13 +41,12 @@
       "max_chars": 160000,
       "max_output_chars": 6000,
       "use_for": [
-        "deep-code-review",
-        "architecture-review"
+        "deep-code-review"
       ],
       "risk_level": "high"
     },
     "reasoning_checker": {
-      "model": "qwen3.5-27b-reasoning:latest",
+      "model": "deepseek-r1-distill-qwen:32b-q8",
       "temperature": 0.1,
       "max_chars": 100000,
       "max_output_chars": 5000,
@@ -59,12 +58,45 @@
       "risk_level": "medium-high"
     },
     "translation": {
-      "model": "translategemma-27b-it-q8:latest",
+      "model": "glm-4.7-flash-q8:latest",
       "temperature": 0.2,
       "max_chars": 80000,
       "max_output_chars": 6000,
       "use_for": [
         "translate-text"
+      ],
+      "risk_level": "low"
+    },
+    "release_auditor": {
+      "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "architecture-review",
+        "deep-code-review",
+        "risk-analysis",
+        "release-risk-review"
+      ],
+      "risk_level": "high"
+    },
+    "architecture_reviewer": {
+      "model": "qwen3.5-35b-q8:latest",
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "architecture-review"
+      ],
+      "risk_level": "high"
+    },
+    "embedding": {
+      "model": "nomic-embed-text-v2-moe:latest",
+      "temperature": 0.0,
+      "max_chars": 32000,
+      "max_output_chars": 0,
+      "use_for": [
+        "embedding"
       ],
       "risk_level": "low"
     }
