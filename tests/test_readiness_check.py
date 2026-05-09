@@ -77,3 +77,18 @@ def test_draft_not_called_in_dry_run():
     assert "dry-run" in r.stdout.lower()
     # Model tests should be skipped
     assert "Model Tests: (skipped" in r.stdout or "skipped" in r.stdout.lower()
+
+
+# ── v0.9.2 global MCP launcher tests ──
+
+def test_global_launcher_exists():
+    launcher = PIPELINE_ROOT / "tools" / "local_llm_global_mcp_launcher.py"
+    assert launcher.exists()
+
+
+def test_global_launcher_has_7_tools():
+    """Launcher should expose the same 7 tools."""
+    launcher = PIPELINE_ROOT / "tools" / "local_llm_global_mcp_launcher.py"
+    content = launcher.read_text(encoding="utf-8")
+    assert "TOOLS" in content
+    assert "local_llm_mcp_server" in content  # imports the real server
