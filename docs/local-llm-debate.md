@@ -58,6 +58,63 @@ python tools/local_llm_debate.py architecture-review docs/local-llm-worker.md
 python tools/local_llm_debate.py review-diff changes.patch --profiles code_worker,deep_reviewer
 ```
 
+## Fast vs Full Mode
+
+| Criterion | --fast (default for daily work) | Full (3-round) |
+|---|---|---|
+| Rounds | 2 (coder + reasoning) | 3 (coder + reasoning + deep) |
+| Typical time | ~2 min | ~4 min |
+| Finding categories | HIGH_CONFIDENCE, CANDIDATE, CONTROLLER_MUST_VERIFY | + DISPUTED, TEST_GAPS |
+| Use for | Small diffs, routine reviews | Large diffs, architecture changes, pre-release |
+| NOT for | Security/legal final decisions | Small docs edits, formatting, one-line fixes |
+
+### Full debate is expensive
+
+Full 3-round debate takes ~4 minutes and produces verbose output. **Use it only for:**
+- Large diffs (>200 lines changed)
+- Architecture changes
+- High-risk changes (auth, data migration, API contracts)
+- Pre-release reviews
+
+**Do NOT use full debate for:**
+- Small documentation edits
+- Trivial formatting changes
+- One-line fixes
+
+### Default recommendation: use --fast
+
+For day-to-day development, `--fast` (2 rounds) is the recommended default:
+
+```bash
+# Daily diff review — fast mode
+git diff | python tools/local_llm_debate.py review-diff --stdin --fast
+```
+
+Full 3-round debate should be reserved for the scenarios listed above.
+
+## --summary-only
+
+For MCP or CLI contexts where output size matters, use `--summary-only`:
+
+```bash
+git diff | python tools/local_llm_debate.py review-diff --stdin --fast --summary-only
+```
+
+This excludes per-round raw output, disputed_findings, and test_gaps from JSON/Markdown.
+Output keeps only: high_confidence_findings, candidate_findings, controller_must_verify, not_verified.
+
+## Output Limits
+
+To prevent output bloat (especially important for MCP integration), each finding category is capped:
+
+| Category | Max items |
+|---|---|
+| high_confidence_findings | 5 |
+| candidate_findings | 8 |
+| disputed_findings | 8 |
+| controller_must_verify | 10 |
+| test_gaps | 10 |
+
 ## When to Use
 
 - Before merging a non-trivial diff
@@ -71,6 +128,7 @@ python tools/local_llm_debate.py review-diff changes.patch --profiles code_worke
 - As a substitute for running tests
 - As a final approval mechanism
 - For tasks that need fast turnaround (debate takes 2-5 minutes)
+- **For security, permissions, database, or release decisions** — debate is advisory only; the controller must directly verify all findings and never delegate final approval
 
 ## Performance
 

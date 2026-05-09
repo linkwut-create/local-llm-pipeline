@@ -34,6 +34,14 @@ TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 
 MAX_ROUNDS = 3
 
+MAX_FINDINGS = {
+    "high_confidence_findings": 5,
+    "candidate_findings": 8,
+    "disputed_findings": 8,
+    "controller_must_verify": 10,
+    "test_gaps": 10,
+}
+
 DEBATE_TASKS = {
     "review-diff", "risk-analysis", "architecture-review", "failure-mode-analysis",
 }
@@ -255,11 +263,16 @@ def classify_findings(rounds: list[dict]) -> dict:
                 if clean and len(clean) > 5:
                     result[current_section].append(clean)
 
+    for key, limit in MAX_FINDINGS.items():
+        if key in result:
+            result[key] = result[key][:limit]
+
     return result
 
 
 def build_markdown(task: str, rounds: list[dict], findings: dict,
-                   models: dict, elapsed_total: float) -> str:
+                   models: dict, elapsed_total: float,
+                   summary_only: bool = False) -> str:
     lines = [
         f"# Debate: {task}",
         f"\nTotal time: {elapsed_total:.1f}s | Rounds: {len(rounds)}",
@@ -267,13 +280,14 @@ def build_markdown(task: str, rounds: list[dict], findings: dict,
         "",
     ]
 
-    for r in rounds:
-        status = "OK" if r["ok"] else f"FAILED: {r.get('error', 'unknown')}"
-        lines.append(f"## Round {r['round']}: {r['profile']} ({r['model']}) [{r['elapsed_seconds']}s] {status}")
-        lines.append("")
-        if r.get("raw_output"):
-            lines.append(r["raw_output"])
-        lines.append("")
+    if not summary_only:
+        for r in rounds:
+            status = "OK" if r["ok"] else f"FAILED: {r.get('error', 'unknown')}"
+            lines.append(f"## Round {r['round']}: {r['profile']} ({r['model']}) [{r['elapsed_seconds']}s] {status}")
+            lines.append("")
+            if r.get("raw_output"):
+                lines.append(r["raw_output"])
+            lines.append("")
 
     lines.append("## Synthesis")
     lines.append("")
@@ -318,6 +332,8 @@ def main():
                         choices=["ollama", "openai-compatible"])
     parser.add_argument("--timeout", type=int, default=600,
                         help="Timeout per round in seconds")
+    parser.add_argument("--summary-only", action="store_true",
+                        help="Output only findings summary (no per-round details)")
 
     args = parser.parse_args()
 
@@ -423,31 +439,36 @@ def main():
         clean.pop("error", None)
         clean_rounds.append(clean)
 
+    all_ok = all(r["ok"] for r in rounds)
+    error_msg = None if all_ok else "; ".join(
+        f"Round {r['round']}: {r['error']}" for r in rounds if not r["ok"]
+    )
+
     output = {
         "task": args.task,
         "mode": "debate",
         "profiles": round_profiles,
         "models": models,
-        "ok": all(r["ok"] for r in rounds),
+        "ok": all_ok,
         "input": {"source": input_source, "chars": len(original_input)},
-        "rounds": clean_rounds,
         "high_confidence_findings": findings["high_confidence_findings"],
         "candidate_findings": findings["candidate_findings"],
-        "disputed_findings": findings["disputed_findings"],
         "controller_must_verify": findings["controller_must_verify"],
-        "test_gaps": findings["test_gaps"],
         "not_verified": [
             "Local models did not run tests",
             "Local models did not modify code",
             "Controller must verify all important claims",
         ],
         "warnings": [],
-        "error": None if all(r["ok"] for r in rounds) else "; ".join(
-            f"Round {r['round']}: {r['error']}" for r in rounds if not r["ok"]
-        ),
+        "error": error_msg,
         "elapsed_seconds": elapsed_total,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    if not args.summary_only:
+        output["rounds"] = clean_rounds
+        output["disputed_findings"] = findings["disputed_findings"]
+        output["test_gaps"] = findings["test_gaps"]
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -457,7 +478,8 @@ def main():
     json_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if not args.json_only and not args.no_markdown:
-        md = build_markdown(args.task, rounds, findings, models, elapsed_total)
+        md = build_markdown(args.task, rounds, findings, models, elapsed_total,
+                            summary_only=args.summary_only)
         md_path = out_dir / f"{ts}_debate-{args.task}.md"
         md_path.write_text(md, encoding="utf-8")
 

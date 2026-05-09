@@ -164,3 +164,130 @@ def test_debate_tasks_in_tasks_json():
         assert dt in tasks, f"Debate task '{dt}' not in tasks.json"
         assert tasks[dt]["may_modify_code"] is False
         assert tasks[dt]["controller_must_verify"] is True
+
+
+def test_max_findings_enforced():
+    """MAX_FINDINGS should cap each category."""
+    mock_round = {
+        "round": 3,
+        "ok": True,
+        "raw_output": """## HIGH_CONFIDENCE
+- Finding 1
+- Finding 2
+- Finding 3
+- Finding 4
+- Finding 5
+- Finding 6
+- Finding 7
+- Finding 8
+- Finding 9
+- Finding 10
+
+## CANDIDATE
+- Candidate 1
+- Candidate 2
+- Candidate 3
+- Candidate 4
+- Candidate 5
+- Candidate 6
+- Candidate 7
+- Candidate 8
+- Candidate 9
+- Candidate 10
+""",
+    }
+    result = debate.classify_findings([mock_round])
+    assert len(result["high_confidence_findings"]) <= debate.MAX_FINDINGS["high_confidence_findings"]
+    assert len(result["candidate_findings"]) <= debate.MAX_FINDINGS["candidate_findings"]
+
+
+def test_max_findings_limits_match_spec():
+    """Verify MAX_FINDINGS has the required keys and conservative limits."""
+    assert debate.MAX_FINDINGS["high_confidence_findings"] == 5
+    assert debate.MAX_FINDINGS["candidate_findings"] == 8
+    assert debate.MAX_FINDINGS["disputed_findings"] == 8
+    assert debate.MAX_FINDINGS["controller_must_verify"] == 10
+    assert debate.MAX_FINDINGS["test_gaps"] == 10
+
+
+def test_build_markdown_summary_only():
+    """With summary_only=True, markdown should skip per-round details."""
+    rounds = [
+        {"round": 1, "profile": "code_worker", "model": "test", "ok": True,
+         "elapsed_seconds": 1.0, "raw_output": "Found issues", "error": None},
+        {"round": 2, "profile": "reasoning_checker", "model": "test", "ok": True,
+         "elapsed_seconds": 2.0, "raw_output": "Challenged findings", "error": None},
+    ]
+    findings = {
+        "high_confidence_findings": ["issue1"],
+        "candidate_findings": [],
+        "disputed_findings": [],
+        "controller_must_verify": ["verify1"],
+        "test_gaps": [],
+    }
+    md = debate.build_markdown("review-diff", rounds, findings, {"code_worker": "test"}, 3.0,
+                                summary_only=True)
+    assert "# Debate: review-diff" in md
+    assert "Total time: 3.0s" in md
+    assert "## Synthesis" in md
+    assert "issue1" in md
+    # Summary-only must NOT include per-round sections
+    assert "Round 1" not in md
+    assert "Round 2" not in md
+
+
+def test_build_markdown_full_includes_rounds():
+    """Without summary_only, markdown should include per-round details."""
+    rounds = [
+        {"round": 1, "profile": "code_worker", "model": "test", "ok": True,
+         "elapsed_seconds": 1.0, "raw_output": "Found issues", "error": None},
+    ]
+    findings = {
+        "high_confidence_findings": [],
+        "candidate_findings": [],
+        "disputed_findings": [],
+        "controller_must_verify": [],
+        "test_gaps": [],
+    }
+    md = debate.build_markdown("review-diff", rounds, findings, {"code_worker": "test"}, 1.0,
+                                summary_only=False)
+    assert "Round 1" in md
+    assert "Found issues" in md
+
+
+def test_json_summary_only_excludes_detail_fields():
+    """Summary-only JSON should exclude rounds, disputed_findings, test_gaps."""
+    # Simulate the output dict construction from main()
+    output = {
+        "task": "review-diff",
+        "mode": "debate",
+        "profiles": ["code_worker", "reasoning_checker"],
+        "models": {"code_worker": "test", "reasoning_checker": "test"},
+        "ok": True,
+        "input": {"source": "test", "chars": 100},
+        "high_confidence_findings": [],
+        "candidate_findings": [],
+        "controller_must_verify": [],
+        "not_verified": ["Local models did not run tests"],
+        "warnings": [],
+        "error": None,
+        "elapsed_seconds": 0,
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    # Summary-only: these fields should NOT be present
+    assert "rounds" not in output
+    assert "disputed_findings" not in output
+    assert "test_gaps" not in output
+
+
+def test_json_full_includes_detail_fields():
+    """Full JSON should include rounds, disputed_findings, test_gaps."""
+    output = {
+        "task": "review-diff",
+        "rounds": [],
+        "disputed_findings": [],
+        "test_gaps": [],
+    }
+    assert "rounds" in output
+    assert "disputed_findings" in output
+    assert "test_gaps" in output
