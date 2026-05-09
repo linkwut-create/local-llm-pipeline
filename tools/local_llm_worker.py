@@ -754,6 +754,34 @@ def run(args: argparse.Namespace) -> int:
 
     system, user = build_prompt(args.task, content, config)
 
+    # Cache check for cacheable tasks
+    from local_llm_cache import CACHEABLE_TASKS, compute_file_key, compute_tree_key, get_cache, put_cache
+    cache_hit = False
+    if args.task in CACHEABLE_TASKS:
+        cache_key = None
+        if args.task == "summarize-file" and args.path:
+            cache_key = compute_file_key(args.path[0], config.profile, config.model)
+        elif args.task == "summarize-tree" and args.path:
+            # Build file list from already-read content for tree key
+            file_entries = []
+            for f_path, f_content in content.get("files", {}).items():
+                file_entries.append({"path": f_path, "size": len(f_content), "mtime_ns": 0})
+            cache_key = compute_tree_key(args.path[0], args.max_files,
+                                          file_entries, config.profile, config.model)
+
+        if cache_key:
+            cached = get_cache(cache_key)
+            if cached:
+                output.ok = True
+                output.result = cached.get("result", "")
+                output.summary = cached.get("summary", "")[:500]
+                output.confidence = "medium"
+                output.created_at = datetime.now(timezone.utc).isoformat()
+                json_path, md_path = save_output(output, config)
+                print(f"OK (cache hit): {args.task} completed", file=sys.stderr)
+                print(f"JSON: {json_path}")
+                return 0
+
     print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
     raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
 
@@ -785,6 +813,19 @@ def run(args: argparse.Namespace) -> int:
     output.summary = lines[0][:500] if lines else ""
 
     json_path, md_path = save_output(output, config)
+
+    # Write cache for cacheable tasks
+    if args.task in CACHEABLE_TASKS and not cache_hit:
+        try:
+            cache_key = None
+            if args.task == "summarize-file" and args.path:
+                cache_key = compute_file_key(args.path[0], config.profile, config.model)
+            if cache_key:
+                put_cache(cache_key, {"task": args.task, "profile": config.profile,
+                          "model": config.model, "result": raw_result,
+                          "summary": output.summary})
+        except Exception:
+            pass  # cache write failure is non-fatal
 
     print(f"OK: {args.task} completed", file=sys.stderr)
     print(f"JSON: {json_path}")
