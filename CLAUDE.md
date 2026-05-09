@@ -51,21 +51,55 @@ Claude Code is the controller. The local worker is advisory only.
 
 - `local-worker-auditor` — uses the local worker and audits its output.
 
-### MCP Integration (v0.3.0+)
+### MCP Integration (v0.7.0+)
 
-The pipeline exposes 6 read-only MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 7 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
-`local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`.
+`local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
+`local_draft_code`.
 
-**MCP boundaries:**
-- All MCP tools are read-only — no write, delete, shell, git, or deploy.
-- MCP output is advisory only — Claude Code must verify all important claims.
-- Default debate mode via MCP is `--fast --summary-only` to keep output compact.
+Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
+Verify with `/mcp` — should show `local-llm connected 7 tools`.
 
-**MCP commands:**
-- `/local-mcp` — MCP integration guide and health check.
+### Local LLM Usage Policy
 
-**MCP docs:**
+**Prefer using local-llm MCP tools for low-risk heavy reading and review tasks.**
+
+Use `local_check` when:
+- starting work in a newly opened project
+- diagnosing model/backend availability
+
+Use `local_summarize_tree` when:
+- first understanding an unfamiliar project
+- planning a feature across multiple files
+
+Use `local_summarize_file` when:
+- reading long files before making a plan
+
+Use `local_generate_test_plan` when:
+- adding a feature, fixing a bug, or preparing a release
+
+Use `local_review_diff` before commit when:
+- there is a small or medium diff
+- the change touches installer, MCP, router, tasks, profiles, or safety policy
+
+Use `local_debate_review_diff` only for small diffs or high-risk changes.
+Default is fast mode (2 rounds) + summary-only. For large diffs use CLI.
+
+Use `local_draft_code` to draft possible fixes, features, refactors, or improvements.
+Drafts write only to `.local_llm_out/` — NEVER modify source files.
+Controller must inspect and manually apply any draft. Never treat draft output as directly applied code.
+
+### MCP Boundaries
+
+- MCP tools are source-non-mutating — may write only to `.local_llm_out/`.
+- No write, delete, shell, git, commit, push, tag, or deploy.
+- All draft tasks: `may_modify_code=false`, `controller_must_verify=true`.
+- All MCP output is advisory only — Claude Code must verify important claims.
+
+### MCP Docs
+
+- [Code Drafting Guide](docs/local-llm-code-drafting.md) — draft-fix/feature/refactor usage
 - [MCP Usage Patterns](docs/local-llm-mcp-usage-patterns.md) — MCP vs CLI decision matrix
-- [MCP Client Verification](docs/local-llm-mcp-client-verification.md) — setup guide for Claude Code / Codex
+- [MCP Client Verification](docs/local-llm-mcp-client-verification.md) — setup guide
 - [MCP Server Docs](docs/local-llm-mcp.md) — tool reference and security boundaries
