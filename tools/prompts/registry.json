@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "prompts": {
+    "summarize-file": {
+      "prompt_id": "summarize-file",
+      "version": "v1",
+      "file": "summarize-file.v1.md",
+      "hash": "b0d776d512b9073b"
+    },
+    "summarize-tree": {
+      "prompt_id": "summarize-tree",
+      "version": "v1",
+      "file": "summarize-tree.v1.md",
+      "hash": "16ea0acc3aa0f076"
+    },
+    "extract-todos": {
+      "prompt_id": "extract-todos",
+      "version": "v1",
+      "file": "extract-todos.v1.md",
+      "hash": "0af477a038361de6"
+    },
+    "find-related-files": {
+      "prompt_id": "find-related-files",
+      "version": "v1",
+      "file": "find-related-files.v1.md",
+      "hash": "510f51af08340609"
+    },
+    "generate-test-plan": {
+      "prompt_id": "generate-test-plan",
+      "version": "v1",
+      "file": "generate-test-plan.v1.md",
+      "hash": "703d3a30683afc8a"
+    },
+    "generate-test-draft": {
+      "prompt_id": "generate-test-draft",
+      "version": "v1",
+      "file": "generate-test-draft.v1.md",
+      "hash": "81f61adeab3c7e26"
+    },
+    "review-diff": {
+      "prompt_id": "review-diff",
+      "version": "v1",
+      "file": "review-diff.v1.md",
+      "hash": "996f1dd08a8cec4c"
+    },
+    "deep-code-review": {
+      "prompt_id": "deep-code-review",
+      "version": "v1",
+      "file": "deep-code-review.v1.md",
+      "hash": "9d1281828df71735"
+    },
+    "architecture-review": {
+      "prompt_id": "architecture-review",
+      "version": "v1",
+      "file": "architecture-review.v1.md",
+      "hash": "8202fb56719a802b"
+    },
+    "risk-analysis": {
+      "prompt_id": "risk-analysis",
+      "version": "v1",
+      "file": "risk-analysis.v1.md",
+      "hash": "f26ecb5b7b1c3509"
+    },
+    "logic-check": {
+      "prompt_id": "logic-check",
+      "version": "v1",
+      "file": "logic-check.v1.md",
+      "hash": "092face3a00e27bb"
+    },
+    "failure-mode-analysis": {
+      "prompt_id": "failure-mode-analysis",
+      "version": "v1",
+      "file": "failure-mode-analysis.v1.md",
+      "hash": "10bafe311d452149"
+    },
+    "translate-text": {
+      "prompt_id": "translate-text",
+      "version": "v1",
+      "file": "translate-text.v1.md",
+      "hash": "d443ee2c082086a4"
+    },
+    "rewrite-text": {
+      "prompt_id": "rewrite-text",
+      "version": "v1",
+      "file": "rewrite-text.v1.md",
+      "hash": "367b597a428285c7"
+    },
+    "draft-fix": {
+      "prompt_id": "draft-fix",
+      "version": "v1",
+      "file": "draft-fix.v1.md",
+      "hash": "7ad61808730b5fa6"
+    },
+    "draft-feature": {
+      "prompt_id": "draft-feature",
+      "version": "v1",
+      "file": "draft-feature.v1.md",
+      "hash": "e8f0939b0d1d6699"
+    },
+    "draft-refactor": {
+      "prompt_id": "draft-refactor",
+      "version": "v1",
+      "file": "draft-refactor.v1.md",
+      "hash": "2eb28042f582e703"
+    },
+    "suggest-improvements": {
+      "prompt_id": "suggest-improvements",
+      "version": "v1",
+      "file": "suggest-improvements.v1.md",
+      "hash": "dc64bd3b2cce8ca8"
+    }
+  }
+}

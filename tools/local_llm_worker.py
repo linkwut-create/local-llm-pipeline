@@ -363,7 +363,14 @@ def collect_tree(root: Path, max_files: int, max_chars: int) -> tuple[str, list[
 
 
 def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, str]:
-    task_prompt = TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
+    # Try prompt registry first, fall back to hardcoded dict
+    try:
+        from local_llm_prompt_registry import load_prompt
+        p = load_prompt(task)
+        task_prompt = p.text if p else TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
+    except Exception:
+        task_prompt = TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
+
     if "{target_language}" in task_prompt:
         task_prompt = task_prompt.replace("{target_language}", config.target_language)
     if "{style}" in task_prompt:

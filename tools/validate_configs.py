@@ -170,6 +170,16 @@ def validate_tasks(tasks_data: dict, profiles: dict) -> list[str]:
     return errors
 
 
+def validate_prompt_registry() -> list[str]:
+    try:
+        from local_llm_prompt_registry import validate_registry
+        return validate_registry()
+    except ImportError:
+        return ["prompt registry module not importable"]
+    except Exception as e:
+        return [f"prompt registry validation error: {e}"]
+
+
 def main() -> int:
     args = sys.argv[1:]
     quiet = "--quiet" in args
@@ -189,8 +199,9 @@ def main() -> int:
 
     profile_errors, profile_warnings = validate_profiles(profiles_data)
     task_errors = validate_tasks(tasks_data, profiles_data.get("profiles", {}))
+    prompt_errors = validate_prompt_registry()
 
-    all_errors = profile_errors + task_errors
+    all_errors = profile_errors + task_errors + prompt_errors
     all_warnings = profile_warnings
     profile_count = len(profiles_data.get("profiles", {}))
     task_count = len(tasks_data.get("tasks", {}))
@@ -209,6 +220,7 @@ def main() -> int:
     if not quiet:
         print(f"Validating: {PROFILES_PATH.name} ({profile_count} profiles)")
         print(f"           {TASKS_PATH.name} ({task_count} tasks)")
+        print(f"           prompts/registry.json")
         print()
 
         if all_warnings:
