@@ -1,12 +1,14 @@
-"""Test installer append, idempotency, and skip-files behavior."""
+"""Test installer append, idempotency, skip-files, and manifest behavior."""
 
+import json
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from install_local_llm_pipeline import (
-    append_policy, update_gitignore, copy_dir, POLICY_MARKER, SKIP_FILES,
+    append_policy, update_gitignore, copy_dir, write_manifest, read_manifest,
+    is_sensitive, POLICY_MARKER, SKIP_FILES, MANIFEST_FILENAME,
 )
 
 
@@ -153,3 +155,147 @@ def test_gitignore_no_duplicate_on_reinstall():
         content = gi.read_text(encoding="utf-8")
         assert content.count(".local_llm_out/") == 1
         assert any("SKIP" in a for a in actions)
+
+
+# --- Manifest and update mode tests (v0.5.0) ---
+
+def test_write_manifest_creates_file():
+    """write_manifest should create .local_llm_pipeline.json."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        write_manifest(target, ["tools/x.py"], [".claude/settings.local.json"],
+                       ["AGENTS.md"], dry_run=False)
+
+        mf = target / MANIFEST_FILENAME
+        assert mf.exists()
+
+        data = json.loads(mf.read_text(encoding="utf-8"))
+        assert "installed_version" in data
+        assert "installed_at" in data
+        assert data["source_project"] == "local-llm-pipeline"
+
+
+def test_manifest_contains_managed_files():
+    """Manifest should record managed files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        write_manifest(target,
+                       ["tools/local_llm_worker.py", "docs/local-llm-mcp.md"],
+                       [], ["AGENTS.md"], dry_run=False)
+
+        data = read_manifest(target)
+        assert data is not None
+        assert "tools/local_llm_worker.py" in data["managed_files"]
+        assert "docs/local-llm-mcp.md" in data["managed_files"]
+
+
+def test_manifest_contains_skipped_files():
+    """Manifest should record skipped files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        write_manifest(target, [],
+                       [".claude/settings.local.json", ".claude/settings.json"],
+                       ["AGENTS.md"], dry_run=False)
+
+        data = read_manifest(target)
+        assert ".claude/settings.local.json" in data["skipped_files"]
+
+
+def test_dry_run_does_not_write_manifest():
+    """--dry-run should not write manifest file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        write_manifest(target, ["tools/x.py"], [], ["AGENTS.md"], dry_run=True)
+
+        mf = target / MANIFEST_FILENAME
+        assert not mf.exists()
+
+
+def test_read_manifest_missing():
+    """read_manifest should return None when manifest doesn't exist."""
+    with tempfile.TemporaryDirectory() as tmp:
+        result = read_manifest(Path(tmp))
+        assert result is None
+
+
+def test_read_manifest_valid():
+    """read_manifest should parse an existing manifest correctly."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        mf = target / MANIFEST_FILENAME
+        mf.write_text(json.dumps({"installed_version": "v0.4.0",
+                                   "source_project": "local-llm-pipeline"}),
+                      encoding="utf-8")
+
+        data = read_manifest(target)
+        assert data is not None
+        assert data["installed_version"] == "v0.4.0"
+
+
+def test_update_mode_conflict_detection():
+    """In update mode, user-modified files should be flagged as CONFLICT."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+
+            src_file = src_path / "test.py"
+            src_file.write_text("source content", encoding="utf-8")
+
+            dst_sub = dst_path / "dst"
+            dst_sub.mkdir()
+            dst_file = dst_sub / "test.py"
+            dst_file.write_text("user-modified content", encoding="utf-8")
+
+            actions = copy_dir(src_path, dst_sub, dry_run=True, force=False,
+                              update_mode=True, managed=[], skipped=[])
+
+            assert any("CONFLICT (modified)" in a for a in actions)
+
+
+def test_update_mode_unchanged_is_skipped():
+    """In update mode, unchanged files should be skipped."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+
+            content = "same content"
+            src_file = src_path / "test.py"
+            src_file.write_text(content, encoding="utf-8")
+
+            dst_sub = dst_path / "dst"
+            dst_sub.mkdir()
+            dst_file = dst_sub / "test.py"
+            dst_file.write_text(content, encoding="utf-8")
+
+            actions = copy_dir(src_path, dst_sub, dry_run=True, force=False,
+                              update_mode=True, managed=[], skipped=[])
+
+            assert any("SKIP (unchanged)" in a for a in actions)
+
+
+def test_is_sensitive_detects_env():
+    assert is_sensitive(".env")
+    assert is_sensitive(".env.local")
+    assert is_sensitive("key.pem")
+    assert not is_sensitive("normal.py")
+
+
+def test_sensitive_files_skipped():
+    """Sensitive files should be skipped during copy."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+
+            (src_path / ".env").write_text("secret", encoding="utf-8")
+            (src_path / "id_rsa").write_text("key", encoding="utf-8")
+            (src_path / "normal.py").write_text("code", encoding="utf-8")
+
+            actions = copy_dir(src_path, dst_path, dry_run=False, force=False)
+
+            assert not (dst_path / ".env").exists()
+            assert not (dst_path / "id_rsa").exists()
+            assert (dst_path / "normal.py").exists()
+            assert any("SKIP (sensitive)" in a for a in actions)

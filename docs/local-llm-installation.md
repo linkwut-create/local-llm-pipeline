@@ -139,10 +139,70 @@ python tools/benchmark_profiles.py --task review-diff            # test differen
 
 ## Updating an Existing Installation
 
-Re-run the installer with `--force` to update tools and docs:
+### Quick update (recommended)
 
 ```powershell
-python C:\Users\Zero\local-llm-pipeline\install_local_llm_pipeline.py C:\path\to\your-project --force
+# Preview what will change
+python install_local_llm_pipeline.py C:\path\to\your-project --update --dry-run
+
+# Apply update
+python install_local_llm_pipeline.py C:\path\to\your-project --update
+```
+
+The `--update` mode:
+- Reads `.local_llm_pipeline.json` to identify managed files
+- Compares each file with the current source version
+- Reports: unchanged (SKIP), new (COPY), modified (CONFLICT)
+- Skips user-local config (`settings.local.json`, `settings.json`)
+- Skips sensitive files (`.env`, `*.pem`, id_rsa, etc.)
+- Updates the manifest with the new version
+
+### Force overwrite
+
+To overwrite all files regardless of local changes:
+
+```powershell
+python install_local_llm_pipeline.py C:\path\to\your-project --force
 ```
 
 This overwrites tools/ and docs/ but does not duplicate AGENTS.md/CLAUDE.md policy sections.
+
+### Install manifest
+
+The installer writes `.local_llm_pipeline.json` recording:
+
+```json
+{
+  "installed_version": "v0.5.0",
+  "installed_at": "2026-05-09T...",
+  "source_project": "local-llm-pipeline",
+  "managed_files": ["tools/...", "docs/..."],
+  "skipped_files": [".claude/settings.local.json"],
+  "policy_markers": ["AGENTS.md", "CLAUDE.md", ".gitignore"]
+}
+```
+
+This enables future `--update` runs to safely identify managed vs user files.
+
+### Upgrading from v0.4.x
+
+Projects installed with v0.4.x don't have a manifest. First install v0.5.0 to create one:
+
+```powershell
+python install_local_llm_pipeline.py C:\path\to\your-project --force
+```
+
+Then `--update` will work normally for future versions.
+
+### Conflict resolution
+
+If a managed file was modified in the target project, `--update` marks it CONFLICT:
+
+```text
+CONFLICT (modified): tools/local_llm_worker.py
+```
+
+Options:
+1. `--force` to overwrite with the source version
+2. Manually resolve, then re-run `--update`
+3. Keep the local version (file will be tracked as-is in the manifest on next install)
