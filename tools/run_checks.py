@@ -135,6 +135,24 @@ def check_tool_files_exist() -> bool:
     return ok
 
 
+def check_config_schema() -> bool:
+    try:
+        result = subprocess.run(
+            [sys.executable, str(TOOLS_DIR / "validate_configs.py"), "--quiet"],
+            capture_output=True, text=True, timeout=15,
+            cwd=str(PROJECT_ROOT),
+        )
+        ok = result.returncode == 0
+        print(f"  [{_status(ok)}] profiles.json + tasks.json: {'valid' if ok else 'has errors'}")
+        if not ok and result.stderr:
+            for line in result.stderr.strip().split("\n")[-3:]:
+                print(f"         {line.strip()}")
+        return ok
+    except Exception as e:
+        print(f"  [{_status(False)}] config schema check failed: {e}")
+        return False
+
+
 def check_mcp_docs_exist() -> bool:
     doc = PROJECT_ROOT / "docs" / "local-llm-mcp.md"
     ok = doc.exists()
@@ -179,6 +197,9 @@ def main() -> int:
 
     print("\n[Tool Files]")
     results.append(check_tool_files_exist())
+
+    print("\n[Config Schema]")
+    results.append(check_config_schema())
 
     print("\n[MCP]")
     results.append(check_mcp_docs_exist())
