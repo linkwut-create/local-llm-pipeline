@@ -149,6 +149,46 @@ Style: {style}""",
     "rewrite-text": """Rewrite/improve this text. Preserve technical meaning.
 Style: {style}
 Keep it concise.""",
+
+    "draft-fix": """Draft a code fix for the described issue. Output:
+1. Problem restatement (one sentence — confirm you understood)
+2. Files to modify
+3. Draft code changes (with enough context to locate the insertion point)
+4. Why this fix addresses the issue
+5. Risks or side effects of this fix
+6. Items for controller to verify
+This is a DRAFT. The controller will review, possibly modify, and apply manually.
+Do NOT claim the fix is complete or correct. The controller makes the final decision.""",
+
+    "draft-feature": """Draft an implementation for the described feature. Output:
+1. Feature restatement (one sentence)
+2. Files to create or modify
+3. Draft code (with function/class signatures and key logic)
+4. Integration points (where this touches existing code)
+5. Edge cases the draft handles
+6. Edge cases the draft does NOT handle (let controller decide)
+This is a DRAFT. The controller decides whether to implement, modify, or discard.
+Do NOT claim completeness. Draft only — the controller writes the final code.""",
+
+    "draft-refactor": """Draft a refactoring plan for the described issue. Output:
+1. What is being refactored and why
+2. Files affected
+3. Draft refactored code (show the key structural changes)
+4. Migration path (how to apply incrementally)
+5. Backward compatibility risks
+6. Items the controller must verify before applying
+This is a DRAFT. The controller decides whether and how to apply the changes.
+Never suggest deleting code the controller hasn't explicitly marked for removal.""",
+
+    "suggest-improvements": """Proactively suggest improvements for this code. Output:
+1. Quick wins (small, safe changes with clear benefit)
+2. Structural improvements (larger changes worth considering)
+3. Code quality improvements (naming, comments, error handling)
+4. Performance opportunities
+5. Things that should NOT be changed (and why)
+6. Priority order (what to do first)
+This is ADVISORY ONLY. The controller decides which suggestions to pursue.
+Do NOT claim urgency. Each suggestion must stand on its own merit.""",
 }
 
 

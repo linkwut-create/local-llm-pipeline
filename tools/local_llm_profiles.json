@@ -23,7 +23,7 @@
       "temperature": 0.15,
       "max_chars": 90000,
       "max_output_chars": 4000,
-      "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "generate-test-draft"],
+      "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "generate-test-draft", "draft-fix", "draft-feature", "draft-refactor"],
       "risk_level": "medium",
       "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)"
     },
@@ -32,7 +32,7 @@
       "temperature": 0.15,
       "max_chars": 60000,
       "max_output_chars": 4000,
-      "use_for": ["extract-todos", "find-related-files", "generate-test-plan"],
+      "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "suggest-improvements"],
       "risk_level": "medium",
       "_benchmark": "10s review, 17s test-plan — 6x faster than code_worker (zero12)"
     },

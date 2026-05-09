@@ -170,6 +170,30 @@ TOOLS = {
             "required": ["diff_text"],
         },
     },
+    "local_draft_code": {
+        "description": "Draft code (fix, feature, refactor) or suggest improvements using a local LLM. Output goes to .local_llm_out/ only — NEVER modifies source files. Controller must review, decide, and apply manually.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Draft task: draft-fix, draft-feature, draft-refactor, or suggest-improvements.",
+                    "enum": ["draft-fix", "draft-feature", "draft-refactor", "suggest-improvements"],
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the issue, feature, refactoring goal, or code to improve.",
+                },
+                "context_file": {
+                    "type": "string",
+                    "description": "Optional path to a file to include as context.",
+                },
+                "profile": {"type": "string", "description": "Optional profile override."},
+                "model": {"type": "string", "description": "Optional model override."},
+            },
+            "required": ["task", "prompt"],
+        },
+    },
 }
 
 
@@ -502,6 +526,43 @@ def call_debate_review_diff(params: dict) -> dict:
     }
 
 
+def call_draft_code(params: dict) -> dict:
+    task = params.get("task", "draft-fix")
+    prompt = params.get("prompt", "")
+    context_file = params.get("context_file", "")
+
+    if not prompt.strip():
+        return {"tool": "local_draft_code", "ok": False, "result": None,
+                "error": "prompt is empty", "elapsed_seconds": 0,
+                "created_at": datetime.now(timezone.utc).isoformat()}
+
+    cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), task]
+
+    if context_file:
+        ok, err = validate_path(context_file)
+        if not ok:
+            return {"tool": "local_draft_code", "ok": False, "result": None,
+                    "error": err, "elapsed_seconds": 0,
+                    "created_at": datetime.now(timezone.utc).isoformat()}
+        cmd.append(context_file)
+
+    if params.get("profile"):
+        cmd.extend(["--profile", params["profile"]])
+    if params.get("model"):
+        cmd.extend(["--model", params["model"]])
+
+    result = run_subprocess(cmd, stdin_data=prompt)
+    latest = find_latest_json_output()
+    return {
+        "tool": "local_draft_code",
+        "ok": result["ok"],
+        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
+        "error": None if result["ok"] else result["stderr"][:500],
+        "elapsed_seconds": result["elapsed_seconds"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 TOOL_HANDLERS = {
     "local_check": call_local_check,
     "local_summarize_file": call_summarize_file,
@@ -509,6 +570,7 @@ TOOL_HANDLERS = {
     "local_generate_test_plan": call_generate_test_plan,
     "local_review_diff": call_review_diff,
     "local_debate_review_diff": call_debate_review_diff,
+    "local_draft_code": call_draft_code,
 }
 
 
@@ -566,7 +628,7 @@ def main():
         print("MCP (Model Context Protocol) server for local LLM pipeline.")
         print("Communicates via stdio JSON-RPC 2.0.")
         print("")
-        print("Tools exposed (all read-only):")
+        print("Tools exposed (source-non-mutating; may write only to .local_llm_out/):")
         for name in sorted(TOOLS):
             print(f"  {name}")
         return 0

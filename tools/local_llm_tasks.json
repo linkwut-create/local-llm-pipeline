@@ -135,6 +135,42 @@
       "allowed_use": "Rewrite or improve documentation text.",
       "forbidden_use": "Must not alter meaning of technical specifications."
     },
+    "draft-fix": {
+      "risk": "medium",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Draft a code fix for a described issue. Output goes to .local_llm_out/ only. Controller must review before applying.",
+      "forbidden_use": "Must not modify source files. Must not claim the fix is complete. Controller decides whether to apply."
+    },
+    "draft-feature": {
+      "risk": "medium",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 8000,
+      "allowed_use": "Draft an implementation for a described feature. Output goes to .local_llm_out/ only. Controller must review before applying.",
+      "forbidden_use": "Must not modify source files. Must not claim completeness. Controller writes the final code."
+    },
+    "draft-refactor": {
+      "risk": "medium-high",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 8000,
+      "allowed_use": "Draft a refactoring plan with code. Output goes to .local_llm_out/ only. Controller must review and decide whether to apply.",
+      "forbidden_use": "Must not delete code the controller hasn't explicitly marked. Must not modify source files."
+    },
+    "suggest-improvements": {
+      "risk": "low",
+      "default_profile": "fast_code",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 6000,
+      "allowed_use": "Proactively suggest code improvements. Advisory only. Output goes to .local_llm_out/. Controller decides which suggestions to pursue.",
+      "forbidden_use": "Must not claim urgency. Must not modify files. Each suggestion stands on its own merit."
+    },
     "debate-review-diff": {
       "risk": "medium-high",
       "default_profile": "code_worker",

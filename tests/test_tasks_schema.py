@@ -51,6 +51,15 @@ def test_risk_levels_valid():
 
 
 def test_minimum_task_count():
-    """There should be at least 14 tasks defined."""
+    """There should be at least 18 tasks defined."""
     tasks = _load_tasks()
-    assert len(tasks) >= 14, f"Expected at least 14 tasks, got {len(tasks)}"
+    assert len(tasks) >= 18, f"Expected at least 18 tasks, got {len(tasks)}"
+
+
+def test_draft_tasks_dont_modify_code():
+    """v0.7.0: All draft tasks must have may_modify_code=false."""
+    tasks = _load_tasks()
+    for name in ["draft-fix", "draft-feature", "draft-refactor", "suggest-improvements"]:
+        assert name in tasks, f"Draft task '{name}' missing"
+        assert tasks[name]["may_modify_code"] is False, f"{name} must not modify code"
+        assert tasks[name]["controller_must_verify"] is True

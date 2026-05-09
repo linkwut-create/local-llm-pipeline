@@ -17,13 +17,14 @@ FORBIDDEN_TOOL_KEYWORDS = [
 
 
 def test_tools_count():
-    assert len(mcp.TOOLS) == 6
+    assert len(mcp.TOOLS) == 7
 
 
 def test_tool_names():
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff", "local_debate_review_diff",
+        "local_draft_code",
     }
     assert set(mcp.TOOLS.keys()) == expected
 
@@ -109,7 +110,7 @@ def test_handle_tools_list():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 2
     tools = response["result"]["tools"]
-    assert len(tools) == 6
+    assert len(tools) == 7
     tool_names = {t["name"] for t in tools}
     assert "local_check" in tool_names
 
@@ -207,6 +208,37 @@ def test_all_handlers_registered():
 
 def test_handler_count_matches_tools():
     assert len(mcp.TOOL_HANDLERS) == len(mcp.TOOLS)
+
+
+def test_draft_code_tool_exists():
+    assert "local_draft_code" in mcp.TOOLS
+
+
+def test_draft_code_empty_prompt():
+    result = mcp.call_draft_code({"task": "draft-fix", "prompt": ""})
+    assert result["ok"] is False
+    assert "empty" in result["error"].lower()
+
+
+def test_draft_code_task_enum():
+    schema = mcp.TOOLS["local_draft_code"]["inputSchema"]["properties"]["task"]
+    assert "enum" in schema
+    assert "draft-fix" in schema["enum"]
+    assert "draft-feature" in schema["enum"]
+    assert "draft-refactor" in schema["enum"]
+    assert "suggest-improvements" in schema["enum"]
+
+
+def test_draft_code_prompt_required():
+    required = mcp.TOOLS["local_draft_code"]["inputSchema"]["required"]
+    assert "task" in required
+    assert "prompt" in required
+
+
+def test_draft_code_rejects_blocked_path():
+    result = mcp.call_draft_code({"task": "draft-fix", "prompt": "fix a bug", "context_file": ".env"})
+    assert result["ok"] is False
+    assert "blocked" in result["error"].lower()
 
 
 def test_debate_diff_too_large():
