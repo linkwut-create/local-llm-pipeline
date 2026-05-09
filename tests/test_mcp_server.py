@@ -241,6 +241,26 @@ def test_draft_code_rejects_blocked_path():
     assert "blocked" in result["error"].lower()
 
 
+def test_concurrency_guard_blocks_concurrent_calls():
+    """If lock is held, concurrent tool call should return busy error."""
+    assert mcp._call_lock.acquire(blocking=False), "lock should be free before test"
+    try:
+        response = mcp.handle_tools_call(99, {"name": "local_check", "arguments": {}})
+        content = json.loads(response["result"]["content"][0]["text"])
+        assert content["ok"] is False
+        assert content["error_type"] == "concurrent_request"
+    finally:
+        mcp._call_lock.release()
+
+
+def test_concurrency_guard_allows_sequential_calls():
+    """When lock is free, tool call should proceed normally."""
+    response = mcp.handle_tools_call(100, {"name": "local_check", "arguments": {}})
+    content = json.loads(response["result"]["content"][0]["text"])
+    # May succeed or fail depending on env, but should NOT be concurrent error
+    assert content.get("error_type") != "concurrent_request"
+
+
 def test_debate_diff_too_large():
     """Debate should reject diff_text exceeding MAX_DIFF_CHARS."""
     big_diff = "x" * (mcp.MAX_DIFF_CHARS + 1)

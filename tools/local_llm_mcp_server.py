@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
@@ -23,6 +24,9 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from local_llm_worker import is_blocked_path
+
+# Concurrency guard: prevent multiple LLM calls from competing for GPU
+_call_lock = threading.Lock()
 
 def _read_version() -> str:
     vf = PROJECT_ROOT / "VERSION"
@@ -592,6 +596,24 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
             },
         }
 
+    # Concurrency guard: prevent multiple LLM calls from competing for GPU
+    if not _call_lock.acquire(blocking=False):
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {
+                "content": [{"type": "text", "text": json.dumps({
+                    "ok": False,
+                    "tool": tool_name,
+                    "error_type": "concurrent_request",
+                    "error": "Another local-llm request is in progress. Only one model call at a time.",
+                    "suggestion": "Wait for the current request to complete and retry.",
+                    "elapsed_seconds": 0,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }, ensure_ascii=False)}],
+            },
+        }
+
     handler = TOOL_HANDLERS[tool_name]
     try:
         output = handler(arguments)
@@ -620,6 +642,8 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
                 }],
             },
         }
+    finally:
+        _call_lock.release()
 
 
 def main():
