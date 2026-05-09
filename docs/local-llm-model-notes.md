@@ -1,6 +1,20 @@
 # Local LLM Model Notes
 
-Empirical observations and recommendations for each model category. Based on dogfood usage during v0.1.0 through v0.6.0 development.
+Empirical observations and recommendations. Based on v0.6.0 benchmark (2026-05-09, zero12, AGENTS.md test file) and dogfood usage through v0.6.1.
+
+## Benchmark-Driven Findings
+
+### Surprising Results
+
+1. **qwen3-coder:30b (18GB) is 6x faster than qwen3-coder-next-q8 (86GB)** for code tasks, but next-q8 is the newer, more capable model. Keep next-q8 as primary coder for intelligence; use qwen3-coder:30b as fast fallback.
+
+2. **qwen3.6:35b-q8-ud outperforms qwen3.5-35b-q8** in both speed and reliability. qwen3.5-35b TIMED OUT on review-diff. qwen3.6 is the clear replacement for all review/architecture tasks.
+
+3. **qwen3.5-27b-reasoning is more reliable than deepseek-r1-distill-qwen:32b** for time-limited use. deepseek timed out on logic-check. Keep deepseek for CLI-based deep analysis where timeouts don't matter.
+
+4. **translategemma-27b-it is unusable for MCP** — timed out at 300s. glm-4.7-flash-q8 is the only viable option.
+
+5. **nvidia-nemotron-30b-q8_0 (33GB) is surprisingly fast** at 45s for summarization — competitive with qwen3.5-9b (42s). Worth exploring for general tasks.
 
 ## Fast Summary
 

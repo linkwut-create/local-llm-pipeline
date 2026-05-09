@@ -95,22 +95,49 @@ All models on zero12 (Ollama, Radeon 8060S, 128GB RAM). 58 total entries.
 
 ## Standalone GGUF Models (not in Ollama)
 
-Loadable via llama.cpp with higher precision than Ollama equivalents.
+Loadable via llama.cpp. Some have higher precision than Ollama equivalents.
+
+### Mistral Small 119B Q6
 
 | File | Size | Notes |
 |---|---|---|
-| `/mnt/data/llamacpp-models/mistral-small-119b-q6.gguf` | 92 GB | **Mistral Small 119B Q6** — higher quality than Ollama Q5_K_XL |
-| `/home/zero12/下载/gemma-4-31B-it-assistant-F16.gguf` | 911 MB | Gemma 4 31B F16 (partial/quantized) |
+| `/mnt/data/llamacpp-models/mistral-small-119b-q6.gguf` | 92 GB | Q6 precision — higher quality than Ollama Q5_K_XL (89GB) |
 
-llama.cpp launch example:
+### Gemma 4 31B Assistant (Instruction-Tuned)
+
+Official Google assistant/instruction-tuned GGUF files. These are optimized for instruction-following and assistant tasks, different from the base Gemma models in Ollama.
+
+| File | Size | Quant |
+|---|---|---|
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-BF16-00001-of-00002.gguf` | — | BF16 (shard 1) |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-BF16-00002-of-00002.gguf` | — | BF16 (shard 2) |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-Q4_0.gguf` | — | Q4_0 (fast) |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-Q4_1.gguf` | — | Q4_1 |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-IQ4_NL.gguf` | — | IQ4_NL (quality) |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-IQ4_XS.gguf` | — | IQ4_XS (small) |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-Q3_K_M.gguf` | — | Q3_K_M |
+| `/home/zero12/.cache/modelscope/.../gemma-4-31B-it-Q3_K_S.gguf` | — | Q3_K_S |
+
+### Fish Speech
+
+| File | Size | Notes |
+|---|---|---|
+| `/home/zero12/fish-speech/checkpoints/s2-pro-f16.gguf` | — | TTS model, not an LLM |
+
+### llama.cpp Launch
+
 ```bash
-llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8080 -ngl 99
+# Gemma 4 31B Assistant (IQ4_NL recommended for quality)
+llama-server -m ~/.cache/modelscope/.../gemma-4-31B-it-IQ4_NL.gguf --port 8080 -ngl 99
+
+# Mistral Small 119B Q6 (best quality deep review)
+llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8081 -ngl 99
 ```
 
 Then use via pipeline:
 ```powershell
 $env:LOCAL_LLM_BASE_URL = "http://zero12:8080/v1"
-python tools/local_llm_router.py architecture-review docs/plan.md --provider openai-compatible
+python tools/local_llm_router.py summarize-file README.md --provider openai-compatible
 ```
 
 ## Development Variants (filtered by auto-update)
