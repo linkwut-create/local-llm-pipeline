@@ -52,12 +52,17 @@ def is_git_repo(path: Path) -> bool:
         return False
 
 
+SKIP_FILES = {"settings.local.json", "settings.json"}
+
 def copy_dir(src: Path, dst: Path, dry_run: bool, force: bool) -> list[str]:
     actions = []
     for src_file in src.rglob("*"):
         if src_file.is_dir():
             continue
         if "__pycache__" in src_file.parts:
+            continue
+        if src_file.name in SKIP_FILES:
+            actions.append(f"  SKIP (local config): {src_file.name}")
             continue
         rel = src_file.relative_to(src)
         dst_file = dst / rel
