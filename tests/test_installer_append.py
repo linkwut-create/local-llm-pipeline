@@ -299,3 +299,26 @@ def test_sensitive_files_skipped():
             assert not (dst_path / "id_rsa").exists()
             assert (dst_path / "normal.py").exists()
             assert any("SKIP (sensitive)" in a for a in actions)
+
+
+def test_legacy_install_update_without_manifest():
+    """Update mode on a project without manifest (v0.4.x legacy) should
+    correctly identify unchanged files by content hash."""
+    with tempfile.TemporaryDirectory() as src:
+        with tempfile.TemporaryDirectory() as dst:
+            src_path = Path(src)
+            dst_path = Path(dst)
+            # Set up source file
+            (src_path / "test.py").write_text("v0.5.0 content", encoding="utf-8")
+            # Set up destination with a file that was installed by v0.4.0
+            (dst_path / "test.py").write_text("v0.5.0 content", encoding="utf-8")
+
+            # No manifest in dst — simulating legacy v0.4.x install
+            assert not (dst_path / MANIFEST_FILENAME).exists()
+
+            actions = copy_dir(src_path, dst_path, dry_run=True, force=False,
+                              update_mode=True, managed=[], skipped=[])
+
+            # Same content should be SKIP unchanged, not CONFLICT
+            assert any("SKIP (unchanged)" in a for a in actions)
+            assert not any("CONFLICT" in a for a in actions)

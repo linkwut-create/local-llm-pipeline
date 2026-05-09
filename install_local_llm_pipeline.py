@@ -398,7 +398,10 @@ def main():
 
         print(f"\nPipeline {PIPELINE_VERSION} installed at: {target}")
         if args.update or update_mode:
-            print(f"  Updated from: {existing_manifest.get('installed_version', 'unknown') if existing_manifest else 'fresh install'}")
+            if existing_manifest:
+                print(f"  Updated from: {existing_manifest.get('installed_version', 'unknown')}")
+            else:
+                print(f"  Updated from: legacy install (no manifest) — manifest now created")
         print("\nNext steps:")
         print(f"  cd {target}")
         print(f"  python tools/local_llm_router.py summarize-tree src --max-files 30")
