@@ -43,7 +43,7 @@
       "max_output_chars": 5000,
       "use_for": ["review-diff"],
       "risk_level": "medium",
-      "_benchmark": "31s review + reasoning capability — best combo (zero12)"
+      "_benchmark": "27s review + reasoning capability — best combo (zero12)"
     },
     "deep_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
@@ -52,7 +52,7 @@
       "max_output_chars": 6000,
       "use_for": ["deep-code-review"],
       "risk_level": "high",
-      "_benchmark": "66s review, 0 timeouts — most reliable deep reviewer (zero12)"
+      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)"
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
@@ -61,7 +61,7 @@
       "max_output_chars": 6000,
       "use_for": ["deep-code-review", "architecture-review"],
       "risk_level": "high",
-      "_benchmark": "11.8s review, 42s summarize — 120B model, surprisingly fast (zero12)"
+      "_benchmark": "70s review, 23s summarize — 120B model (zero12)"
     },
     "reasoning_checker": {
       "model": "qwen3.5-27b-reasoning:latest",
@@ -70,7 +70,7 @@
       "max_output_chars": 5000,
       "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
       "risk_level": "medium-high",
-      "_benchmark": "142s risk, 163s logic — 2/2 passed, most reliable (zero12)"
+      "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)"
     },
     "deep_reasoning": {
       "model": "deepseek-r1-distill-qwen:32b-q8-fixed",
@@ -79,7 +79,7 @@
       "max_output_chars": 5000,
       "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
       "risk_level": "high",
-      "_benchmark": "157-211s, CLI only. Use for critical reasoning, not MCP (zero12)"
+      "_benchmark": "140s risk — CLI only, critical reasoning (zero12)"
     },
     "translation": {
       "model": "glm-4.7-flash-q8:latest",
@@ -97,7 +97,7 @@
       "max_output_chars": 6000,
       "use_for": ["architecture-review", "deep-code-review", "risk-analysis", "release-risk-review"],
       "risk_level": "high",
-      "_benchmark": "220s review, 268s summarize — accuracy king, 0 timeouts (zero12)"
+      "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)"
     },
     "architecture_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
@@ -107,6 +107,37 @@
       "use_for": ["architecture-review"],
       "risk_level": "high",
       "_benchmark": "68s review, 98s test-plan — 0 timeouts, most reliable (zero12)"
+    },
+    "gemma4_26b": {
+      "model": "gemma4-26b-it:q8_0",
+      "temperature": 0.2,
+      "max_chars": 90000,
+      "max_output_chars": 5000,
+      "use_for": ["summarize-file", "summarize-tree", "suggest-improvements", "rewrite-text"],
+      "risk_level": "medium",
+      "_benchmark": "37.8s summarize-file — Gemma 4 26B A4B MoE, good mid-size generalist (zero12)"
+    },
+    "gemma4_26b_mtp": {
+      "model": "gemma4-26b-it:q8_0",
+      "temperature": 0.2,
+      "max_chars": 90000,
+      "max_output_chars": 5000,
+      "use_for": ["summarize-file", "summarize-tree", "suggest-improvements"],
+      "risk_level": "medium",
+      "_acceleration": "mtp",
+      "_drafter": "gemma-4-26B-A4B-it-assistant-F16.gguf (815MB, on laptop)",
+      "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup."
+    },
+    "mistral_119b_llamacpp": {
+      "model": "mistral-small-119b:q6",
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": ["deep-code-review", "architecture-review", "release-risk-review"],
+      "risk_level": "high",
+      "_backend": "llama.cpp only (89GB too large for Ollama)",
+      "_launch": "llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8080 -ngl 99",
+      "_env": "LOCAL_LLM_BASE_URL=http://zero12:8080/v1"
     },
     "embedding": {
       "model": "nomic-embed-text-v2-moe:latest",
@@ -118,14 +149,31 @@
     }
   },
   "default_profile": "fast_summary",
+  "_backends": {
+    "ollama": {
+      "description": "Default backend. All profiles except mistral_119b work via Ollama.",
+      "models_available": 59
+    },
+    "llama_cpp_mtp": {
+      "description": "llama.cpp with MTP speculative decoding for Gemma 4 models. Requires manual server start.",
+      "profiles": ["gemma4_26b_mtp"],
+      "drafter_models": {
+        "gemma-4-26B-A4B-it-assistant-F16.gguf": "815MB — MTP drafter for Gemma 4 26B (on laptop)",
+        "gemma-4-31B-it-assistant-F16.gguf": "911MB — MTP drafter for Gemma 4 31B (on zero12)"
+      },
+      "launch_example": "llama-server -m <target_gguf> --mtp-head <drafter_gguf> --spec-type mtp -ngl 99 --port 8080"
+    }
+  },
   "_notes": {
     "zero12_benchmark_date": "2026-05-09/10",
     "method": "solo testing (one model at a time, no GPU contention)",
-    "total_ollama_models": 58,
-    "unique_text_models_tested": 31,
-    "broken_models": ["gemma4:26b-q8-ud (panic: failed to sample token)", "mistral-small-4-119b (missing blob on disk)"],
-    "slow_but_working_cli_only": ["deepseek-r1-distill-llama:70b (>300s reasoning)", "translategemma-27b-it-q8 (>300s translation)", "nemotron-3-super (240s review)"],
-    "hidden_gems": ["nvidia-nemotron-3-nano-omni (27s review + reasoning)", "gpt-oss-120b (70s review for 120B)", "qwen3.5-claude-opus-9b (29s summarize, Opus quality)"],
-    "corrected_from_parallel_testing": "qwen3.5-35b was TIMEOUT in parallel → 68s solo. Several times inflated/deflated by GPU contention."
+    "total_ollama_models": 59,
+    "unique_text_models_tested": 32,
+    "newly_added_v081": ["gemma4-26b-it:q8_0 (37.8s, working)", "mistral-small-119b (llama.cpp only)"],
+    "broken_models": [],
+    "slow_but_working_cli_only": ["deepseek-r1-distill-llama:70b", "translategemma-27b-it-q8", "nemotron-3-super"],
+    "hidden_gems": ["nvidia-nemotron-3-nano-omni (27s review + reasoning)", "gpt-oss-120b (70s review for 120B)", "qwen3.5-claude-opus-9b (29s summarize)"],
+    "corrected_from_parallel_testing": "qwen3.5-35b was TIMEOUT in parallel → 68s solo.",
+    "mtp_drafter_models": "gemma assistant GGUF files are MTP speculative decoding drafters, NOT standalone models. Use via llama.cpp --mtp-head."
   }
 }

@@ -98,6 +98,16 @@ def validate_profiles(profiles_data: dict) -> tuple[list[str], list[str]]:
                     f"code generation tasks: {bad_uses}"
                 )
 
+        # Prevent MTP drafter / assistant models from being used as standalone profiles
+        model_lower = model.lower()
+        drafter_keywords = ["assistant", "drafter", "mtp-head", "draft-model"]
+        if any(kw in model_lower for kw in drafter_keywords):
+            errors.append(
+                f"{prefix}: model '{model}' appears to be an MTP drafter / "
+                f"assistant model — it must not be used as a standalone profile model. "
+                f"Use it as _acceleration._drafter in the backend config instead."
+            )
+
         temp = conf.get("temperature")
         if temp is not None and not isinstance(temp, (int, float)):
             errors.append(f"{prefix}: 'temperature' must be a number")
