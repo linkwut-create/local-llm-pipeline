@@ -100,7 +100,7 @@ def test_handle_initialize():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "local-llm-pipeline"
-    assert response["result"]["serverInfo"]["version"] == "0.3.2"
+    assert response["result"]["serverInfo"]["version"] == mcp.SERVER_VERSION
     assert "tools" in response["result"]["capabilities"]
 
 
@@ -305,3 +305,55 @@ def test_call_debate_uses_debate_timeout():
 def test_new_constants():
     assert mcp.DEBATE_TIMEOUT == 900
     assert mcp.DEBATE_FAST_PER_ROUND_TIMEOUT == 350
+
+
+# --- Release hardening tests (v0.5.2) ---
+
+def test_version_file_exists():
+    vf = Path(__file__).parent.parent / "VERSION"
+    assert vf.exists(), "VERSION file is missing"
+
+
+def test_version_file_format():
+    vf = Path(__file__).parent.parent / "VERSION"
+    content = vf.read_text(encoding="utf-8").strip()
+    parts = content.split(".")
+    assert len(parts) == 3, f"VERSION should be semver X.Y.Z, got: {content}"
+    assert all(p.isdigit() for p in parts), f"VERSION parts should be digits: {content}"
+
+
+def test_mcp_server_version_matches_version_file():
+    vf = Path(__file__).parent.parent / "VERSION"
+    expected = vf.read_text(encoding="utf-8").strip()
+    assert mcp.SERVER_VERSION == expected, (
+        f"MCP server version {mcp.SERVER_VERSION} != VERSION {expected}"
+    )
+
+
+def test_changelog_exists():
+    cl = Path(__file__).parent.parent / "CHANGELOG.md"
+    assert cl.exists(), "CHANGELOG.md is missing"
+
+
+def test_changelog_contains_current_version():
+    cl = Path(__file__).parent.parent / "CHANGELOG.md"
+    vf = Path(__file__).parent.parent / "VERSION"
+    current = vf.read_text(encoding="utf-8").strip()
+    content = cl.read_text(encoding="utf-8")
+    assert current in content, f"CHANGELOG.md missing version {current}"
+
+
+def test_release_checklist_exists():
+    rc = Path(__file__).parent.parent / "docs" / "release-checklist.md"
+    assert rc.exists(), "docs/release-checklist.md is missing"
+
+
+def test_dry_run_does_not_write_manifest_import():
+    """Re-test that dry-run doesn't write files (import from installer)."""
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from install_local_llm_pipeline import write_manifest as inst_write_manifest
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp)
+        inst_write_manifest(target, ["tools/x.py"], [], ["AGENTS.md"], dry_run=True)
+        assert not (target / ".local_llm_pipeline.json").exists()

@@ -24,7 +24,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PIPELINE_ROOT = Path(__file__).parent.resolve()
-PIPELINE_VERSION = "v0.5.0"
+
+def _read_version() -> str:
+    vf = PIPELINE_ROOT / "VERSION"
+    if vf.exists():
+        return vf.read_text(encoding="utf-8").strip()
+    return "0.5.0"
+
+PIPELINE_VERSION = f"v{_read_version()}"
 
 COPY_DIRS = ["tools", "docs"]
 OPTIONAL_COPY_DIRS = {

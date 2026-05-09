@@ -19,12 +19,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from local_llm_worker import is_blocked_path
 
+def _read_version() -> str:
+    vf = PROJECT_ROOT / "VERSION"
+    if vf.exists():
+        return vf.read_text(encoding="utf-8").strip()
+    return "0.5.0"
+
 SERVER_NAME = "local-llm-pipeline"
-SERVER_VERSION = "0.3.2"
+SERVER_VERSION = _read_version()
 
 MAX_DIFF_CHARS = 100_000
 MAX_PATH_MAX_CHARS = 200_000
