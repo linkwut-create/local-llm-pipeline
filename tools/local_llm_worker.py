@@ -229,6 +229,9 @@ class WorkerOutput:
     result: str = ""
     warnings: list = field(default_factory=list)
     error: Optional[str] = None
+    error_type: Optional[str] = None
+    suggestion: Optional[str] = None
+    retries: int = 0
     created_at: str = ""
     truncated_files: list = field(default_factory=list)
     truncation_report: list = field(default_factory=list)
@@ -408,6 +411,96 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> str:
     if choices:
         return choices[0].get("message", {}).get("content", "")
     return ""
+
+
+# Tasks that should NOT be retried (long-running, expensive, or draft-generating)
+NO_RETRY_TASKS = {
+    "debate-review-diff", "debate-risk-analysis",
+    "debate-architecture-review", "debate-failure-mode-analysis",
+    "draft-fix", "draft-feature", "draft-refactor",
+    "benchmark",
+}
+
+MAX_RETRIES = 1
+
+
+def classify_error(exc: Exception, task: str) -> tuple[str, str]:
+    """Classify an exception into an error_type and a user-facing suggestion."""
+    msg = str(exc).lower() if str(exc) else ""
+
+    if isinstance(exc, requests.Timeout):
+        return ("timeout",
+                f"model call timed out after {getattr(exc, 'timeout', '?')}s — "
+                f"try a smaller input, a faster profile, or increase timeout")
+
+    if isinstance(exc, requests.ConnectionError):
+        return ("backend_unreachable",
+                "Ollama backend is not reachable — check that Ollama is running "
+                "and OLLAMA_HOST / LOCAL_LLM_BASE_URL is correct")
+
+    if "timeout" in msg or "timed" in msg:
+        return ("timeout",
+                "model call timed out — try a smaller input or increase timeout")
+
+    if "connection" in msg or "refused" in msg or "unreachable" in msg:
+        return ("backend_unreachable",
+                "backend connection failed — verify the backend is running")
+
+    if "empty" in msg or "no content" in msg:
+        return ("empty_response",
+                "model returned empty response — the model may be overloaded or "
+                "the prompt may be incompatible")
+
+    if "json" in msg or "decode" in msg or "parse" in msg:
+        return ("invalid_json",
+                "model response could not be parsed — the output format may be invalid")
+
+    if "500" in msg or "server error" in msg:
+        return ("backend_error",
+                "backend returned a server error — the model may be overloaded, "
+                "try a smaller model or retry later")
+
+    return ("unknown_error",
+            "an unexpected error occurred — check the error details above")
+
+
+def call_model_with_retry(system: str, user: str, config: WorkerConfig,
+                          task: str = "") -> tuple[str, dict]:
+    """Call model with optional retry for transient failures.
+
+    Returns (response_text, error_info). If ok, error_info is empty.
+    If failed after retries, response_text is empty and error_info has details.
+    """
+    should_retry = task not in NO_RETRY_TASKS
+    last_error = None
+    retries = 0
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            result = call_model(system, user, config)
+            # Check for empty response
+            if not result or not result.strip():
+                error_type, suggestion = classify_error(
+                    ValueError("empty response from model"), task)
+                if should_retry and attempt < MAX_RETRIES:
+                    retries += 1
+                    continue
+                return "", {"error_type": error_type, "error": "model returned empty response",
+                            "suggestion": suggestion, "retries": retries}
+            return result, {}
+        except Exception as e:
+            last_error = e
+            error_type, suggestion = classify_error(e, task)
+            if should_retry and attempt < MAX_RETRIES:
+                retries += 1
+                continue
+            return "", {"error_type": error_type, "error": str(e)[:300],
+                        "suggestion": suggestion, "retries": retries}
+
+    # Should never reach here, but just in case
+    error_type, suggestion = classify_error(last_error or Exception("unknown"), task)
+    return "", {"error_type": error_type, "error": str(last_error)[:300] if last_error else "unknown",
+                "suggestion": suggestion, "retries": retries}
 
 
 def call_model(system: str, user: str, config: WorkerConfig) -> str:
@@ -661,25 +754,19 @@ def run(args: argparse.Namespace) -> int:
 
     system, user = build_prompt(args.task, content, config)
 
-    try:
-        print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
-        raw_result = call_model(system, user, config)
-    except requests.exceptions.Timeout:
-        output.error = f"Model call timed out after {config.timeout}s"
+    print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
+    raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
+
+    if error_info:
+        output.error = error_info.get("error", "unknown error")
+        output.error_type = error_info.get("error_type", "unknown_error")
+        output.suggestion = error_info.get("suggestion", "")
+        output.retries = error_info.get("retries", 0)
         json_path, md_path = save_output(output, config)
-        print(f"ERROR: {output.error}", file=sys.stderr)
-        print(f"JSON: {json_path}")
-        return 1
-    except requests.exceptions.ConnectionError:
-        output.error = f"Cannot connect to {config.provider} at {config.base_url}"
-        json_path, md_path = save_output(output, config)
-        print(f"ERROR: {output.error}", file=sys.stderr)
-        print(f"JSON: {json_path}")
-        return 1
-    except Exception as e:
-        output.error = f"Model call failed: {e}"
-        json_path, md_path = save_output(output, config)
-        print(f"ERROR: {output.error}", file=sys.stderr)
+        retry_note = f" (retried {output.retries}x)" if output.retries else ""
+        print(f"ERROR: [{output.error_type}] {output.error}{retry_note}", file=sys.stderr)
+        if output.suggestion:
+            print(f"SUGGESTION: {output.suggestion}", file=sys.stderr)
         print(f"JSON: {json_path}")
         return 1
 

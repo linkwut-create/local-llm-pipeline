@@ -371,6 +371,7 @@ def call_summarize_file(params: dict) -> dict:
     ok, err = validate_path(path_str)
     if not ok:
         return {"tool": "local_summarize_file", "ok": False, "result": None, "error": err,
+                "error_type": "blocked_path", "suggestion": "use a file path that is not in the blocked list",
                 "elapsed_seconds": 0, "created_at": datetime.now(timezone.utc).isoformat()}
 
     max_chars = params.get("max_chars")
@@ -386,6 +387,8 @@ def call_summarize_file(params: dict) -> dict:
         "ok": result["ok"],
         "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
         "error": None if result["ok"] else result["stderr"][:500],
+        "error_type": None if result["ok"] else "subprocess_failed",
+        "suggestion": None if result["ok"] else "check that Ollama is running and the model is available",
         "elapsed_seconds": result["elapsed_seconds"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -396,6 +399,7 @@ def call_summarize_tree(params: dict) -> dict:
     ok, err = validate_path(path_str)
     if not ok:
         return {"tool": "local_summarize_tree", "ok": False, "result": None, "error": err,
+                "error_type": "blocked_path", "suggestion": "use a directory path that is not in the blocked list",
                 "elapsed_seconds": 0, "created_at": datetime.now(timezone.utc).isoformat()}
 
     max_files = min(int(params.get("max_files", 20)), MAX_MAX_FILES)
