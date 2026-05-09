@@ -97,11 +97,20 @@ All models on zero12 (Ollama, Radeon 8060S, 128GB RAM). 58 total entries.
 
 Loadable via llama.cpp. Some have higher precision than Ollama equivalents.
 
-### Mistral Small 119B Q6
+## Newly Added (v0.8.1+)
+
+| Model | Size | Benchmark | Status |
+|---|---|---|---|
+| `gemma4-26b-it:q8_0` | 26 GB | 37.8s summarize-file | ✅ Working in Ollama |
+| `gemma-4-26B-A4B-it-assistant-F16.gguf` | 815 MB | N/A | MTP drafter — not standalone |
+| `gemma-4-31B-it-assistant-F16.gguf` | 911 MB | N/A | MTP drafter — on zero12 |
+
+### Mistral Small 119B Q6 (llama.cpp only)
 
 | File | Size | Notes |
 |---|---|---|
-| `/mnt/data/llamacpp-models/mistral-small-119b-q6.gguf` | 92 GB | Q6 precision — higher quality than Ollama Q5_K_XL (89GB) |
+| `/mnt/data/llamacpp-models/mistral-small-119b-q6.gguf` | 92 GB | Q6 quality. Too large for Ollama (89GB fails to load). Use via llama.cpp: `llama-server -m mistral-small-119b-q6.gguf --port 8080 -ngl 99` |
+| `/mnt/data/llamacpp-models/mistral-small-4-119b-q5_k_xl-merged.gguf` | 84 GB | Q5_K_XL merged from 3 shards. llama.cpp only. |
 
 ### Gemma 4 31B Assistant (Instruction-Tuned)
 
