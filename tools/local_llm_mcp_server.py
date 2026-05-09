@@ -33,7 +33,7 @@ DEFAULT_TIMEOUT = 600
 
 TOOLS = {
     "local_check": {
-        "description": "Run local LLM environment health check. Returns Ollama connectivity, model availability, and profile recommendations.",
+        "description": "Run local LLM environment health check. Returns Ollama connectivity, model availability, and profile recommendations. Fast (~5s), no LLM call. Use before other local tools to verify the environment is ready.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -41,7 +41,7 @@ TOOLS = {
         },
     },
     "local_summarize_file": {
-        "description": "Summarize a single file using a local LLM. Returns purpose, key functions, dependencies, and potential issues.",
+        "description": "Summarize a single file using a local LLM. Returns purpose, key functions, dependencies, and potential issues. Typical time: 20-60s. Use for understanding unfamiliar source files.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -66,7 +66,7 @@ TOOLS = {
         },
     },
     "local_summarize_tree": {
-        "description": "Summarize a directory tree using a local LLM. Returns directory purpose, main modules, and suggested reading order.",
+        "description": "Summarize a directory tree using a local LLM. Returns directory purpose, main modules, and suggested reading order. Typical time: 30-90s.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -519,36 +519,57 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
 
 
 def main():
+    if "--version" in sys.argv or "-V" in sys.argv:
+        print(f"local-llm-mcp-server v{SERVER_VERSION}")
+        return 0
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("Usage: python tools/local_llm_mcp_server.py [--version]")
+        print("")
+        print("MCP (Model Context Protocol) server for local LLM pipeline.")
+        print("Communicates via stdio JSON-RPC 2.0.")
+        print("")
+        print("Tools exposed (all read-only):")
+        for name in sorted(TOOLS):
+            print(f"  {name}")
+        return 0
+
     print(f"MCP Server '{SERVER_NAME}' v{SERVER_VERSION} starting on stdio", file=sys.stderr)
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
 
-        try:
-            request = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+            try:
+                request = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-        msg_id = request.get("id", 0)
-        method = request.get("method", "")
+            msg_id = request.get("id", 0)
+            method = request.get("method", "")
 
-        if method == "initialize":
-            write_json_response(handle_initialize(msg_id))
-        elif method == "tools/list":
-            write_json_response(handle_tools_list(msg_id))
-        elif method == "tools/call":
-            response = handle_tools_call(msg_id, request.get("params", {}))
-            write_json_response(response)
-        elif method == "notifications/initialized":
-            pass  # ack silently
-        else:
-            write_json_response({
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"},
-            })
+            if method == "initialize":
+                write_json_response(handle_initialize(msg_id))
+            elif method == "tools/list":
+                write_json_response(handle_tools_list(msg_id))
+            elif method == "tools/call":
+                tool_name = request.get("params", {}).get("name", "unknown")
+                start = time.time()
+                response = handle_tools_call(msg_id, request.get("params", {}))
+                elapsed = round(time.time() - start, 2)
+                print(f"  [{elapsed}s] {tool_name}", file=sys.stderr)
+                write_json_response(response)
+            elif method == "notifications/initialized":
+                pass  # ack silently
+            else:
+                write_json_response({
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                })
+    except KeyboardInterrupt:
+        pass
 
     print("MCP Server shutting down", file=sys.stderr)
     return 0
