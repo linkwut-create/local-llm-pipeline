@@ -47,14 +47,31 @@ def _get_effective_project_root() -> Path:
     return PROJECT_ROOT
 
 
+def _get_source_repo_root() -> Path:
+    """Return the pipeline source repo root for reading VERSION, prompts, etc.
+
+    When LOCAL_LLM_SOURCE_REPO is set (global MCP launcher mode), use it to
+    locate pipeline-owned assets (VERSION, prompts, registry).  Never returns
+    the target project root — version provenance is always from the pipeline.
+    """
+    source = os.environ.get("LOCAL_LLM_SOURCE_REPO")
+    if source:
+        sp = Path(source).resolve()
+        if sp.exists():
+            return sp
+    return PROJECT_ROOT
+
+
 def _read_version() -> str:
-    vf = _get_effective_project_root() / "VERSION"
+    """Read the pipeline version from the source repo, never the target project.
+
+    Priority:
+    1. LOCAL_LLM_SOURCE_REPO / VERSION (global MCP launcher mode)
+    2. PROJECT_ROOT / VERSION (running directly from pipeline source repo)
+    """
+    vf = _get_source_repo_root() / "VERSION"
     if vf.exists():
         return vf.read_text(encoding="utf-8").strip()
-    # Fallback: try the pipeline's own VERSION
-    pf = PROJECT_ROOT / "VERSION"
-    if pf.exists():
-        return pf.read_text(encoding="utf-8").strip()
     return "unknown"
 
 SERVER_NAME = "local-llm-pipeline"
@@ -592,6 +609,7 @@ def call_local_check(params: dict) -> dict:
     return {
         "tool": "local_check",
         "task": "check",
+        "version": SERVER_VERSION,
         "ok": result["ok"],
         "result": {
             "stdout": result["stdout"][:10000],

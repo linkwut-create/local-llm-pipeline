@@ -72,7 +72,8 @@ def test_review_diff_text_required():
     assert "diff_text" in required
 
 
-def test_validate_path_non_existent():
+def test_validate_path_non_existent(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
     ok, err = mcp.validate_path("nonexistent_file_xyz.txt")
     assert not ok
     assert "not found" in err.lower()

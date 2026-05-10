@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.5 (2026-05-10)
+
+- Fix version provenance: _read_version() reads from LOCAL_LLM_SOURCE_REPO, not target project.
+- Add _get_source_repo_root() to distinguish pipeline assets from target project boundary.
+- Global launcher already sets LOCAL_LLM_SOURCE_REPO; MCP server now consumes it correctly.
+
 ## v0.9.4 (2026-05-10)
 
 - Fix release metadata consistency.
