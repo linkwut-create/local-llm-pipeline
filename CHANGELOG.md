@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.9.4 (2026-05-10)
+
+- Fix release metadata consistency.
+- Align VERSION, MCP server version, and global launcher version.
+- Harden user-scope global MCP launcher parity with local MCP server behavior.
+- Ensure run_checks distinguishes source-repo mode from installed-project mode.
+- Update documentation from read-only wording to source-non-mutating wording.
+- Add release-risk-review prompt registry coverage.
+
 ## v0.7.1 (2026-05-10)
 
 - Dogfood code drafting on local-translator-agent

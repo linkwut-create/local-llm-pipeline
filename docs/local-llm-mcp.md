@@ -27,9 +27,11 @@ MCP integration means:
 - Consistent parameter validation
 - Path blocking enforced at MCP boundary
 
-## Tools Exposed (v0.3.0)
+## Tools Exposed (v0.7.0+)
 
-All tools are **read-only**. None can modify files, run arbitrary commands, or perform git operations.
+All 7 tools are **source-non-mutating**. They never modify source files directly.
+`local_draft_code` writes generated drafts only to `.local_llm_out/` and requires
+controller verification before any source change.
 
 | Tool | Description | Key Parameters |
 |---|---|---|
@@ -39,6 +41,7 @@ All tools are **read-only**. None can modify files, run arbitrary commands, or p
 | `local_generate_test_plan` | Generate test plan for a file | `path` (required), `profile`, `model` |
 | `local_review_diff` | Single-model diff review | `diff_text` (required), `profile`, `model` |
 | `local_debate_review_diff` | Multi-model debate review | `diff_text` (required), `fast` (default: true), `summary_only` (default: true) |
+| `local_draft_code` | Draft fixes, features, refactors (to `.local_llm_out/` only) | `task` (required), `prompt` (required), `context_file`, `profile`, `model` |
 
 ### Tool Details
 
@@ -103,7 +106,7 @@ claude mcp add --transport stdio --scope project local-llm -- python tools/local
 
 This creates `.mcp.json` at the project root (can be committed to share with the team).
 
-Verify with `/mcp` inside Claude Code — you should see `local-llm` with 6 tools.
+Verify with `/mcp` inside Claude Code — you should see `local-llm` with 7 tools.
 
 Manual alternative (add to `.mcp.json`):
 
@@ -205,7 +208,7 @@ See **[MCP Client Verification Guide](local-llm-mcp-client-verification.md)** fo
 - **NO git mutation** — no `git_commit`, `git_push`, `git_tag`
 - **NO deployment** — no `deploy`, `release`
 - **NO secret reading** — blocked paths enforced (`.env`, `.pem`, `.git/config`, etc.)
-- **NO source modification** — all tools are read-only analysis
+- **NO source modification** — all tools are source-non-mutating; `local_draft_code` writes only to `.local_llm_out/`
 
 ### What MCP DOES enforce
 

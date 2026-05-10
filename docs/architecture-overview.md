@@ -67,7 +67,8 @@ User request (via Claude Code / Codex)
 
 ### MCP Server (`tools/local_llm_mcp_server.py`)
 
-- 6 read-only tools over stdio JSON-RPC
+- 7 source-non-mutating tools over stdio JSON-RPC
+- `local_draft_code` writes drafts only to `.local_llm_out/` (controller must verify before applying)
 - Path validation, symlink resolution, output truncation
 - Timeout per tool call
 - No write/delete/shell/git/deploy

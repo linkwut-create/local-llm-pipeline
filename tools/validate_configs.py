@@ -180,6 +180,42 @@ def validate_prompt_registry() -> list[str]:
         return [f"prompt registry validation error: {e}"]
 
 
+def validate_task_prompt_coverage(tasks_data: dict) -> list[str]:
+    """Ensure non-debate tasks have a corresponding prompt registry entry."""
+    import json as _json
+    errors = []
+    registry_path = SCRIPT_DIR / "prompts" / "registry.json"
+    if not registry_path.exists():
+        return ["prompts/registry.json not found — cannot check coverage"]
+
+    try:
+        registry = _json.loads(registry_path.read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as e:
+        return [f"prompts/registry.json invalid: {e}"]
+
+    prompt_ids = {entry.get("prompt_id", task_name)
+                  for task_name, entry in registry.get("prompts", {}).items()}
+
+    # Tasks that don't need their own prompt (internal / composite / CLI-only)
+    exempt = {
+        "local_check",  # no LLM call
+    }
+
+    tasks = tasks_data.get("tasks", {})
+    for task_name in tasks:
+        # Debate tasks are exempt — they go through local_llm_debate.py
+        if task_name.startswith("debate-"):
+            continue
+        if task_name in exempt:
+            continue
+        if task_name not in prompt_ids:
+            errors.append(
+                f"task '{task_name}': no prompt registry entry found"
+            )
+
+    return errors
+
+
 def main() -> int:
     args = sys.argv[1:]
     quiet = "--quiet" in args
@@ -200,8 +236,9 @@ def main() -> int:
     profile_errors, profile_warnings = validate_profiles(profiles_data)
     task_errors = validate_tasks(tasks_data, profiles_data.get("profiles", {}))
     prompt_errors = validate_prompt_registry()
+    coverage_errors = validate_task_prompt_coverage(tasks_data)
 
-    all_errors = profile_errors + task_errors + prompt_errors
+    all_errors = profile_errors + task_errors + prompt_errors + coverage_errors
     all_warnings = profile_warnings
     profile_count = len(profiles_data.get("profiles", {}))
     task_count = len(tasks_data.get("tasks", {}))

@@ -1,7 +1,7 @@
 # Local LLM Pipeline
 
 Portable local LLM development infrastructure for Claude Code and Codex.
-Provides read-only multi-model code review, test planning, and risk analysis
+Provides source-non-mutating multi-model code review, test planning, and risk analysis
 via CLI and MCP (Model Context Protocol).
 
 ## Quick Start
@@ -33,6 +33,8 @@ python tools/local_llm_router.py summarize-file README.md
 
 ## Security
 
-All local model output is advisory only. MCP tools are read-only.
+All local model output is advisory only. MCP tools are source-non-mutating:
+they never modify source files directly. `local_draft_code` writes drafts only
+to `.local_llm_out/` and requires controller verification before any source change.
 No write/delete/shell/git/deploy capabilities. Controller must verify
 all important claims. See [AGENTS.md](AGENTS.md) for full policy.

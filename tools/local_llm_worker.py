@@ -256,6 +256,9 @@ def is_blocked_path(path: Path) -> bool:
         return True
     if path.name in BLOCKED_FILENAMES:
         return True
+    # Block .env.* variants
+    if path.name.startswith(".env."):
+        return True
     return False
 
 

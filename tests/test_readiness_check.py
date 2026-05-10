@@ -87,8 +87,9 @@ def test_global_launcher_exists():
 
 
 def test_global_launcher_has_7_tools():
-    """Launcher should expose the same 7 tools."""
+    """Launcher should delegate tool handling to the real MCP server."""
     launcher = PIPELINE_ROOT / "tools" / "local_llm_global_mcp_launcher.py"
     content = launcher.read_text(encoding="utf-8")
-    assert "TOOLS" in content
     assert "local_llm_mcp_server" in content  # imports the real server
+    assert "handle_tools_call" in content  # delegates to MCP server
+    assert "LOCAL_LLM_TARGET_PROJECT" in content  # sets target project env

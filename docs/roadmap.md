@@ -23,7 +23,7 @@
 
 ### Phase 3: MCP Integration (v0.3.x)
 
-- [x] MCP server with 6 read-only tools over stdio JSON-RPC
+- [x] MCP server with 6 source-non-mutating tools over stdio JSON-RPC (expanded to 7 in v0.7.0+)
 - [x] local_check, local_summarize_file, local_summarize_tree
 - [x] local_generate_test_plan, local_review_diff, local_debate_review_diff
 - [x] Claude Code and Codex client verification
@@ -52,9 +52,9 @@
 
 ## Current Stable Boundaries
 
-- 6 MCP tools, all read-only
+- 7 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
 - 3-round debate (fast mode default for MCP)
-- 116 tests, 12 run_checks categories
+- 200+ tests, 13 run_checks categories
 - Remote Ollama via LOCAL_LLM_BASE_URL / OLLAMA_HOST
 - Installer with manifest and --update mode
 - Windows PowerShell + Git Bash compatible
@@ -106,7 +106,7 @@ error rates across sessions.
 ## Recommendation
 
 The pipeline is now feature-complete for its stated purpose: providing
-read-only, multi-model LLM assistance to Claude Code / Codex during
+source-non-mutating, multi-model LLM assistance to Claude Code / Codex during
 software development. The next phase should focus on **using it**
 rather than extending it further.
 

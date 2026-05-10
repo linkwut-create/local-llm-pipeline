@@ -30,11 +30,32 @@ from local_llm_worker import is_blocked_path
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
 
+
+def _get_effective_project_root() -> Path:
+    """Return the effective project root.
+
+    When LOCAL_LLM_TARGET_PROJECT is set (global MCP launcher mode),
+    use it as the project root so that path resolution, output dir, and
+    subprocess cwd all target the caller's project rather than the pipeline
+    source repo itself.
+    """
+    target = os.environ.get("LOCAL_LLM_TARGET_PROJECT")
+    if target:
+        tp = Path(target).resolve()
+        if tp.exists():
+            return tp
+    return PROJECT_ROOT
+
+
 def _read_version() -> str:
-    vf = PROJECT_ROOT / "VERSION"
+    vf = _get_effective_project_root() / "VERSION"
     if vf.exists():
         return vf.read_text(encoding="utf-8").strip()
-    return "0.5.0"
+    # Fallback: try the pipeline's own VERSION
+    pf = PROJECT_ROOT / "VERSION"
+    if pf.exists():
+        return pf.read_text(encoding="utf-8").strip()
+    return "unknown"
 
 SERVER_NAME = "local-llm-pipeline"
 SERVER_VERSION = _read_version()
@@ -268,16 +289,38 @@ def handle_tools_list(msg_id: int | str) -> dict:
     }
 
 
+def _is_path_inside_project(resolved: Path) -> bool:
+    """Return True if *resolved* is inside the effective project root."""
+    effective_root = _get_effective_project_root().resolve()
+    try:
+        resolved.relative_to(effective_root)
+        return True
+    except ValueError:
+        return False
+
+
 def validate_path(path_str: str) -> tuple[bool, str]:
     """Validate a file/directory path. Returns (ok, error_message).
 
     Always resolves to absolute path to prevent symlink and '..' bypasses.
     Blocked paths are rejected regardless of existence.
+    Paths outside the project root are rejected unless
+    LOCAL_LLM_ALLOW_OUTSIDE_PROJECT=1.
     """
     path = Path(path_str)
     resolved = path.resolve()
     if is_blocked_path(path) or is_blocked_path(resolved):
         return False, f"Path is blocked (secrets/system dirs): {path_str}"
+
+    # Project boundary check (v0.9.4)
+    allow_outside = os.environ.get("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "") == "1"
+    if not allow_outside and not _is_path_inside_project(resolved):
+        return False, (
+            f"Path is outside the current project: {path_str}. "
+            f"Use a path inside the current git project, "
+            f"or set LOCAL_LLM_ALLOW_OUTSIDE_PROJECT=1."
+        )
+
     if not path.exists():
         return False, f"Path not found: {path_str}"
     return True, ""
@@ -307,10 +350,16 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
     Chinese in worker stderr / em-dashes in summaries) cannot trip a GBK
     locale UnicodeDecodeError on Windows. Also force the child's
     PYTHONIOENCODING to utf-8 so the worker writes UTF-8 to its own stdout.
+
+    Uses the effective project root (LOCAL_LLM_TARGET_PROJECT when set) as
+    cwd so output lands in the correct project's .local_llm_out/.
     """
     start = time.time()
+    effective_root = _get_effective_project_root()
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    # Direct worker output to the effective project's .local_llm_out/
+    env.setdefault("LOCAL_LLM_OUTPUT_DIR", str(effective_root / ".local_llm_out"))
     try:
         result = subprocess.run(
             cmd,
@@ -320,7 +369,7 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            cwd=str(SCRIPT_DIR.parent),
+            cwd=str(effective_root),
             env=env,
         )
         elapsed = round(time.time() - start, 2)
@@ -400,7 +449,7 @@ def find_latest_json_output() -> dict | None:
     the most recent file (e.g. local_check, which does not emit a JSON marker).
     Tool wrappers that consume worker output MUST use load_worker_output().
     """
-    out_dir = SCRIPT_DIR.parent / ".local_llm_out"
+    out_dir = _get_effective_project_root() / ".local_llm_out"
     if not out_dir.exists():
         return None
     json_files = sorted(out_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)

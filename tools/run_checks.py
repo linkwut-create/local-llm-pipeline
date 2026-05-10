@@ -10,6 +10,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -60,38 +61,78 @@ def check_pytest_available() -> bool:
         return False
 
 
-def run_pytest() -> bool:
-    """Run the pipeline-scoped test subset.
+def _is_source_repo_mode() -> bool:
+    """Return True when run_checks runs inside the local-llm-pipeline source repo.
 
-    run_checks is the gate for the local-llm-pipeline (v0.9.3+). It runs the
-    pipeline's own tests (`tests/test_local_llm_*.py`) so the gate doesn't
-    fail because of unrelated translator-agent tests that depend on fastapi /
-    a running server / other optional infrastructure. Translator-agent tests
-    have their own gate.
+    Detected by presence of .git, VERSION, and full tests/ directory with
+    pipeline-specific test files.
     """
-    tests_dir = PROJECT_ROOT / "tests"
-    pipeline_tests = sorted(tests_dir.glob("test_local_llm_*.py"))
-    if not pipeline_tests:
-        print(f"  [SKIP] No pipeline test files found (tests/test_local_llm_*.py)")
+    return (
+        (PROJECT_ROOT / ".git").exists()
+        and (PROJECT_ROOT / "VERSION").exists()
+        and (PROJECT_ROOT / "tests" / "test_mcp_server.py").exists()
+    )
+
+
+def run_pytest() -> bool:
+    """Run pytest for the current mode.
+
+    source_repo_mode:  run full pytest on all tests.
+    installed-project mode: run only pipeline-scoped subset tests.
+
+    Set RUN_CHECKS_SKIP_PYTEST=1 to skip (useful for testing run_checks itself).
+    """
+    if os.environ.get("RUN_CHECKS_SKIP_PYTEST") == "1":
+        print(f"  [SKIP] pytest (RUN_CHECKS_SKIP_PYTEST=1)")
         return True
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", *(str(p) for p in pipeline_tests),
-             "-q", "--tb=short"],
-            capture_output=True, text=True, timeout=180,
-            cwd=str(PROJECT_ROOT),
-            encoding="utf-8", errors="replace",
-        )
-        ok = result.returncode == 0
-        last_line = result.stdout.strip().split("\n")[-1] if result.stdout else ""
-        print(f"  [{_status(ok)}] pytest ({len(pipeline_tests)} pipeline file(s)): {last_line}")
-        if not ok and result.stdout:
-            for line in result.stdout.strip().split("\n")[-5:]:
-                print(f"         {line}")
-        return ok
-    except Exception as e:
-        print(f"  [{_status(False)}] pytest: {e}")
-        return False
+
+    source_repo = _is_source_repo_mode()
+    mode_label = "source_repo_mode=true" if source_repo else "source_repo_mode=false"
+
+    if source_repo:
+        # Full pytest — every test must pass for a release gate
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "--tb=short"],
+                capture_output=True, text=True, timeout=600,
+                cwd=str(PROJECT_ROOT),
+                encoding="utf-8", errors="replace",
+            )
+            ok = result.returncode == 0
+            last_line = result.stdout.strip().split("\n")[-1] if result.stdout else ""
+            print(f"  [{_status(ok)}] pytest ({mode_label}): {last_line}")
+            if not ok and result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    print(f"         {line}")
+            return ok
+        except Exception as e:
+            print(f"  [{_status(False)}] pytest ({mode_label}): {e}")
+            return False
+    else:
+        # Installed-project mode: only pipeline-scoped subset
+        tests_dir = PROJECT_ROOT / "tests"
+        pipeline_tests = sorted(tests_dir.glob("test_local_llm_*.py"))
+        if not pipeline_tests:
+            print(f"  [SKIP] No pipeline test files found (tests/test_local_llm_*.py)")
+            return True
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", *(str(p) for p in pipeline_tests),
+                 "-q", "--tb=short"],
+                capture_output=True, text=True, timeout=180,
+                cwd=str(PROJECT_ROOT),
+                encoding="utf-8", errors="replace",
+            )
+            ok = result.returncode == 0
+            last_line = result.stdout.strip().split("\n")[-1] if result.stdout else ""
+            print(f"  [{_status(ok)}] pytest ({mode_label}, {len(pipeline_tests)} file(s)): {last_line}")
+            if not ok and result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    print(f"         {line}")
+            return ok
+        except Exception as e:
+            print(f"  [{_status(False)}] pytest ({mode_label}): {e}")
+            return False
 
 
 def check_json_schema(name: str, path: Path, required_keys: list[str]) -> bool:
@@ -193,6 +234,7 @@ def check_mcp_no_dangerous_tools() -> bool:
 def main() -> int:
     print("=" * 60)
     print("  Local LLM Pipeline — Non-LLM Checks")
+    print(f"  source_repo_mode={_is_source_repo_mode()}")
     print("=" * 60)
 
     results = []

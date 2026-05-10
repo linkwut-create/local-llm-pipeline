@@ -191,14 +191,11 @@ def test_truncate_output_large_string():
 
 def test_find_latest_json_output_handles_missing_dir(monkeypatch):
     """Should return None when .local_llm_out doesn't exist."""
-    # Mock out_dir to a non-existent path
-    original_dir = mcp.SCRIPT_DIR
-    try:
-        mcp.SCRIPT_DIR = Path("/nonexistent_temp_dir")
-        result = mcp.find_latest_json_output()
-        assert result is None
-    finally:
-        mcp.SCRIPT_DIR = original_dir
+    # find_latest_json_output uses _get_effective_project_root() — mock it
+    monkeypatch.setattr(mcp, "_get_effective_project_root",
+                        lambda: Path("/nonexistent_temp_dir"))
+    result = mcp.find_latest_json_output()
+    assert result is None
 
 
 def test_all_handlers_registered():
