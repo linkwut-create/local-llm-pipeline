@@ -149,7 +149,7 @@ def test_call_debate_builds_correct_cmd():
     def mock_run(cmd, stdin_data=None, timeout=None):
         nonlocal captured_cmd
         captured_cmd = cmd
-        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+        return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
 
     original_run = mcp.run_subprocess
     mcp.run_subprocess = mock_run
@@ -302,7 +302,7 @@ def test_call_debate_explicit_fast_false():
     def mock_run(cmd, stdin_data=None, timeout=None):
         nonlocal captured_cmd
         captured_cmd = cmd
-        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+        return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
 
     original_run = mcp.run_subprocess
     mcp.run_subprocess = mock_run
@@ -321,7 +321,7 @@ def test_debate_timeout_passed_to_cmd():
     def mock_run(cmd, stdin_data=None, timeout=None):
         nonlocal captured_cmd
         captured_cmd = cmd
-        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+        return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
 
     original_run = mcp.run_subprocess
     mcp.run_subprocess = mock_run
@@ -342,7 +342,7 @@ def test_call_debate_uses_debate_timeout():
     def mock_run(cmd, stdin_data=None, timeout=None):
         nonlocal captured_timeout
         captured_timeout = timeout
-        return MagicMock(returncode=0, stdout='{"ok":true}', stderr="", elapsed_seconds=1.0)
+        return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
 
     original_run = mcp.run_subprocess
     mcp.run_subprocess = mock_run

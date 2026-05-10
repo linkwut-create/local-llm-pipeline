@@ -212,6 +212,7 @@ class WorkerConfig:
 @dataclass
 class WorkerOutput:
     task: str = ""
+    tool: str = ""
     profile: str = ""
     model: str = ""
     provider: str = ""
@@ -238,6 +239,12 @@ class WorkerOutput:
     truncation_report: list = field(default_factory=list)
     total_input_chars: int = 0
     included_input_chars: int = 0
+    # Prompt-registry traceability (v0.9.3)
+    prompt_id: Optional[str] = None
+    prompt_version: Optional[str] = None
+    prompt_hash: Optional[str] = None
+    request_id: Optional[str] = None
+    cache_hit: bool = False
 
 
 def is_blocked_path(path: Path) -> bool:
@@ -363,12 +370,23 @@ def collect_tree(root: Path, max_files: int, max_chars: int) -> tuple[str, list[
     return "\n\n".join(parts), warnings, truncation_report
 
 
-def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, str]:
-    # Try prompt registry first, fall back to hardcoded dict
+def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, str, dict]:
+    """Build the (system, user) prompt pair plus a metadata dict.
+
+    Metadata dict keys: prompt_id, prompt_version, prompt_hash. Values are None
+    when the prompt came from the hardcoded fallback.
+    """
+    meta: dict = {"prompt_id": None, "prompt_version": None, "prompt_hash": None}
     try:
         from local_llm_prompt_registry import load_prompt
         p = load_prompt(task)
-        task_prompt = p.text if p else TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
+        if p:
+            task_prompt = p.text
+            meta["prompt_id"] = p.prompt_id
+            meta["prompt_version"] = p.version
+            meta["prompt_hash"] = p.hash
+        else:
+            task_prompt = TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
     except Exception:
         task_prompt = TASK_PROMPTS.get(task, f"Analyze the following content for task: {task}")
 
@@ -379,7 +397,7 @@ def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, st
 
     system = SYSTEM_PROMPT_BASE + f"\nTask: {task}\n"
     user = f"{task_prompt}\n\n---\n\n{content}"
-    return system, user
+    return system, user, meta
 
 
 def call_ollama(system: str, user: str, config: WorkerConfig) -> str:
@@ -681,8 +699,45 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     return config
 
 
+def collect_tree_entries(root: Path, max_files: int) -> list[dict]:
+    """Walk a directory and return [{path, size, mtime_ns}, ...] for cache keying.
+
+    Mirrors collect_tree's filtering rules so the cache key reflects what the
+    LLM actually saw. Never raises; returns empty list on irrecoverable error.
+    """
+    entries: list[dict] = []
+    try:
+        for dirpath_str, dirnames, filenames in os.walk(root):
+            dp = Path(dirpath_str)
+            dirnames[:] = [d for d in dirnames if d not in BLOCKED_PATHS]
+            for fname in sorted(filenames):
+                fp = dp / fname
+                if is_blocked_path(fp) or not fp.is_file():
+                    continue
+                try:
+                    stat = fp.stat()
+                except OSError:
+                    continue
+                rel = str(fp.relative_to(root)) if fp.is_relative_to(root) else str(fp)
+                entries.append({
+                    "path": rel,
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                })
+        # Match collect_tree: take up to max_files highest-priority items
+        if len(entries) > max_files:
+            entries = entries[:max_files]
+    except Exception:
+        return []
+    return entries
+
+
 def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, dict, list[str], list[dict]]:
-    """Returns (content, input_meta, warnings, truncation_report)."""
+    """Returns (content, input_meta, warnings, truncation_report).
+
+    For summarize-tree, input_meta carries `tree_entries` so cache keying does
+    not have to re-derive directory listings from a flat string blob.
+    """
     warnings = []
     truncation_report = []
     input_meta = {"path": None, "stdin": False, "max_files": None, "max_chars": config.max_chars}
@@ -713,20 +768,131 @@ def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, d
         content, tree_warnings, tree_truncation = collect_tree(target_path, max_files, config.max_chars)
         warnings.extend(tree_warnings)
         truncation_report.extend(tree_truncation)
+        input_meta["tree_entries"] = collect_tree_entries(target_path, max_files)
         return content, input_meta, warnings, truncation_report
 
     return "", input_meta, [f"Target not found: {target}"], truncation_report
 
 
+def _compute_cache_key_safe(task: str, target: str | None, input_meta: dict,
+                             max_files: int | None, profile: str, model: str):
+    """Compute the cache key for a cacheable task. Returns (key, warning_or_None).
+
+    Never raises; on any failure returns (None, message) so the caller can skip
+    cache instead of crashing the whole worker run.
+    """
+    try:
+        from local_llm_cache import compute_file_key, compute_tree_key
+        if task == "summarize-file" and target:
+            return compute_file_key(target, profile, model), None
+        if task == "summarize-tree" and target:
+            entries = input_meta.get("tree_entries") or []
+            return compute_tree_key(target, max_files or 30, entries, profile, model), None
+    except Exception as exc:
+        return None, f"cache-key computation skipped: {exc}"
+    return None, None
+
+
+def _emit_failure(output: WorkerOutput, config: WorkerConfig,
+                  *, return_code: int = 1) -> int:
+    """Persist a failure WorkerOutput and emit the standard stderr/stdout markers.
+
+    Always prints a `JSON: <path>` line so the MCP wrapper (or any other
+    consumer that parses subprocess output) can locate this exact result file
+    instead of falling back to whatever happens to be the latest file in
+    .local_llm_out/.
+    """
+    output.ok = False
+    if not output.created_at:
+        output.created_at = datetime.now(timezone.utc).isoformat()
+    try:
+        json_path, _ = save_output(output, config)
+    except Exception as exc:
+        # Last-resort fallback: write a minimal JSON so the wrapper isn't blind.
+        out_dir = Path(config.output_dir or ".local_llm_out")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_path = out_dir / f"{ts}_{output.task or 'unknown'}.json"
+        try:
+            json_path.write_text(json.dumps({
+                "task": output.task,
+                "ok": False,
+                "error": output.error or str(exc),
+                "error_type": output.error_type or "save_failed",
+                "suggestion": output.suggestion or "",
+                "request_id": output.request_id,
+                "prompt_id": output.prompt_id,
+                "prompt_version": output.prompt_version,
+                "prompt_hash": output.prompt_hash,
+                "created_at": output.created_at,
+            }, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    print(f"ERROR: [{output.error_type or 'unknown_error'}] {output.error}", file=sys.stderr)
+    if output.suggestion:
+        print(f"SUGGESTION: {output.suggestion}", file=sys.stderr)
+    print(f"JSON: {json_path}")
+    return return_code
+
+
 def run(args: argparse.Namespace) -> int:
+    """Top-level worker entry. Wraps _run_inner so an unexpected exception
+    still produces a structured JSON file plus a `JSON:` marker on stdout.
+    A traceback that escapes here would (a) hide the bug from any subprocess
+    parent, and (b) cause the MCP wrapper to fall back to a stale result —
+    both of which v0.9.2 actually did. Don't let that happen again.
+    """
+    try:
+        return _run_inner(args)
+    except SystemExit:
+        raise
+    except BaseException as exc:
+        import traceback as _tb
+        tb_text = _tb.format_exc()
+        try:
+            config = resolve_config(args)
+        except Exception:
+            config = WorkerConfig()
+        last_line = (tb_text.strip().splitlines() or [""])[-1][:300]
+        output = WorkerOutput(
+            task=getattr(args, "task", "") or "unknown",
+            tool=getattr(args, "task", "") or "unknown",
+            profile=config.profile,
+            model=config.model,
+            provider=config.provider,
+            base_url=config.base_url,
+            error=f"internal worker error: {exc}"[:300],
+            error_type="internal_error",
+            suggestion="check stderr traceback or report a v0.9.3 bug",
+            warnings=[last_line] if last_line else [],
+            created_at=datetime.now(timezone.utc).isoformat(),
+            not_verified=[
+                "Worker did not run tests",
+                "Worker did not read full project context",
+                "Worker did not verify file existence",
+                "Worker output is advisory only",
+            ],
+        )
+        # Print full traceback to stderr so subprocess parents can capture it.
+        print(tb_text, file=sys.stderr)
+        return _emit_failure(output, config)
+
+
+def _run_inner(args: argparse.Namespace) -> int:
     config = resolve_config(args)
+
+    from local_llm_logging import _make_request_id
+    request_id = _make_request_id()
 
     output = WorkerOutput(
         task=args.task,
+        tool=args.task,
         profile=config.profile,
         model=config.model,
         provider=config.provider,
         base_url=config.base_url,
+        request_id=request_id,
         created_at=datetime.now(timezone.utc).isoformat(),
         not_verified=[
             "Worker did not run tests",
@@ -738,11 +904,10 @@ def run(args: argparse.Namespace) -> int:
 
     if not config.model:
         output.error = "No model specified. Check profiles or pass --model."
+        output.error_type = "no_model"
+        output.suggestion = "set LOCAL_LLM_MODEL or pass --model / --profile"
         output.warnings.append("No model available")
-        json_path, md_path = save_output(output, config)
-        print(f"ERROR: {output.error}", file=sys.stderr)
-        print(f"JSON: {json_path}")
-        return 1
+        return _emit_failure(output, config)
 
     content, input_meta, gather_warnings, trunc_report = gather_input(args, config)
     output.input = input_meta
@@ -754,38 +919,54 @@ def run(args: argparse.Namespace) -> int:
 
     if not content:
         output.error = "No input content to analyze"
+        output.error_type = "empty_input"
+        output.suggestion = "pass a non-empty file/dir or feed --stdin with content"
         output.warnings.append("Empty input")
-        json_path, md_path = save_output(output, config)
-        print(f"ERROR: {output.error}", file=sys.stderr)
-        print(f"JSON: {json_path}")
-        return 1
+        return _emit_failure(output, config)
 
-    system, user = build_prompt(args.task, content, config)
+    system, user, prompt_meta = build_prompt(args.task, content, config)
+    output.prompt_id = prompt_meta.get("prompt_id")
+    output.prompt_version = prompt_meta.get("prompt_version")
+    output.prompt_hash = prompt_meta.get("prompt_hash")
 
-    # Cache check for cacheable tasks
-    from local_llm_cache import CACHEABLE_TASKS, compute_file_key, compute_tree_key, get_cache, put_cache
+    # Cache check for cacheable tasks (never let a cache failure crash the run).
+    from local_llm_cache import CACHEABLE_TASKS, get_cache, put_cache
+    from local_llm_logging import log_success as ls, log_failure as lf
     cache_hit = False
+    cache_key, cache_warn = (None, None)
     if args.task in CACHEABLE_TASKS:
-        cache_key = None
-        if args.task == "summarize-file" and args.target:
-            cache_key = compute_file_key(args.target, config.profile, config.model)
-        elif args.task == "summarize-tree" and args.target:
-            # Build file list from already-read content for tree key
-            file_entries = []
-            for f_path, f_content in content.get("files", {}).items():
-                file_entries.append({"path": f_path, "size": len(f_content), "mtime_ns": 0})
-            cache_key = compute_tree_key(args.target, args.max_files,
-                                          file_entries, config.profile, config.model)
+        cache_key, cache_warn = _compute_cache_key_safe(
+            args.task, args.target, input_meta, args.max_files,
+            config.profile, config.model,
+        )
+        if cache_warn:
+            output.warnings.append(cache_warn)
 
         if cache_key:
-            cached = get_cache(cache_key)
+            try:
+                cached = get_cache(cache_key)
+            except Exception as exc:
+                cached = None
+                output.warnings.append(f"cache read skipped: {exc}")
             if cached:
+                cache_hit = True
                 output.ok = True
+                output.cache_hit = True
                 output.result = cached.get("result", "")
                 output.summary = cached.get("summary", "")[:500]
                 output.confidence = "medium"
+                # Prefer cached prompt metadata when available (older cache
+                # entries from v0.9.2 may not have it).
+                output.prompt_id = cached.get("prompt_id") or output.prompt_id
+                output.prompt_version = cached.get("prompt_version") or output.prompt_version
+                output.prompt_hash = cached.get("prompt_hash") or output.prompt_hash
                 output.created_at = datetime.now(timezone.utc).isoformat()
                 json_path, md_path = save_output(output, config)
+                ls("cli", output.task, output.task, config.profile, config.model,
+                   config.provider, 0.0, len(user), len(output.result),
+                   cache_hit=True, retries=0, request_id=request_id,
+                   prompt_id=output.prompt_id, prompt_version=output.prompt_version,
+                   prompt_hash=output.prompt_hash)
                 print(f"OK (cache hit): {args.task} completed", file=sys.stderr)
                 print(f"JSON: {json_path}")
                 return 0
@@ -800,20 +981,14 @@ def run(args: argparse.Namespace) -> int:
         output.error_type = error_info.get("error_type", "unknown_error")
         output.suggestion = error_info.get("suggestion", "")
         output.retries = error_info.get("retries", 0)
-        json_path, md_path = save_output(output, config)
-        retry_note = f" (retried {output.retries}x)" if output.retries else ""
-        print(f"ERROR: [{output.error_type}] {output.error}{retry_note}", file=sys.stderr)
-        if output.suggestion:
-            print(f"SUGGESTION: {output.suggestion}", file=sys.stderr)
-        print(f"JSON: {json_path}")
-        # Structured log
-        from local_llm_logging import log_failure as lf
         lf("cli", output.task, output.task, config.profile, config.model,
            config.provider, log_duration,
            output.error_type or "unknown_error",
            output.error or "unknown error",
-           len(user), output.retries)
-        return 1
+           len(user), output.retries, request_id=request_id,
+           prompt_id=output.prompt_id, prompt_version=output.prompt_version,
+           prompt_hash=output.prompt_hash)
+        return _emit_failure(output, config)
 
     output.ok = True
     output.result = raw_result
@@ -831,24 +1006,27 @@ def run(args: argparse.Namespace) -> int:
 
     json_path, md_path = save_output(output, config)
 
-    # Write cache for cacheable tasks
-    if args.task in CACHEABLE_TASKS and not cache_hit:
+    # Write cache for cacheable tasks (best-effort).
+    if args.task in CACHEABLE_TASKS and cache_key and not cache_hit:
         try:
-            cache_key = None
-            if args.task == "summarize-file" and args.target:
-                cache_key = compute_file_key(args.target, config.profile, config.model)
-            if cache_key:
-                put_cache(cache_key, {"task": args.task, "profile": config.profile,
-                          "model": config.model, "result": raw_result,
-                          "summary": output.summary})
+            put_cache(cache_key, {
+                "task": args.task,
+                "profile": config.profile,
+                "model": config.model,
+                "result": raw_result,
+                "summary": output.summary,
+                "prompt_id": output.prompt_id,
+                "prompt_version": output.prompt_version,
+                "prompt_hash": output.prompt_hash,
+            })
         except Exception:
-            pass  # cache write failure is non-fatal
+            pass
 
-    # Structured log
-    from local_llm_logging import log_success as ls
     ls("cli", output.task, output.task, config.profile, config.model,
        config.provider, log_duration, len(user),
-       len(raw_result), cache_hit=False, retries=0)
+       len(raw_result), cache_hit=False, retries=0, request_id=request_id,
+       prompt_id=output.prompt_id, prompt_version=output.prompt_version,
+       prompt_hash=output.prompt_hash)
 
     print(f"OK: {args.task} completed", file=sys.stderr)
     print(f"JSON: {json_path}")

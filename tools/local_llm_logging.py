@@ -20,12 +20,15 @@ LOG_FILE = LOG_DIR / "local_llm.jsonl"
 
 REDACTED_MARKER = "[REDACTED]"
 
-# Fields that are always safe to log
+# Fields that are always safe to log. Prompt-registry metadata (prompt_id /
+# version / hash) is structural metadata, never the prompt body itself, so it
+# is safe to record. The body is never logged.
 SAFE_FIELDS = {
     "timestamp", "request_id", "source", "tool", "task",
     "profile", "model", "backend", "ok", "duration_sec",
     "retries", "cache_hit", "queue_wait_ms",
     "input_chars", "output_chars", "error_type", "error",
+    "prompt_id", "prompt_version", "prompt_hash",
 }
 
 
@@ -73,7 +76,9 @@ def write_log_entry(entry: dict):
 def log_success(source: str, tool: str, task: str, profile: str, model: str,
                 backend: str, duration_sec: float, input_chars: int,
                 output_chars: int, cache_hit: bool = False, retries: int = 0,
-                queue_wait_ms: int = 0, request_id: str | None = None):
+                queue_wait_ms: int = 0, request_id: str | None = None,
+                prompt_id: str | None = None, prompt_version: str | None = None,
+                prompt_hash: str | None = None):
     write_log_entry({
         "request_id": request_id or _make_request_id(),
         "source": source,
@@ -89,13 +94,18 @@ def log_success(source: str, tool: str, task: str, profile: str, model: str,
         "cache_hit": cache_hit,
         "retries": retries,
         "queue_wait_ms": queue_wait_ms,
+        "prompt_id": prompt_id,
+        "prompt_version": prompt_version,
+        "prompt_hash": prompt_hash,
     })
 
 
 def log_failure(source: str, tool: str, task: str, profile: str, model: str,
                 backend: str, duration_sec: float, error_type: str, error: str,
                 input_chars: int, retries: int = 0, queue_wait_ms: int = 0,
-                request_id: str | None = None):
+                request_id: str | None = None,
+                prompt_id: str | None = None, prompt_version: str | None = None,
+                prompt_hash: str | None = None):
     write_log_entry({
         "request_id": request_id or _make_request_id(),
         "source": source,
@@ -113,4 +123,7 @@ def log_failure(source: str, tool: str, task: str, profile: str, model: str,
         "cache_hit": False,
         "retries": retries,
         "queue_wait_ms": queue_wait_ms,
+        "prompt_id": prompt_id,
+        "prompt_version": prompt_version,
+        "prompt_hash": prompt_hash,
     })

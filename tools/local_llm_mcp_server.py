@@ -11,11 +11,13 @@ Usage:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -215,9 +217,23 @@ def read_json_request() -> dict | None:
 
 
 def write_json_response(response: dict):
-    """Write a JSON-RPC response to stdout."""
-    sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    """Write a JSON-RPC response to stdout. Failure is logged but never raised
+    — a broken stdout pipe must not propagate up and tear the server down,
+    because the MCP host may simply have disconnected and we want the next
+    request (or a clean shutdown) to be handled gracefully."""
+    try:
+        line = json.dumps(response, ensure_ascii=False, default=str)
+    except Exception as exc:
+        line = json.dumps({
+            "jsonrpc": "2.0",
+            "id": response.get("id"),
+            "error": {"code": -32603, "message": f"serialization failed: {exc}"},
+        })
+    try:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    except (BrokenPipeError, OSError) as exc:
+        print(f"WARN: write_json_response failed: {exc}", file=sys.stderr)
 
 
 def handle_initialize(msg_id: int | str) -> dict:
@@ -285,22 +301,35 @@ def build_router_cmd(task: str, path: str | None, max_files: int | None,
 
 def run_subprocess(cmd: list[str], stdin_data: str | None = None,
                    timeout: int = DEFAULT_TIMEOUT) -> dict:
-    """Run a subprocess and return structured result."""
+    """Run a subprocess and return a structured result.
+
+    Forces UTF-8 decoding with `errors="replace"` so non-ASCII output (e.g.
+    Chinese in worker stderr / em-dashes in summaries) cannot trip a GBK
+    locale UnicodeDecodeError on Windows. Also force the child's
+    PYTHONIOENCODING to utf-8 so the worker writes UTF-8 to its own stdout.
+    """
     start = time.time()
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     try:
         result = subprocess.run(
             cmd,
             input=stdin_data,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             cwd=str(SCRIPT_DIR.parent),
+            env=env,
         )
         elapsed = round(time.time() - start, 2)
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
         return {
             "ok": result.returncode == 0,
-            "stdout": result.stdout[:50000],
-            "stderr": result.stderr[:10000],
+            "stdout": stdout[:50000],
+            "stderr": stderr[:10000],
             "returncode": result.returncode,
             "elapsed_seconds": elapsed,
         }
@@ -324,8 +353,53 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
         }
 
 
+_JSON_MARKER_RE = re.compile(r"^JSON:\s*(.+)$", re.MULTILINE)
+
+
+def _make_request_id() -> str:
+    return f"req_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+
+
+def parse_worker_json_path(stdout: str) -> Path | None:
+    """Find the `JSON: <path>` marker the worker prints on every exit path.
+
+    Returning the worker's own output file (instead of "the most recent JSON
+    file in .local_llm_out") prevents the v0.9.2 stale-fallback bug where a
+    crashed summarize-tree silently returned a previous summarize-file result.
+    """
+    if not stdout:
+        return None
+    matches = _JSON_MARKER_RE.findall(stdout)
+    if not matches:
+        return None
+    candidate = Path(matches[-1].strip())
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def load_worker_output(stdout: str) -> tuple[dict | None, str | None]:
+    """Locate and load the JSON output file produced by THIS worker run.
+
+    Returns (data, error). On any failure the second element describes why,
+    so the caller can surface a structured error rather than fall back to a
+    stale result.
+    """
+    path = parse_worker_json_path(stdout)
+    if path is None:
+        return None, "worker did not emit a JSON: marker — output file unknown"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data, None
+    except (json.JSONDecodeError, OSError) as exc:
+        return None, f"worker output unreadable at {path}: {exc}"
+
+
 def find_latest_json_output() -> dict | None:
-    """Find the most recent JSON output file in .local_llm_out."""
+    """Backward-compatible scanner. Kept for callers that legitimately want
+    the most recent file (e.g. local_check, which does not emit a JSON marker).
+    Tool wrappers that consume worker output MUST use load_worker_output().
+    """
     out_dir = SCRIPT_DIR.parent / ".local_llm_out"
     if not out_dir.exists():
         return None
@@ -336,6 +410,88 @@ def find_latest_json_output() -> dict | None:
         except (json.JSONDecodeError, OSError):
             continue
     return None
+
+
+def build_error_response(tool: str, error_type: str, error: str,
+                         suggestion: str = "", elapsed: float = 0.0,
+                         request_id: str | None = None,
+                         profile: str | None = None,
+                         model: str | None = None,
+                         task: str | None = None) -> dict:
+    """Uniform structured error envelope for every tool wrapper."""
+    return {
+        "tool": tool,
+        "task": task or tool.replace("local_", ""),
+        "ok": False,
+        "result": None,
+        "error": error[:500] if error else error_type,
+        "error_type": error_type,
+        "suggestion": suggestion,
+        "request_id": request_id or _make_request_id(),
+        "profile": profile,
+        "model": model,
+        "elapsed_seconds": round(elapsed, 2),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def build_success_response(tool: str, payload: dict, elapsed: float,
+                           request_id: str | None = None) -> dict:
+    """Wrap a worker result dict for return through MCP. Surfaces prompt
+    metadata at the top level so log entries can pick it up uniformly.
+    """
+    return {
+        "tool": tool,
+        "task": payload.get("task") or tool.replace("local_", ""),
+        "ok": True,
+        "result": truncate_output(payload),
+        "error": None,
+        "error_type": None,
+        "suggestion": None,
+        "request_id": request_id or _make_request_id(),
+        "profile": payload.get("profile"),
+        "model": payload.get("model"),
+        "prompt_id": payload.get("prompt_id"),
+        "prompt_version": payload.get("prompt_version"),
+        "prompt_hash": payload.get("prompt_hash"),
+        "cache_hit": payload.get("cache_hit", False),
+        "elapsed_seconds": round(elapsed, 2),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def coerce_failure_response(tool: str, payload: dict | None,
+                            stderr: str, elapsed: float,
+                            request_id: str | None = None) -> dict:
+    """Build a failure response from a worker JSON payload (preferred) or,
+    when payload is missing, from subprocess stderr.
+    """
+    if payload:
+        return {
+            "tool": tool,
+            "task": payload.get("task") or tool.replace("local_", ""),
+            "ok": False,
+            "result": truncate_output(payload),
+            "error": payload.get("error") or stderr[:300] or "worker failed",
+            "error_type": payload.get("error_type") or "worker_failed",
+            "suggestion": payload.get("suggestion") or "see worker stderr",
+            "request_id": request_id or _make_request_id(),
+            "profile": payload.get("profile"),
+            "model": payload.get("model"),
+            "prompt_id": payload.get("prompt_id"),
+            "prompt_version": payload.get("prompt_version"),
+            "prompt_hash": payload.get("prompt_hash"),
+            "elapsed_seconds": round(elapsed, 2),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    return build_error_response(
+        tool=tool,
+        error_type="worker_failed_no_output",
+        error=(stderr or "worker exited without output").strip()[:500],
+        suggestion="check that the model is reachable and the path is valid",
+        elapsed=elapsed,
+        request_id=request_id,
+    )
 
 
 def truncate_output(data: dict, max_keys: int = 500) -> dict:
@@ -354,17 +510,48 @@ def truncate_output(data: dict, max_keys: int = 500) -> dict:
     return truncated
 
 
+def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
+                      timeout: int = DEFAULT_TIMEOUT) -> dict:
+    """Run the worker subprocess and translate its output into a uniform MCP
+    response. Always loads the JSON file the worker pointed to via its
+    `JSON: <path>` marker — never falls back to "latest file in
+    .local_llm_out/", which would risk returning a stale, unrelated result.
+    """
+    request_id = _make_request_id()
+    result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout)
+    payload, parse_err = load_worker_output(result["stdout"])
+
+    if result["ok"]:
+        if payload is None:
+            return build_error_response(
+                tool=tool,
+                error_type="missing_worker_output",
+                error=parse_err or "worker exited 0 but produced no output file",
+                suggestion="check worker stderr for warnings",
+                elapsed=result["elapsed_seconds"],
+                request_id=request_id,
+            )
+        return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
+
+    return coerce_failure_response(tool, payload, result["stderr"], result["elapsed_seconds"], request_id)
+
+
 def call_local_check(params: dict) -> dict:
+    request_id = _make_request_id()
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_check.py")]
     result = run_subprocess(cmd)
     return {
         "tool": "local_check",
+        "task": "check",
         "ok": result["ok"],
         "result": {
             "stdout": result["stdout"][:10000],
             "stderr": result["stderr"][:5000],
         },
         "error": None if result["ok"] else result["stderr"][:500],
+        "error_type": None if result["ok"] else "check_failed",
+        "suggestion": None if result["ok"] else "review stderr for the failing check",
+        "request_id": request_id,
         "elapsed_seconds": result["elapsed_seconds"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -374,9 +561,11 @@ def call_summarize_file(params: dict) -> dict:
     path_str = params.get("path", "")
     ok, err = validate_path(path_str)
     if not ok:
-        return {"tool": "local_summarize_file", "ok": False, "result": None, "error": err,
-                "error_type": "blocked_path", "suggestion": "use a file path that is not in the blocked list",
-                "elapsed_seconds": 0, "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_summarize_file", error_type="blocked_path", error=err,
+            suggestion="use a file path that is not in the blocked list",
+            profile=params.get("profile"), model=params.get("model"),
+        )
 
     max_chars = params.get("max_chars")
     if max_chars is not None:
@@ -384,27 +573,18 @@ def call_summarize_file(params: dict) -> dict:
 
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
                            params.get("profile"), params.get("model"))
-    result = run_subprocess(cmd)
-    latest = find_latest_json_output()
-    return {
-        "tool": "local_summarize_file",
-        "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "error_type": None if result["ok"] else "subprocess_failed",
-        "suggestion": None if result["ok"] else "check that Ollama is running and the model is available",
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return _wrap_worker_call("local_summarize_file", cmd)
 
 
 def call_summarize_tree(params: dict) -> dict:
     path_str = params.get("path", "")
     ok, err = validate_path(path_str)
     if not ok:
-        return {"tool": "local_summarize_tree", "ok": False, "result": None, "error": err,
-                "error_type": "blocked_path", "suggestion": "use a directory path that is not in the blocked list",
-                "elapsed_seconds": 0, "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_summarize_tree", error_type="blocked_path", error=err,
+            suggestion="use a directory path that is not in the blocked list",
+            profile=params.get("profile"), model=params.get("model"),
+        )
 
     max_files = min(int(params.get("max_files", 20)), MAX_MAX_FILES)
     max_chars = params.get("max_chars")
@@ -413,45 +593,33 @@ def call_summarize_tree(params: dict) -> dict:
 
     cmd = build_router_cmd("summarize-tree", path_str, max_files, max_chars,
                            params.get("profile"), params.get("model"))
-    result = run_subprocess(cmd)
-    latest = find_latest_json_output()
-    return {
-        "tool": "local_summarize_tree",
-        "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return _wrap_worker_call("local_summarize_tree", cmd)
 
 
 def call_generate_test_plan(params: dict) -> dict:
     path_str = params.get("path", "")
     ok, err = validate_path(path_str)
     if not ok:
-        return {"tool": "local_generate_test_plan", "ok": False, "result": None, "error": err,
-                "elapsed_seconds": 0, "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_generate_test_plan", error_type="blocked_path", error=err,
+            suggestion="use a file path that is not in the blocked list",
+            profile=params.get("profile"), model=params.get("model"),
+        )
 
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
                            params.get("profile"), params.get("model"))
-    result = run_subprocess(cmd)
-    latest = find_latest_json_output()
-    return {
-        "tool": "local_generate_test_plan",
-        "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return _wrap_worker_call("local_generate_test_plan", cmd)
 
 
 def call_review_diff(params: dict) -> dict:
     diff_text = params.get("diff_text", "")
     if not diff_text.strip():
-        return {"tool": "local_review_diff", "ok": False, "result": None,
-                "error": "diff_text is empty", "elapsed_seconds": 0,
-                "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_review_diff", error_type="empty_input",
+            error="diff_text is empty",
+            suggestion="provide a non-empty diff (e.g. `git diff HEAD~1`)",
+            profile=params.get("profile"), model=params.get("model"),
+        )
     if len(diff_text) > MAX_DIFF_CHARS:
         diff_text = diff_text[:MAX_DIFF_CHARS]
 
@@ -461,32 +629,24 @@ def call_review_diff(params: dict) -> dict:
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
-    result = run_subprocess(cmd, stdin_data=diff_text)
-    latest = find_latest_json_output()
-    return {
-        "tool": "local_review_diff",
-        "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text)
 
 
 def call_debate_review_diff(params: dict) -> dict:
     diff_text = params.get("diff_text", "")
     if not diff_text.strip():
-        return {"tool": "local_debate_review_diff", "ok": False, "result": None,
-                "error": "diff_text is empty", "elapsed_seconds": 0,
-                "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_debate_review_diff", error_type="empty_input",
+            error="diff_text is empty",
+            suggestion="provide a non-empty diff",
+        )
 
     if len(diff_text) > MAX_DIFF_CHARS:
-        return {"tool": "local_debate_review_diff", "ok": False, "result": None,
-                "error": f"diff_text too large ({len(diff_text)} chars, max {MAX_DIFF_CHARS}). "
-                         f"Use CLI debate directly or pass a smaller diff.",
-                "suggestion": "try smaller diff, --fast, or CLI",
-                "elapsed_seconds": 0,
-                "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_debate_review_diff", error_type="diff_too_large",
+            error=f"diff_text too large ({len(diff_text)} chars, max {MAX_DIFF_CHARS})",
+            suggestion="try smaller diff, --fast, or CLI",
+        )
     diff_text = diff_text[:MAX_DIFF_CHARS]
 
     use_fast = params.get("fast", True)
@@ -501,18 +661,15 @@ def call_debate_review_diff(params: dict) -> dict:
     if params.get("max_chars"):
         cmd.extend(["--max-chars", str(min(int(params["max_chars"]), MAX_PATH_MAX_CHARS))])
 
+    request_id = _make_request_id()
     result = run_subprocess(cmd, stdin_data=diff_text, timeout=DEBATE_TIMEOUT)
 
     if not result["ok"] and "timed out" in result["stderr"].lower():
-        return {
-            "tool": "local_debate_review_diff",
-            "ok": False,
-            "result": None,
-            "error": "subprocess timed out",
-            "suggestion": "try smaller diff, --fast, or CLI",
-            "elapsed_seconds": result["elapsed_seconds"],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
+        return build_error_response(
+            tool="local_debate_review_diff", error_type="timeout",
+            error="subprocess timed out", suggestion="try smaller diff, --fast, or CLI",
+            elapsed=result["elapsed_seconds"], request_id=request_id,
+        )
 
     output = None
     if result["ok"]:
@@ -520,18 +677,21 @@ def call_debate_review_diff(params: dict) -> dict:
             output = json.loads(result["stdout"])
         except (json.JSONDecodeError, TypeError):
             pass
-    if output is None and result["ok"]:
-        output = find_latest_json_output()
+        if output is None:
+            output, _ = load_worker_output(result["stdout"])
 
-    return {
-        "tool": "local_debate_review_diff",
-        "ok": result["ok"],
-        "result": truncate_output(output) if output else {"stdout": result["stdout"][:5000],
-                                                           "stderr": result["stderr"][:1000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    if result["ok"] and output:
+        return build_success_response("local_debate_review_diff", output,
+                                      result["elapsed_seconds"], request_id)
+    if result["ok"]:
+        return build_error_response(
+            tool="local_debate_review_diff", error_type="missing_worker_output",
+            error="debate returned no parsable output",
+            suggestion="re-run with --summary-only off to inspect raw output",
+            elapsed=result["elapsed_seconds"], request_id=request_id,
+        )
+    return coerce_failure_response("local_debate_review_diff", output,
+                                   result["stderr"], result["elapsed_seconds"], request_id)
 
 
 def call_draft_code(params: dict) -> dict:
@@ -540,18 +700,23 @@ def call_draft_code(params: dict) -> dict:
     context_file = params.get("context_file", "")
 
     if not prompt.strip():
-        return {"tool": "local_draft_code", "ok": False, "result": None,
-                "error": "prompt is empty", "elapsed_seconds": 0,
-                "created_at": datetime.now(timezone.utc).isoformat()}
+        return build_error_response(
+            tool="local_draft_code", error_type="empty_input",
+            error="prompt is empty",
+            suggestion="describe the fix/feature/refactor in the prompt",
+            profile=params.get("profile"), model=params.get("model"), task=task,
+        )
 
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), task]
 
     if context_file:
         ok, err = validate_path(context_file)
         if not ok:
-            return {"tool": "local_draft_code", "ok": False, "result": None,
-                    "error": err, "elapsed_seconds": 0,
-                    "created_at": datetime.now(timezone.utc).isoformat()}
+            return build_error_response(
+                tool="local_draft_code", error_type="blocked_path", error=err,
+                suggestion="use a file path that is not in the blocked list",
+                profile=params.get("profile"), model=params.get("model"), task=task,
+            )
         cmd.append(context_file)
 
     if params.get("profile"):
@@ -559,16 +724,7 @@ def call_draft_code(params: dict) -> dict:
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
-    result = run_subprocess(cmd, stdin_data=prompt)
-    latest = find_latest_json_output()
-    return {
-        "tool": "local_draft_code",
-        "ok": result["ok"],
-        "result": truncate_output(latest) if latest else {"stdout": result["stdout"][:5000]},
-        "error": None if result["ok"] else result["stderr"][:500],
-        "elapsed_seconds": result["elapsed_seconds"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return _wrap_worker_call("local_draft_code", cmd, stdin_data=prompt)
 
 
 TOOL_HANDLERS = {
@@ -583,8 +739,11 @@ TOOL_HANDLERS = {
 
 
 def handle_tools_call(msg_id: int | str, params: dict) -> dict:
+    """Dispatch a tool call. ALWAYS returns a JSON-RPC response — never
+    raises — so a single tool failure cannot terminate the stdio server.
+    """
     tool_name = params.get("name", "")
-    arguments = params.get("arguments", {})
+    arguments = params.get("arguments", {}) or {}
 
     if tool_name not in TOOL_HANDLERS:
         return {
@@ -602,48 +761,49 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
             "jsonrpc": "2.0",
             "id": msg_id,
             "result": {
-                "content": [{"type": "text", "text": json.dumps({
-                    "ok": False,
-                    "tool": tool_name,
-                    "error_type": "concurrent_request",
-                    "error": "Another local-llm request is in progress. Only one model call at a time.",
-                    "suggestion": "Wait for the current request to complete and retry.",
-                    "elapsed_seconds": 0,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }, ensure_ascii=False)}],
+                "content": [{"type": "text", "text": json.dumps(build_error_response(
+                    tool=tool_name,
+                    error_type="concurrent_request",
+                    error="Another local-llm request is in progress. Only one model call at a time.",
+                    suggestion="Wait for the current request to complete and retry.",
+                ), ensure_ascii=False)}],
             },
         }
 
     handler = TOOL_HANDLERS[tool_name]
+    output: dict
     try:
         output = handler(arguments)
-        content = json.dumps(output, ensure_ascii=False)
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "content": [{"type": "text", "text": content}],
-            },
-        }
-    except Exception as e:
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "content": [{
-                    "type": "text",
-                    "text": json.dumps({
-                        "ok": False,
-                        "tool": tool_name,
-                        "error": f"Internal error: {e}",
-                        "elapsed_seconds": 0,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }, ensure_ascii=False),
-                }],
-            },
-        }
+        if not isinstance(output, dict):
+            output = build_error_response(
+                tool=tool_name, error_type="bad_handler_return",
+                error=f"handler returned {type(output).__name__}",
+                suggestion="report v0.9.3 bug — handler must return dict",
+            )
+    except Exception as exc:
+        tb = traceback.format_exc()
+        print(f"WARN: handler {tool_name} raised: {exc}\n{tb}", file=sys.stderr)
+        output = build_error_response(
+            tool=tool_name, error_type="internal_error",
+            error=f"Internal error: {exc}"[:300],
+            suggestion="see server stderr for traceback",
+        )
     finally:
         _call_lock.release()
+
+    try:
+        content = json.dumps(output, ensure_ascii=False, default=str)
+    except Exception as exc:
+        content = json.dumps(build_error_response(
+            tool=tool_name, error_type="serialization_failed",
+            error=f"could not serialize tool result: {exc}",
+            suggestion="report v0.9.3 bug",
+        ))
+    return {
+        "jsonrpc": "2.0",
+        "id": msg_id,
+        "result": {"content": [{"type": "text", "text": content}]},
+    }
 
 
 def main():
@@ -663,15 +823,30 @@ def main():
 
     print(f"MCP Server '{SERVER_NAME}' v{SERVER_VERSION} starting on stdio", file=sys.stderr)
 
-    try:
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
+    while True:
+        try:
+            line = sys.stdin.readline()
+        except (KeyboardInterrupt, EOFError):
+            break
+        except Exception as exc:
+            print(f"WARN: stdin read failed: {exc}", file=sys.stderr)
+            time.sleep(0.05)
+            continue
+        if not line:
+            break  # genuine EOF — host closed stdin
+        line = line.strip()
+        if not line:
+            continue
 
+        # The handler below MUST NOT escape uncaught — every exception path
+        # is bounded so that a failure on one request leaves the server live
+        # to serve the next. v0.9.2 died because exceptions propagated past
+        # the per-request boundary.
+        try:
             try:
                 request = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                print(f"WARN: malformed JSON-RPC line dropped: {exc}", file=sys.stderr)
                 continue
 
             msg_id = request.get("id", 0)
@@ -687,31 +862,54 @@ def main():
                 response = handle_tools_call(msg_id, request.get("params", {}))
                 elapsed = round(time.time() - start, 2)
                 print(f"  [{elapsed}s] {tool_name}", file=sys.stderr)
-                # Structured log
+                # Structured log — prompt metadata is propagated via the
+                # response payload so the MCP and CLI log entries carry the
+                # same prompt_id / version / hash for traceability.
                 try:
                     content = json.loads(response["result"]["content"][0]["text"])
                     from local_llm_logging import write_log_entry
                     write_log_entry({
                         "source": "mcp", "tool": tool_name,
-                        "task": tool_name.replace("local_", ""),
+                        "task": content.get("task") or tool_name.replace("local_", ""),
+                        "profile": content.get("profile"),
+                        "model": content.get("model"),
                         "ok": content.get("ok", False),
                         "duration_sec": elapsed,
                         "error_type": content.get("error_type"),
-                        "error": content.get("error", "")[:200] if content.get("error") else None,
+                        "error": (content.get("error") or "")[:200] if content.get("error") else None,
+                        "request_id": content.get("request_id"),
+                        "prompt_id": content.get("prompt_id"),
+                        "prompt_version": content.get("prompt_version"),
+                        "prompt_hash": content.get("prompt_hash"),
+                        "cache_hit": content.get("cache_hit", False),
                     })
-                except Exception:
-                    pass
+                except Exception as log_exc:
+                    print(f"WARN: log_entry failed: {log_exc}", file=sys.stderr)
                 write_json_response(response)
             elif method == "notifications/initialized":
                 pass  # ack silently
+            elif method.startswith("notifications/"):
+                pass  # ignore other notifications silently
             else:
                 write_json_response({
                     "jsonrpc": "2.0",
-                    "id": msg_id,
+                    "id": request.get("id", 0),
                     "error": {"code": -32601, "message": f"Method not found: {method}"},
                 })
-    except KeyboardInterrupt:
-        pass
+        except KeyboardInterrupt:
+            break
+        except Exception as exc:
+            tb = traceback.format_exc()
+            print(f"WARN: per-request handler crashed: {exc}\n{tb}", file=sys.stderr)
+            try:
+                write_json_response({
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "error": {"code": -32603, "message": f"Internal server error: {exc}"},
+                })
+            except Exception:
+                pass
+            # Stay in loop. Do not exit on per-request failure.
 
     print("MCP Server shutting down", file=sys.stderr)
     return 0

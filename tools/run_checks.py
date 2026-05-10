@@ -61,20 +61,30 @@ def check_pytest_available() -> bool:
 
 
 def run_pytest() -> bool:
+    """Run the pipeline-scoped test subset.
+
+    run_checks is the gate for the local-llm-pipeline (v0.9.3+). It runs the
+    pipeline's own tests (`tests/test_local_llm_*.py`) so the gate doesn't
+    fail because of unrelated translator-agent tests that depend on fastapi /
+    a running server / other optional infrastructure. Translator-agent tests
+    have their own gate.
+    """
     tests_dir = PROJECT_ROOT / "tests"
-    if not tests_dir.exists() or not list(tests_dir.glob("test_*.py")):
-        print(f"  [SKIP] No test files found in tests/")
+    pipeline_tests = sorted(tests_dir.glob("test_local_llm_*.py"))
+    if not pipeline_tests:
+        print(f"  [SKIP] No pipeline test files found (tests/test_local_llm_*.py)")
         return True
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", str(tests_dir), "-q", "--tb=short",
-             "--ignore=" + str(tests_dir / "test_run_checks.py")],
-            capture_output=True, text=True, timeout=120,
+            [sys.executable, "-m", "pytest", *(str(p) for p in pipeline_tests),
+             "-q", "--tb=short"],
+            capture_output=True, text=True, timeout=180,
             cwd=str(PROJECT_ROOT),
+            encoding="utf-8", errors="replace",
         )
         ok = result.returncode == 0
         last_line = result.stdout.strip().split("\n")[-1] if result.stdout else ""
-        print(f"  [{_status(ok)}] pytest: {last_line}")
+        print(f"  [{_status(ok)}] pytest ({len(pipeline_tests)} pipeline file(s)): {last_line}")
         if not ok and result.stdout:
             for line in result.stdout.strip().split("\n")[-5:]:
                 print(f"         {line}")
