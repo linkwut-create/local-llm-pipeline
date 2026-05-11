@@ -100,11 +100,11 @@ def main():
     profile_name, model, risk = resolve_profile(task, profile_override, model_override)
 
     available_models = get_ollama_models()
+    profiles_data = load_json(PROFILES_PATH)
 
     if model and not check_model_available(model, available_models):
         print(f"WARNING: Model '{model}' not found in ollama list.", file=sys.stderr)
         # Try profile candidates in order (v0.9.5: candidates-based fallback only)
-        profiles_data = load_json(PROFILES_PATH)
         profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
         candidates = profile_cfg.get("candidates", [])
         fallback = None
@@ -153,9 +153,13 @@ def main():
     has_stdin = "--stdin" in filtered_args
     if has_stdin:
         stdin_data = sys.stdin.read() if not sys.stdin.isatty() else ""
-        result = subprocess.run(cmd, input=stdin_data, text=True, capture_output=False, env=subprocess_env)
+        result = subprocess.run(cmd, input=stdin_data, text=True,
+                                encoding="utf-8", errors="replace",
+                                capture_output=False, env=subprocess_env)
     else:
-        result = subprocess.run(cmd, text=True, capture_output=False, env=subprocess_env)
+        result = subprocess.run(cmd, text=True,
+                                encoding="utf-8", errors="replace",
+                                capture_output=False, env=subprocess_env)
 
     sys.exit(result.returncode)
 

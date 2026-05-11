@@ -711,6 +711,9 @@ def call_generate_test_plan(params: dict) -> dict:
     return _wrap_worker_call("local_generate_test_plan", cmd)
 
 
+REVIEW_TIMEOUT = 60
+
+
 def call_review_diff(params: dict) -> dict:
     diff_text = params.get("diff_text", "")
     if not diff_text.strip():
@@ -733,13 +736,40 @@ def call_review_diff(params: dict) -> dict:
     if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
         return call_debate_review_diff(params)
 
+    # Use the caller's profile if provided, otherwise router picks commit_reviewer default
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), "review-diff", "--stdin"]
     if params.get("profile"):
         cmd.extend(["--profile", params["profile"]])
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
-    return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text)
+    request_id = _make_request_id()
+    result = run_subprocess(cmd, stdin_data=diff_text, timeout=REVIEW_TIMEOUT)
+
+    if not result["ok"] and "timed out" in result["stderr"].lower():
+        return build_error_response(
+            tool="local_review_diff", error_type="timeout",
+            error=f"single-model review timed out after {REVIEW_TIMEOUT}s",
+            suggestion="try a smaller diff, a lighter profile, or unload the active Ollama model",
+            elapsed=result["elapsed_seconds"], request_id=request_id,
+            profile=params.get("profile"), model=params.get("model"),
+        )
+
+    payload, parse_err = load_worker_output(result["stdout"])
+
+    if result["ok"]:
+        if payload is None:
+            return build_error_response(
+                tool="local_review_diff", error_type="missing_worker_output",
+                error=parse_err or "worker exited 0 but produced no output file",
+                suggestion="check worker stderr for warnings",
+                elapsed=result["elapsed_seconds"], request_id=request_id,
+            )
+        return build_success_response("local_review_diff", payload,
+                                       result["elapsed_seconds"], request_id)
+
+    return coerce_failure_response("local_review_diff", payload,
+                                    result["stderr"], result["elapsed_seconds"], request_id)
 
 
 def call_debate_review_diff(params: dict) -> dict:
