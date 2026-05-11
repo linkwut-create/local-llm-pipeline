@@ -169,7 +169,12 @@ TOOLS = {
         },
     },
     "local_review_diff": {
-        "description": "Review a git diff using a local LLM (single model). Returns problems, test gaps, compatibility risks, and security concerns.",
+        "description": (
+            "Review a git diff using a local LLM (single model). Returns problems, test gaps, "
+            "compatibility risks, and security concerns. "
+            "Set commit_gate=true for fast pre-commit review (skips auto-debate escalation, "
+            "uses 60s timeout). For deep multi-model review call local_debate_review_diff directly."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -184,6 +189,14 @@ TOOLS = {
                 "model": {
                     "type": "string",
                     "description": "Optional model name override.",
+                },
+                "commit_gate": {
+                    "type": "boolean",
+                    "description": (
+                        "Set to true for fast pre-commit review. Skips automatic debate escalation "
+                        "and uses the 60s timeout single-model path. For deep review, "
+                        "call local_debate_review_diff explicitly."
+                    ),
                 },
             },
             "required": ["diff_text"],
@@ -726,15 +739,19 @@ def call_review_diff(params: dict) -> dict:
     if len(diff_text) > MAX_DIFF_CHARS:
         diff_text = diff_text[:MAX_DIFF_CHARS]
 
+    commit_gate = bool(params.get("commit_gate", False))
+
     # Auto-escalate to debate for large or multi-file diffs (v0.9.5)
-    line_count = diff_text.count('\n')
-    file_count = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
-    has_logic = bool(re.search(
-        r'^[+-]\s*(def |class |async |await |return |if __|import |from \w+ import)',
-        diff_text, re.MULTILINE,
-    ))
-    if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
-        return call_debate_review_diff(params)
+    # commit_gate skips escalation for fast pre-commit review
+    if not commit_gate:
+        line_count = diff_text.count('\n')
+        file_count = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
+        has_logic = bool(re.search(
+            r'^[+-]\s*(def |class |async |await |return |if __|import |from \w+ import)',
+            diff_text, re.MULTILINE,
+        ))
+        if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
+            return call_debate_review_diff(params)
 
     # Use the caller's profile if provided, otherwise router picks commit_reviewer default
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), "review-diff", "--stdin"]

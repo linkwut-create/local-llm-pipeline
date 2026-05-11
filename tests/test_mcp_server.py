@@ -207,6 +207,102 @@ def test_two_file_no_logic_does_not_trigger_debate():
         mock_debate.assert_not_called()
 
 
+# --- commit_gate fast path tests ---
+
+def test_large_diff_with_commit_gate_does_not_trigger_debate(monkeypatch):
+    """commit_gate=true skips auto-debate even for diff > 100 lines."""
+    monkeypatch.setattr(mcp, "run_subprocess",
+                        lambda cmd, **kw: {"ok": True, "stdout": "JSON: /fake/o.json",
+                                           "stderr": "", "returncode": 0, "elapsed_seconds": 1.0})
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3-coder:30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    large = _make_diff(line_count=120, files=1)
+    with patch.object(mcp, "call_debate_review_diff") as mock_debate:
+        result = mcp.call_review_diff({"diff_text": large, "commit_gate": True})
+        mock_debate.assert_not_called()
+    assert result["ok"] is True
+
+
+def test_logic_diff_with_commit_gate_does_not_trigger_debate(monkeypatch):
+    """commit_gate=true skips auto-debate even for logic changes in 2+ files."""
+    monkeypatch.setattr(mcp, "run_subprocess",
+                        lambda cmd, **kw: {"ok": True, "stdout": "JSON: /fake/o.json",
+                                           "stderr": "", "returncode": 0, "elapsed_seconds": 1.0})
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3-coder:30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    logic_diff = _make_diff(line_count=40, files=2, with_logic=True)
+    with patch.object(mcp, "call_debate_review_diff") as mock_debate:
+        result = mcp.call_review_diff({"diff_text": logic_diff, "commit_gate": True})
+        mock_debate.assert_not_called()
+    assert result["ok"] is True
+
+
+def test_commit_gate_false_still_triggers_debate():
+    """commit_gate=false explicitly still auto-escalates to debate."""
+    large = _make_diff(line_count=120, files=1)
+    mock_debate_result = {"tool": "local_debate_review_diff", "ok": True, "task": "debate-review-diff"}
+    with patch.object(mcp, "call_debate_review_diff", return_value=mock_debate_result):
+        result = mcp.call_review_diff({"diff_text": large, "commit_gate": False})
+        assert result["tool"] == "local_debate_review_diff"
+
+
+def test_commit_gate_uses_60s_timeout(monkeypatch):
+    """commit_gate=true on a large diff still uses REVIEW_TIMEOUT=60."""
+    captured = {}
+
+    def _capture_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = dict(kwargs)
+        return {
+            "ok": True, "stdout": "JSON: /fake/o.json",
+            "stderr": "", "returncode": 0, "elapsed_seconds": 1.5,
+        }
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_run)
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3-coder:30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    # Large diff would normally trigger debate, but commit_gate=true skips it
+    large = _make_diff(line_count=120, files=1)
+    result = mcp.call_review_diff({"diff_text": large, "commit_gate": True})
+    assert result["ok"] is True
+    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 60, (
+        f"Expected timeout={mcp.REVIEW_TIMEOUT}, got {captured['kwargs'].get('timeout')}"
+    )
+
+
+def test_commit_gate_respects_explicit_profile(monkeypatch):
+    """commit_gate=true still passes explicit profile to the router."""
+    cmd_parts = []
+
+    def _capture_cmd(cmd, **kwargs):
+        cmd_parts.extend(cmd)
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = "JSON: /fake/output.json"
+        return m
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_cmd)
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "deep_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3.6:35b-q8-ud", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    # Large diff + commit_gate=true → skips debate, still uses explicit profile
+    large = _make_diff(line_count=120, files=1)
+    mcp.call_review_diff({"diff_text": large, "commit_gate": True, "profile": "deep_reviewer"})
+    assert "--profile" in cmd_parts
+    assert "deep_reviewer" in cmd_parts
+
+
 # --- contextual_analyze tests (v0.9.5) ---
 
 def test_contextual_analyze_empty_question(monkeypatch):
