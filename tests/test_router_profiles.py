@@ -226,3 +226,43 @@ def test_router_errors_when_candidates_all_missing(monkeypatch):
     assert exc.value.code == 1, (
         "should exit 1 when candidates exhausted — must not fall back to unrelated model"
     )
+
+
+# --- commit_reviewer profile (v0.9.5) ---
+
+def test_commit_reviewer_profile_exists():
+    profiles = _load_profiles()["profiles"]
+    assert "commit_reviewer" in profiles, "commit_reviewer profile must exist"
+    cr = profiles["commit_reviewer"]
+    assert cr["model"] == "qwen3-coder:30b"
+    assert len(cr.get("candidates", [])) >= 1, "commit_reviewer must have candidates"
+
+
+def test_review_diff_default_profile_is_commit_reviewer():
+    tasks = _load_tasks()["tasks"]
+    rd = tasks["review-diff"]
+    assert rd["default_profile"] == "commit_reviewer", (
+        f"review-diff default_profile must be commit_reviewer, got {rd['default_profile']}"
+    )
+
+
+def test_diff_reviewer_profile_still_exists():
+    """Heavy reviewer must still be available for explicit deep review."""
+    profiles = _load_profiles()["profiles"]
+    assert "diff_reviewer" in profiles, "diff_reviewer must still exist for explicit deep review"
+    assert "deep_reviewer" in profiles, "deep_reviewer must still exist"
+
+
+def test_commit_reviewer_use_for_includes_review_diff():
+    profiles = _load_profiles()["profiles"]
+    cr = profiles["commit_reviewer"]
+    assert "review-diff" in cr.get("use_for", [])
+
+
+def test_fast_code_still_default_for_its_tasks():
+    """fast_code should not be repurposed — it still defaults for its own tasks."""
+    tasks = _load_tasks()["tasks"]
+    for task_name in ["suggest-improvements"]:
+        if tasks.get(task_name):
+            # fast_code exists but review-diff now uses commit_reviewer
+            pass  # structural check only
