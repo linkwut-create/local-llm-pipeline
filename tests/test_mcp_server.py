@@ -496,3 +496,59 @@ def test_dry_run_does_not_write_manifest_import():
         target = Path(tmp)
         inst_write_manifest(target, ["tools/x.py"], [], ["AGENTS.md"], dry_run=True)
         assert not (target / ".local_llm_pipeline.json").exists()
+
+
+# --- commit_reviewer timeout and profile tests (v0.9.5) ---
+
+def test_review_timeout_constant_exists():
+    assert mcp.REVIEW_TIMEOUT == 60, "REVIEW_TIMEOUT should be 60s for commit gate"
+
+
+def test_review_diff_respects_explicit_profile(monkeypatch):
+    """Explicit profile=deep_reviewer must pass through — NOT overridden by default commit_reviewer."""
+    cmd_parts = []
+
+    def _capture_cmd(cmd, **kwargs):
+        cmd_parts.extend(cmd)
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = "JSON: /fake/output.json"
+        return m
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_cmd)
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "deep_reviewer", "prompt_id": "x",
+                                         "prompt_version": "v1", "prompt_hash": "abc", "model": "qwen3.6:35b-q8-ud",
+                                         "cache_hit": False, "result": {"summary": "ok"}}, None))
+    # Single-file small diff — won't trigger auto-debate (1 file, < 100 lines, no logic)
+    small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
+    mcp.call_review_diff({"diff_text": small, "profile": "deep_reviewer"})
+    assert "--profile" in cmd_parts
+    assert "deep_reviewer" in cmd_parts
+
+
+def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
+    """call_review_diff must pass timeout=REVIEW_TIMEOUT (60) to run_subprocess."""
+    captured = {}
+
+    def _capture_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = dict(kwargs)
+        return {
+            "ok": True, "stdout": "JSON: /fake/o.json",
+            "stderr": "", "returncode": 0, "elapsed_seconds": 1.5,
+        }
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_run)
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3-coder:30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    # Single-file diff: no auto-debate trigger (< 100 lines, 1 file, no logic)
+    small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
+    result = mcp.call_review_diff({"diff_text": small})
+    assert result["ok"] is True
+    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 60, (
+        f"Expected timeout={mcp.REVIEW_TIMEOUT}, got {captured['kwargs'].get('timeout')}"
+    )
