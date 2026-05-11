@@ -56,7 +56,7 @@
     },
     "review-diff": {
       "risk": "medium",
-      "default_profile": "diff_reviewer",
+      "default_profile": "commit_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 5000,
