@@ -451,6 +451,7 @@ NO_RETRY_TASKS = {
 }
 
 MAX_RETRIES = 1
+RETRY_DELAY_SECONDS = 2.0
 
 
 def classify_error(exc: Exception, task: str) -> tuple[str, str]:
@@ -513,6 +514,7 @@ def call_model_with_retry(system: str, user: str, config: WorkerConfig,
                     ValueError("empty response from model"), task)
                 if should_retry and attempt < MAX_RETRIES:
                     retries += 1
+                    time.sleep(RETRY_DELAY_SECONDS)
                     continue
                 return "", {"error_type": error_type, "error": "model returned empty response",
                             "suggestion": suggestion, "retries": retries}
@@ -522,6 +524,7 @@ def call_model_with_retry(system: str, user: str, config: WorkerConfig,
             error_type, suggestion = classify_error(e, task)
             if should_retry and attempt < MAX_RETRIES:
                 retries += 1
+                time.sleep(RETRY_DELAY_SECONDS)
                 continue
             return "", {"error_type": error_type, "error": str(e)[:300],
                         "suggestion": suggestion, "retries": retries}
@@ -542,6 +545,11 @@ def call_model(system: str, user: str, config: WorkerConfig) -> str:
 
 
 def parse_structured(raw: str, task: str) -> dict:
+    """Parse LLM output into structured fields using keyword matching.
+
+    v0.9.5: expanded to cover Chinese keywords (models often emit mixed-language
+    output) and weaker signal phrases that older logic missed.
+    """
     parsed = {
         "key_files": [],
         "must_read": [],
@@ -553,20 +561,61 @@ def parse_structured(raw: str, task: str) -> dict:
     lines = raw.split("\n")
     for line in lines:
         lower = line.lower().strip()
-        if any(kw in lower for kw in ["must read", "must inspect", "controller must"]):
+
+        # Must-read signals
+        if any(kw in lower for kw in [
+            "must read", "must inspect", "controller must",
+            "务必检查", "必须审查", "关键文件", "重要文件",
+            "pay attention", "important to read",
+            "should be reviewed", "needs manual check",
+        ]):
             parsed["must_read"].append(line.strip())
-        if any(kw in lower for kw in ["risk", "danger", "warning", "concern"]):
+
+        # Risk signals
+        if any(kw in lower for kw in [
+            "risk", "danger", "warning", "concern",
+            "风险", "危险", "警告", "潜在问题",
+            "vulnerable", "unsafe", "could fail",
+            "might cause", "breaking change",
+            "security issue", "brittle", "fragile",
+        ]):
             parsed["risks"].append(line.strip())
-        if any(kw in lower for kw in ["test gap", "missing test", "untested", "no test"]):
+
+        # Test gap signals
+        if any(kw in lower for kw in [
+            "test gap", "missing test", "untested", "no test",
+            "缺少测试", "未测试", "测试不足", "没有测试",
+            "not covered", "coverage gap",
+            "should test", "needs a test",
+        ]):
             parsed["test_gaps"].append(line.strip())
-        if any(kw in lower for kw in ["uncertain", "unclear", "insufficient", "unknown", "unsure"]):
+
+        # Uncertainty signals
+        if any(kw in lower for kw in [
+            "uncertain", "unclear", "insufficient", "unknown", "unsure",
+            "不确定", "不清楚", "信息不足", "未知", "难以判断",
+            "ambiguous", "vague", "lacks detail",
+            "needs more context", "should verify",
+            "possibly", "might be", "could be",
+        ]):
             parsed["uncertain_points"].append(line.strip())
 
     file_pattern = re.compile(r'[\w./\\-]+\.\w{1,10}')
     for match in file_pattern.finditer(raw):
         candidate = match.group()
-        if candidate not in parsed["key_files"] and "/" in candidate or "\\" in candidate:
+        if candidate not in parsed["key_files"] and ("/" in candidate or "\\" in candidate):
             parsed["key_files"].append(candidate)
+
+    # Deduplicate while preserving order
+    for key in parsed:
+        seen = set()
+        deduped = []
+        for item in parsed[key]:
+            normalized = item.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                deduped.append(item)
+        parsed[key] = deduped
 
     return parsed
 

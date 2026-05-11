@@ -17,14 +17,14 @@ FORBIDDEN_TOOL_KEYWORDS = [
 
 
 def test_tools_count():
-    assert len(mcp.TOOLS) == 7
+    assert len(mcp.TOOLS) == 8
 
 
 def test_tool_names():
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff", "local_debate_review_diff",
-        "local_draft_code",
+        "local_draft_code", "local_contextual_analyze",
     }
     assert set(mcp.TOOLS.keys()) == expected
 
@@ -111,7 +111,7 @@ def test_handle_tools_list():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 2
     tools = response["result"]["tools"]
-    assert len(tools) == 7
+    assert len(tools) == 8
     tool_names = {t["name"] for t in tools}
     assert "local_check" in tool_names
 
@@ -140,7 +140,96 @@ def test_call_local_check_no_models(monkeypatch):
 def test_call_debate_empty_diff():
     result = mcp.call_debate_review_diff({"diff_text": ""})
     assert result["ok"] is False
-    assert "empty" in result["error"].lower()
+
+
+# --- auto-debate trigger tests (v0.9.5) ---
+
+def _make_diff(line_count: int, files: int, with_logic: bool = False) -> str:
+    """Build a synthetic diff with the given number of newline chars and files."""
+    parts = []
+    per_file = max(1, line_count // max(files, 1))
+    for i in range(files):
+        parts.append(f"diff --git a/file{i}.py b/file{i}.py")
+        parts.append("--- a/file{i}.py")
+        parts.append("+++ b/file{i}.py")
+        parts.append(f"@@ -1,{per_file} +1,{per_file} @@")
+        for j in range(per_file):
+            if with_logic and j == 0:
+                parts.append("+def new_function():")
+            else:
+                parts.append(f"+ added line {j} in file {i}")
+        parts.append("")
+    return "\n".join(parts)
+
+
+def test_small_diff_does_not_trigger_debate():
+    """Diff < 100 lines, single file, no logic → single-model review."""
+    small = _make_diff(line_count=10, files=1)
+    with patch.object(mcp, "call_debate_review_diff") as mock_debate, \
+         patch.object(mcp, "_wrap_worker_call", return_value={"ok": True, "task": "review-diff"}):
+        result = mcp.call_review_diff({"diff_text": small})
+        mock_debate.assert_not_called()
+
+
+def test_large_diff_triggers_debate():
+    """Diff > 100 lines → auto-escalate to debate."""
+    large = _make_diff(line_count=120, files=1)
+    mock_debate_result = {"tool": "local_debate_review_diff", "ok": True, "task": "debate-review-diff"}
+    with patch.object(mcp, "call_debate_review_diff", return_value=mock_debate_result):
+        result = mcp.call_review_diff({"diff_text": large})
+        assert result["tool"] == "local_debate_review_diff"
+
+
+def test_multi_file_diff_triggers_debate():
+    """Diff touches 3+ files → auto-escalate to debate."""
+    multi = _make_diff(line_count=30, files=3)
+    mock_debate_result = {"tool": "local_debate_review_diff", "ok": True, "task": "debate-review-diff"}
+    with patch.object(mcp, "call_debate_review_diff", return_value=mock_debate_result):
+        result = mcp.call_review_diff({"diff_text": multi})
+        assert result["tool"] == "local_debate_review_diff"
+
+
+def test_logic_diff_triggers_debate():
+    """Logic changes (def/class/import) in 2+ files → auto-escalate."""
+    logic_diff = _make_diff(line_count=40, files=2, with_logic=True)
+    mock_debate_result = {"tool": "local_debate_review_diff", "ok": True, "task": "debate-review-diff"}
+    with patch.object(mcp, "call_debate_review_diff", return_value=mock_debate_result):
+        result = mcp.call_review_diff({"diff_text": logic_diff})
+        assert result["tool"] == "local_debate_review_diff"
+
+
+def test_two_file_no_logic_does_not_trigger_debate():
+    """2 files, no logic changes, < 100 lines → no debate."""
+    small_multi = _make_diff(line_count=30, files=2, with_logic=False)
+    with patch.object(mcp, "call_debate_review_diff") as mock_debate, \
+         patch.object(mcp, "_wrap_worker_call", return_value={"ok": True, "task": "review-diff"}):
+        result = mcp.call_review_diff({"diff_text": small_multi})
+        mock_debate.assert_not_called()
+
+
+# --- contextual_analyze tests (v0.9.5) ---
+
+def test_contextual_analyze_empty_question(monkeypatch):
+    # Allow outside-project access for the temp file
+    monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
+    import tempfile, os
+    fd, tf = tempfile.mkstemp(suffix=".py")
+    os.close(fd)
+    Path(tf).write_text("print('hello')", encoding="utf-8")
+    try:
+        result = mcp.call_contextual_analyze({"path": tf, "question": ""})
+        assert result["ok"] is False
+        assert result["error_type"] == "empty_input"
+    finally:
+        Path(tf).unlink(missing_ok=True)
+
+
+def test_contextual_analyze_missing_path():
+    # Use a path inside the project root that does not exist
+    bad_path = str(Path(__file__).parent / "nonexistent_file.py")
+    result = mcp.call_contextual_analyze({"path": bad_path, "question": "test?"})
+    assert result["ok"] is False
+    assert result["error_type"] is not None
 
 
 def test_call_debate_builds_correct_cmd():

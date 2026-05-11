@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 TOOLS_DIR = Path(__file__).parent.parent / "tools"
@@ -110,3 +112,117 @@ def test_embedding_profile_low_risk():
     emb = profiles["embedding"]
     assert emb["risk_level"] == "low"
     assert emb["temperature"] == 0.0
+
+
+# --- Router fallback logic (v0.9.5) ---
+
+from unittest.mock import MagicMock
+
+import local_llm_router as router
+
+
+def test_check_model_available_exact_match():
+    assert router.check_model_available("gemma4:e4b", ["gemma4:e4b", "qwen3.5-9b-q8:latest"])
+
+
+def test_check_model_available_prefix_match():
+    """Model name prefix match (without tag) returns True."""
+    assert router.check_model_available("qwen3.5-9b-q8", ["qwen3.5-9b-q8:latest"])
+
+
+def test_check_model_available_not_found():
+    assert not router.check_model_available("nonexistent:model", ["gemma4:e4b"])
+
+
+def test_check_model_available_empty_model():
+    assert not router.check_model_available("", ["gemma4:e4b"])
+
+
+def test_resolve_profile_candidates_list():
+    """Profile resolution should return a profile with candidates for fallback."""
+    _, model, _ = router.resolve_profile("summarize-file", None, None)
+    assert model == "gemma4:e4b"  # default profile for summarize-file
+
+
+def test_profiles_without_candidates_error_safe():
+    """Router handles empty candidates gracefully — errors instead of bad fallback.
+
+    Most profiles currently don't have explicit candidates in profiles.json;
+    local_check generates them dynamically. When candidates=[], the router
+    errors out rather than falling back to an unrelated model.
+    """
+    profiles = _load_profiles()["profiles"]
+    # Verify we can iterate all profiles without error
+    for name, cfg in profiles.items():
+        candidates = cfg.get("candidates", [])
+        assert isinstance(candidates, list), f"Profile '{name}' candidates must be a list"
+
+
+def test_env_override_in_mtp_profiles():
+    """MTP/llama.cpp profiles should have _env for backend routing."""
+    profiles = _load_profiles()["profiles"]
+    mtp_profile = profiles.get("gemma4_26b_mtp")
+    if mtp_profile:
+        assert "_acceleration" in mtp_profile
+    mistral_llamacpp = profiles.get("mistral_119b_llamacpp")
+    if mistral_llamacpp:
+        env = mistral_llamacpp.get("_env", "")
+        assert "LOCAL_LLM_BASE_URL" in env, "llama.cpp profile should set LOCAL_LLM_BASE_URL in _env"
+
+
+# --- Hard Router fallback safety tests (v0.9.5) ---
+
+FAKE_PROFILES = {
+    "profiles": {
+        "test_profile": {
+            "model": "requested-model:latest",
+            "candidates": ["candidate-model:latest"],
+            "risk_level": "medium",
+        },
+    },
+}
+FAKE_TASKS = {"tasks": {"summarize-file": {"default_profile": "test_profile"}}}
+
+
+def _fake_subprocess_success(cmd, **kwargs):
+    m = MagicMock()
+    m.returncode = 0
+    return m
+
+
+def test_router_fallback_to_candidate_when_requested_missing(monkeypatch):
+    """Requested model missing, candidate available → fallback to candidate, exit 0."""
+    monkeypatch.setattr(
+        router, "get_ollama_models",
+        lambda: ["candidate-model:latest"],
+    )
+    monkeypatch.setattr(
+        router, "load_json",
+        lambda path: FAKE_PROFILES if "profiles" in str(path) else FAKE_TASKS,
+    )
+    monkeypatch.setattr(sys, "argv", ["router.py", "summarize-file", "test.py"])
+    monkeypatch.setattr(router.subprocess, "run", _fake_subprocess_success)
+
+    with pytest.raises(SystemExit) as exc:
+        router.main()
+    assert exc.value.code == 0, "should exit 0 on successful candidate fallback"
+
+
+def test_router_errors_when_candidates_all_missing(monkeypatch):
+    """Requested model + all candidates missing, unrelated models available → sys.exit(1)."""
+    monkeypatch.setattr(
+        router, "get_ollama_models",
+        lambda: ["unrelated-model:latest"],
+    )
+    monkeypatch.setattr(
+        router, "load_json",
+        lambda path: FAKE_PROFILES if "profiles" in str(path) else FAKE_TASKS,
+    )
+    monkeypatch.setattr(sys, "argv", ["router.py", "summarize-file", "test.py"])
+    monkeypatch.setattr(router.subprocess, "run", _fake_subprocess_success)
+
+    with pytest.raises(SystemExit) as exc:
+        router.main()
+    assert exc.value.code == 1, (
+        "should exit 1 when candidates exhausted — must not fall back to unrelated model"
+    )

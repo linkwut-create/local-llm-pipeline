@@ -124,7 +124,7 @@ def test_global_launcher_exposes_seven_tools():
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = set(mcp.TOOLS.keys())
-    assert len(expected) == 7, f"Expected 7 tools, got {len(expected)}"
+    assert len(expected) == 8, f"Expected 8 tools, got {len(expected)}"
 
 
 def test_global_launcher_find_project_root_returns_none_outside_git(tmp_path, monkeypatch):

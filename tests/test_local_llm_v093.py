@@ -11,7 +11,7 @@ Covers the nine acceptance items from the v0.9.3 spec:
 7. worker result, JSONL log, and cache JSON all carry
    prompt_id / prompt_version / prompt_hash
 8. local_draft_code writes only to .local_llm_out/
-9. the MCP server still exposes exactly 7 tools
+9. the MCP server still exposes exactly 8 tools
 
 These tests must run without contacting Ollama; the model layer is monkeypatched.
 """
@@ -310,15 +310,16 @@ def test_draft_code_writes_only_to_local_llm_out(tmp_path, isolated_out_dir, mon
     assert any(isolated_out_dir.glob("*_draft-fix.json"))
 
 
-def test_mcp_tool_count_is_seven():
+def test_mcp_tool_count_is_eight():
     """Acceptance #9 — adding/removing MCP tools is a contract change. Lock
-    the surface area at exactly seven so v0.9.3 cannot drift it."""
+    the surface area at exactly eight (v0.9.5 added local_contextual_analyze)."""
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff",
         "local_debate_review_diff", "local_draft_code",
+        "local_contextual_analyze",
     }
     assert set(mcp.TOOLS.keys()) == expected
     assert set(mcp.TOOL_HANDLERS.keys()) == expected
-    assert len(mcp.TOOLS) == 7
+    assert len(mcp.TOOLS) == 8

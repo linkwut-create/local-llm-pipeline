@@ -69,7 +69,7 @@ To avoid double-registration:
 
 ## Security boundaries
 
-All 7 tools are **source-non-mutating**:
+All 8 tools are **source-non-mutating**:
 
 - They **never** modify source files directly.
 - `local_draft_code` writes drafts only to `.local_llm_out/` and requires

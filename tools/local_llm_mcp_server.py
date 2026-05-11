@@ -214,6 +214,39 @@ TOOLS = {
             "required": ["diff_text"],
         },
     },
+    "local_contextual_analyze": {
+        "description": "Analyze a file with a specific question or focus area using a local LLM. Unlike summarize-file (broad overview), this tool does targeted analysis: 'does this code handle errors correctly?', 'what are the thread-safety issues here?', 'how does this module couple to others?'. Accepts previous analysis result as optional context for progressive deepening.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to analyze (must exist, must not be blocked).",
+                },
+                "question": {
+                    "type": "string",
+                    "description": "The specific question or focus area for analysis.",
+                },
+                "previous_result": {
+                    "type": "string",
+                    "description": "Optional JSON string from a prior MCP call result, used as context for progressive analysis.",
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Optional profile name override (e.g. reasoning_checker for risk analysis).",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Optional model name override.",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Max input characters (default: profile default or 60000, max: 200000).",
+                },
+            },
+            "required": ["path", "question"],
+        },
+    },
     "local_draft_code": {
         "description": "Draft code (fix, feature, refactor) or suggest improvements using a local LLM. Output goes to .local_llm_out/ only — NEVER modifies source files. Controller must review, decide, and apply manually.",
         "inputSchema": {
@@ -690,6 +723,16 @@ def call_review_diff(params: dict) -> dict:
     if len(diff_text) > MAX_DIFF_CHARS:
         diff_text = diff_text[:MAX_DIFF_CHARS]
 
+    # Auto-escalate to debate for large or multi-file diffs (v0.9.5)
+    line_count = diff_text.count('\n')
+    file_count = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
+    has_logic = bool(re.search(
+        r'^[+-]\s*(def |class |async |await |return |if __|import |from \w+ import)',
+        diff_text, re.MULTILINE,
+    ))
+    if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
+        return call_debate_review_diff(params)
+
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), "review-diff", "--stdin"]
     if params.get("profile"):
         cmd.extend(["--profile", params["profile"]])
@@ -761,6 +804,66 @@ def call_debate_review_diff(params: dict) -> dict:
                                    result["stderr"], result["elapsed_seconds"], request_id)
 
 
+def call_contextual_analyze(params: dict) -> dict:
+    path_str = params.get("path", "")
+    question = params.get("question", "")
+    ok, err = validate_path(path_str)
+    if not ok:
+        return build_error_response(
+            tool="local_contextual_analyze", error_type="blocked_path", error=err,
+            suggestion="use a file path that is not in the blocked list",
+            profile=params.get("profile"), model=params.get("model"),
+        )
+    if not question.strip():
+        return build_error_response(
+            tool="local_contextual_analyze", error_type="empty_input",
+            error="question is empty",
+            suggestion="provide a specific analysis question",
+            profile=params.get("profile"), model=params.get("model"),
+        )
+
+    max_chars = params.get("max_chars")
+    if max_chars is not None:
+        max_chars = min(int(max_chars), MAX_PATH_MAX_CHARS)
+
+    # Read file content for analysis
+    try:
+        file_content = Path(path_str).read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        return build_error_response(
+            tool="local_contextual_analyze", error_type="read_failed",
+            error=f"could not read file: {exc}",
+            suggestion="check file permissions and encoding",
+            profile=params.get("profile"), model=params.get("model"),
+        )
+
+    limit = max_chars or 60000
+    if len(file_content) > limit:
+        file_content = file_content[:limit] + "\n... [truncated]"
+
+    # Build prompt with question as focus and optional prior result as context
+    previous = params.get("previous_result", "")
+    context_preamble = ""
+    if previous.strip():
+        context_preamble = (
+            "## Previous analysis (use as context, do not repeat):\n"
+            f"{previous[:8000]}\n\n"
+        )
+
+    stdin_data = (
+        f"{context_preamble}"
+        f"## File: {path_str}\n"
+        f"## Question: {question}\n\n"
+        f"## File content:\n```\n{file_content}\n```\n\n"
+        f"Please answer the question above based on the file content."
+    )
+
+    # Use the router for model resolution, then worker for actual analysis
+    cmd = build_router_cmd("suggest-improvements", path_str, None, max_chars,
+                           params.get("profile"), params.get("model"))
+    return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data)
+
+
 def call_draft_code(params: dict) -> dict:
     task = params.get("task", "draft-fix")
     prompt = params.get("prompt", "")
@@ -799,6 +902,7 @@ TOOL_HANDLERS = {
     "local_summarize_file": call_summarize_file,
     "local_summarize_tree": call_summarize_tree,
     "local_generate_test_plan": call_generate_test_plan,
+    "local_contextual_analyze": call_contextual_analyze,
     "local_review_diff": call_review_diff,
     "local_debate_review_diff": call_debate_review_diff,
     "local_draft_code": call_draft_code,

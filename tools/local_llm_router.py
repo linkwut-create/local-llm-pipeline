@@ -103,20 +103,45 @@ def main():
 
     if model and not check_model_available(model, available_models):
         print(f"WARNING: Model '{model}' not found in ollama list.", file=sys.stderr)
-        print("Available models:", file=sys.stderr)
-        for m in available_models[:20]:
-            print(f"  - {m}", file=sys.stderr)
-        if available_models:
-            print(f"\nFalling back to first available: {available_models[0]}", file=sys.stderr)
-            model = available_models[0]
+        # Try profile candidates in order (v0.9.5: candidates-based fallback only)
+        profiles_data = load_json(PROFILES_PATH)
+        profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
+        candidates = profile_cfg.get("candidates", [])
+        fallback = None
+        for c in candidates:
+            if check_model_available(c, available_models):
+                fallback = c
+                break
+        if fallback:
+            print(f"Falling back to profile candidate: {fallback}", file=sys.stderr)
+            model = fallback
         else:
-            print("ERROR: No models available. Is Ollama running?", file=sys.stderr)
+            print(
+                f"ERROR: Requested model '{model}' not available and no profile "
+                f"candidates are reachable.\n"
+                f"  Profile: {profile_name}\n"
+                f"  Candidates: {candidates or '(none)'}\n"
+                f"  Available models ({len(available_models)}): "
+                f"{', '.join(available_models[:10])}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     print(f"Router: task={task} profile={profile_name} model={model} risk={risk}", file=sys.stderr)
 
     if risk in ("high",):
         print(f"NOTE: High-risk task. Controller MUST verify output.", file=sys.stderr)
+
+    # Apply profile-specific env overrides (e.g. llama.cpp endpoint for MTP profiles)
+    subprocess_env = os.environ.copy()
+    profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
+    env_override = profile_cfg.get("_env", "")
+    if env_override:
+        for part in env_override.split(" "):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                subprocess_env[k] = v
+                print(f"Router: {profile_name} → env {k}={v}", file=sys.stderr)
 
     cmd = [
         sys.executable, str(WORKER_PATH),
@@ -128,9 +153,9 @@ def main():
     has_stdin = "--stdin" in filtered_args
     if has_stdin:
         stdin_data = sys.stdin.read() if not sys.stdin.isatty() else ""
-        result = subprocess.run(cmd, input=stdin_data, text=True, capture_output=False)
+        result = subprocess.run(cmd, input=stdin_data, text=True, capture_output=False, env=subprocess_env)
     else:
-        result = subprocess.run(cmd, text=True, capture_output=False)
+        result = subprocess.run(cmd, text=True, capture_output=False, env=subprocess_env)
 
     sys.exit(result.returncode)
 

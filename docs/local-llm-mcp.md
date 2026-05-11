@@ -29,7 +29,7 @@ MCP integration means:
 
 ## Tools Exposed (v0.7.0+)
 
-All 7 tools are **source-non-mutating**. They never modify source files directly.
+All 8 tools are **source-non-mutating**. They never modify source files directly.
 `local_draft_code` writes generated drafts only to `.local_llm_out/` and requires
 controller verification before any source change.
 
@@ -106,7 +106,7 @@ claude mcp add --transport stdio --scope project local-llm -- python tools/local
 
 This creates `.mcp.json` at the project root (can be committed to share with the team).
 
-Verify with `/mcp` inside Claude Code — you should see `local-llm` with 7 tools.
+Verify with `/mcp` inside Claude Code — you should see `local-llm` with 8 tools.
 
 Manual alternative (add to `.mcp.json`):
 
