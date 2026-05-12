@@ -2,92 +2,107 @@
 
 ## Current version
 
-**MCP Phase 2 Complete** — `cc8ec0d`, branch `master`
+**MCP Goal Completion** — `master` branch
 
-## Purpose
+The MCP system now meets its original goal: Claude Code development is protected
+by local model participation, review, reminders, layered routing, safety gates,
+and diagnostic recovery — without requiring the user to repeatedly remind
+Claude to use MCP.
 
-Local multi-model LLM pipeline for Claude Code integration. Provides:
-- MCP tools (8 source-non-mutating: review, summarize, test-plan, draft, debate, check)
-- MCP hook gate system (commit gate, dangerous guard, release guard)
-- Hook doctor diagnostic tool
+## Completion Sprint Summary
 
-## MCP Phase 2 Summary
+| Phase | Feature | Tests |
+|-------|---------|-------|
+| 2A | Stop hook session summary | 51 |
+| 2B | Dangerous command guard | 51 |
+| 2B.1 | False positive fix + state sync | 51 |
+| 2C | Release / tag / push guard | 75 |
+| 2C.1 | PowerShell here-string fix | 87 |
+| 2D | Hook doctor diagnostic tool | 97 |
+| 2E | Freeze readiness docs | 97 |
+| 2F | Post-freeze hardening | 100 |
+| 3A | Default MCP participation reminders | 105 |
+| 3B | Risk/profile routing | 111 |
+| 3C | Cross-project setup | 111 |
+| 3D | Final completion audit | 117 |
 
-| Phase | Commit | Feature | Tests |
-|-------|--------|---------|-------|
-| 2A | `46a32c7` | Stop hook session summary | 51 |
-| 2B | `05f9df8` | PreToolUse dangerous command blocking | 51 |
-| 2B.1 | `7fb9961` | False positive fix + review state sync fix | 51 |
-| 2C | `4b27d37` | Release / tag / push guard | 75 |
-| 2C.1 | `6f53418` | PowerShell here-string false positive fix | 87 |
-| 2D | `cc8ec0d` | Hook doctor diagnostic tool | 97 |
-| 2E | `3aa3dc1` | Final dogfood / status docs / freeze readiness | 97 |
-| 2F | *pending* | Post-freeze hardening (state fix, log diagnostics) | 100 |
+### Guards (PreToolUse ordering)
 
-Phase 2 is frozen. Phase 2F is post-freeze hardening only.
+1. **Dangerous guard** — destructive local commands
+2. **Release guard** — external publication actions
+3. **Commit gate** — requires prior MCP review
 
-### Guards (ordered by PreToolUse execution)
+### Participation (PostToolUse + Stop)
 
-1. **Dangerous guard** — blocks destructive local commands (rm -rf, git reset --hard, del /s /q, etc.)
-2. **Release guard** — blocks external publication (git push, git tag, npm publish, twine upload, release scripts)
-3. **Commit gate** — requires prior MCP review before git commit
+- Touched file tracking (dirty_since_review, touched_files)
+- Risk classification (low/medium/high based on diff size and file paths)
+- MCP action recommendations (review, debate, test_plan, summarize)
+- Session-start hook event initialization
 
-### Hook infrastructure
+### Routing
 
-- 4 registered hook events: SessionStart, PreToolUse, PostToolUse, Stop
-- State tracking: review fingerprint (repo/head/diff_hash), dirty flag, MCP call log
-- Session isolation: per-session MCP tracking cleared on SessionStart
-- Encoded-safe: UTF-8 git output, shlex fallback for PowerShell here-strings
+- Small diff → local_review_diff
+- Large diff (>100 lines) → local_debate_review_diff
+- Hook/gate files → local_debate_review_diff (high risk)
+- Test files → local_generate_test_plan
+- Docs-only → local_summarize_file
+- Never empty — always recommends at least review
 
-### Diagnostic tool
+### Diagnostic
 
 ```bash
-python tools/claude_hooks/mcp_doctor.py          # human-readable
-python tools/claude_hooks/mcp_doctor.py --json   # machine-readable
+python tools/claude_hooks/mcp_doctor.py
 ```
+24 checks across 7 categories. Supports --json, --repo-root, --config-dir.
 
-23 checks across 7 categories: environment, module health, hook installation, state health, log health, session health, MCP server health.
+### Cross-project
+
+See [MCP Cross-Project Setup](docs/mcp-cross-project-setup.md).
+Ready for local-translator-agent development.
 
 ## Validation
 
 | Check | Result |
 |-------|--------|
-| `python tools/claude_hooks/mcp_doctor.py` | 23 OK, 0 WARN, 0 FAIL |
-| `python -m pytest tests/test_stop_hook.py -v` | 87 passed |
-| `python -m pytest tests/test_mcp_doctor.py -v` | 10 passed |
-| `python -m pytest tests/ -q` | 388 passed |
-| Phase 2E dogfood (15 scenarios) | 15/15 passed |
-| Unstaged + staged MCP review | both passed |
+| `python tools/claude_hooks/mcp_doctor.py` | 23 OK, 1 WARN, 0 FAIL |
+| `python -m pytest tests/test_stop_hook.py -v` | 105 passed |
+| `python -m pytest tests/test_mcp_doctor.py -v` | 12 passed |
+| `python -m pytest tests/ -q` | 405 passed |
+| `git diff --check` | clean |
+| MCP review (unstaged + staged) | both passed |
 
-## Freeze Readiness (Phase 2)
+## Goal Completion Verdict
 
-**Verdict: MCP Phase 2 is ready to freeze.**
+**MCP original goal: reached.**
 
-The hook gate system (commit gate, dangerous guard, release guard) has been through:
-- 4 phases of development (2A→2D)
-- 2 dogfood hardening rounds (2B.1, 2C.1)
-- 97 dedicated hook/doctor tests
-- 385 total tests
-- 6 consecutive successful MCP-reviewed commits
+The system now provides:
+- Default local model participation reminders
+- Default review enforcement before commit
+- Default dangerous/release command blocking
+- Default risk routing recommendations
+- Default diagnostic and recovery tooling
+- Default cross-project readiness
+
+The user no longer needs to remind Claude to use MCP.
+MCP participates, reviews, warns, blocks, and diagnoses by default.
 
 ### Known limitations
 
-- Release guard does not detect all release script naming conventions (e.g. `bash deploy.sh` is not blocked)
-- Doctor is read-only; no automated repair
-- Hook-events.jsonl grows unbounded (currently ~6.5 MB)
-- No per-user allowlist for guards (all blocks require manual terminal execution)
-- PowerShell here-string fallback uses regex, not a full parser
+- No automatic MCP tool invocation (by design — only reminders and gates)
+- Hook-events.jsonl grows unbounded (doctor warns at 5MB)
+- Release guard doesn't cover all script naming conventions
+- No per-user allowlist for guards
 
-### Phase 3 candidates (deferred)
+### Future candidates (Phase 4, not scheduled)
 
-- Allow-list for specific users/projects to skip certain guards
-- Hook-events.jsonl rotation/compaction
-- Pre-commit hook integration (block git commit at git level, not just Claude Code level)
-- Guard audit dashboard
-- Automated recovery (doctor --fix)
-- Cross-repo review state federation
+- Automated log rotation
+- Guard allowlist per user/project
+- Pre-commit git hook integration
+- Doctor auto-repair (--fix)
+- MCP usage analytics dashboard
 
-## Policy
+## Freeze status
 
-MCP Phase 2 is frozen for feature development. Only bug fixes and hardening.
-Phase 3 candidates are documented but not scheduled.
+**MCP is frozen.** Only bugfixes and hardening permitted.
+Feature development on the MCP toolchain itself is complete.
+Development focus returns to local-translator-agent.

@@ -963,3 +963,141 @@ class TestHereStringRealCommandsStillBlocked:
         })
         assert result["allow"] is False
         assert "release" in result["reason"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3A: default MCP participation reminders
+# ---------------------------------------------------------------------------
+
+class TestPhase3ATouchedFiles:
+    """PostToolUse must track files modified by Edit/Write/MultiEdit."""
+
+    def test_dirty_tool_records_touched_file(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/src/main.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["dirty_since_review"] is True
+        assert "/repo/src/main.py" in state["touched_files"]
+
+    def test_dirty_tool_skips_hook_files(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/.claude/hooks/mcp_gate.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["dirty_since_review"] is False
+        assert state["touched_files"] == []
+
+    def test_session_start_clears_touched_files(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["touched_files"] = ["/repo/old.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_session_start(tmp_config_dir, {})
+        new_state = mcp_gate.load_state(tmp_config_dir)
+        assert new_state["touched_files"] == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 3B: risk routing
+# ---------------------------------------------------------------------------
+
+class TestClassifyDiffRisk:
+    def test_small_diff_low(self):
+        assert mcp_gate.classify_diff_risk("one line", []) == "low"
+
+    def test_large_diff_medium(self):
+        diff = "\n".join(f"line {i}" for i in range(150))
+        assert mcp_gate.classify_diff_risk(diff, []) == "medium"
+
+    def test_hook_files_high(self):
+        assert mcp_gate.classify_diff_risk("one line", ["tools/claude_hooks/mcp_gate.py"]) == "high"
+
+    def test_doctor_files_high(self):
+        assert mcp_gate.classify_diff_risk("one line", ["tools/claude_hooks/mcp_doctor.py"]) == "high"
+
+    def test_release_files_high(self):
+        assert mcp_gate.classify_diff_risk("one line", ["scripts/release.sh"]) == "high"
+
+
+class TestRecommendMcpAction:
+    def test_low_risk_recommends_review(self):
+        actions = mcp_gate.recommend_mcp_action("low", [], "")
+        assert "local_review_diff" in actions
+        assert "local_debate_review_diff" not in actions
+
+    def test_high_risk_recommends_debate(self):
+        actions = mcp_gate.recommend_mcp_action("high", [], "")
+        assert "local_debate_review_diff" in actions
+
+    def test_test_files_recommends_test_plan(self):
+        actions = mcp_gate.recommend_mcp_action("low", ["tests/test_main.py"], "")
+        assert "local_generate_test_plan" in actions
+
+    def test_docs_only_recommends_summarize(self):
+        actions = mcp_gate.recommend_mcp_action("low", ["docs/readme.md"], "")
+        assert "local_summarize_file" in actions
+
+    def test_hook_files_triggers_debate(self):
+        actions = mcp_gate.recommend_mcp_action("medium", ["tools/claude_hooks/mcp_gate.py"], "")
+        assert "local_debate_review_diff" in actions
+
+    def test_never_returns_empty(self):
+        actions = mcp_gate.recommend_mcp_action("low", [], "")
+        assert len(actions) > 0
+
+
+class TestPhase3AStopRecommendations:
+    """Stop hook must recommend MCP actions based on diff size and file risk."""
+
+    def test_large_diff_recommends_debate(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["touched_files"] = ["/repo/src/big.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        def _fake_git(args, cwd=None):
+            if args == ["status", "--short"]:
+                return " M src/big.py"
+            if args == ["diff", "--stat"]:
+                return " src/big.py | 150 ++\n 1 file, 150 insertions(+), 0 deletions(-)"
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/repo"})
+        assert any("debate" in r.lower() for r in reminders)
+
+    def test_hook_files_touched_recommends_debate(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["touched_files"] = ["/repo/tools/claude_hooks/mcp_gate.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        def _fake_git(args, cwd=None):
+            if args == ["status", "--short"]:
+                return ""
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/repo"})
+        assert any("debate" in r.lower() for r in reminders)
+
+    def test_test_files_touched_recommends_test_plan(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["touched_files"] = ["/repo/tests/test_main.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        def _fake_git(args, cwd=None):
+            if args == ["status", "--short"]:
+                return ""
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/repo"})
+        assert any("test_plan" in r.lower() for r in reminders)

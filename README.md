@@ -30,6 +30,7 @@ python tools/local_llm_router.py summarize-file README.md
 - [Debate Multi-Model Review](docs/local-llm-debate.md)
 - [MCP Hook Gate](docs/claude-code-mcp-gate.md)
 - [Hook Doctor](docs/mcp-phase2d-hook-doctor.md)
+- [Cross-Project Setup](docs/mcp-cross-project-setup.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Changelog](CHANGELOG.md)
 

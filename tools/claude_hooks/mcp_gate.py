@@ -98,6 +98,7 @@ _RELEASE_PATTERNS = [
 _STATE_DEFAULTS = {
     "diff_reviewed": False,
     "dirty_since_review": False,
+    "touched_files": [],
     "reviewed_at": None,
     "reviewed_by": None,
     "reviewed_repo": None,
@@ -318,6 +319,52 @@ def extract_git_c_path(cmd: str):
     return None
 
 
+def classify_diff_risk(diff_text: str, touched_files: list[str] | None = None) -> str:
+    """Classify diff risk level: 'low', 'medium', or 'high'.
+
+    Returns 'high' if hook/gate files or release scripts are touched,
+    'medium' if >100 lines changed, 'low' otherwise.
+    """
+    touched = touched_files or []
+    for f in touched:
+        if "tools/claude_hooks/" in f or "mcp_gate" in f or "mcp_doctor" in f:
+            return "high"
+        if "release" in f.lower() or "publish" in f.lower():
+            return "high"
+
+    lines = diff_text.count("\n")
+    if lines > 100:
+        return "medium"
+    return "low"
+
+
+def recommend_mcp_action(risk: str, touched_files: list[str] | None = None,
+                         diff_text: str = "") -> list[str]:
+    """Return recommended MCP actions based on risk level and file types.
+
+    Never returns empty — always recommends at least local_review_diff.
+    """
+    touched = touched_files or []
+    actions = []
+
+    has_tests = any("tests/" in f or f.endswith("_test.py") for f in touched)
+    has_docs_only = all("docs/" in f or f.endswith(".md") for f in touched) if touched else False
+    has_hook_files = any("tools/claude_hooks/" in f or "mcp_gate" in f for f in touched)
+
+    if risk == "high" or has_hook_files:
+        actions.append("local_debate_review_diff")
+    if has_tests:
+        actions.append("local_generate_test_plan")
+    if has_docs_only:
+        actions.append("local_summarize_file")
+
+    # Always include review
+    if "local_debate_review_diff" not in actions:
+        actions.append("local_review_diff")
+
+    return actions
+
+
 def tool_name(payload: dict) -> str:
     return payload.get("tool_name", "")
 
@@ -387,6 +434,7 @@ def _clear_session(config_dir: str):
     state["session_started_at"] = datetime.now(timezone.utc).isoformat()
     state["mcp_calls"] = {}
     state["_last_mcp_failed"] = False
+    state["touched_files"] = []
     save_state(config_dir, state)
 
 
@@ -425,6 +473,11 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         if "mcp-gate" not in target and ".claude/hooks" not in target:
             state = load_state(config_dir)
             state["dirty_since_review"] = True
+            # Phase 3A: track touched files for risk routing
+            if "touched_files" not in state:
+                state["touched_files"] = []
+            if target and target not in state["touched_files"]:
+                state["touched_files"].append(target)
             save_state(config_dir, state)
 
     if name in _MCP_TOOLS:
@@ -577,6 +630,21 @@ def handle_stop(config_dir: str, payload: dict) -> list:
         if staged:
             reminders.append("Staged changes exist — remember to re-review "
                              "staged diff before commit.")
+
+        # Phase 3A/3B: risk-based MCP routing recommendations
+        diff_text = run_git(["diff"], cwd=cwd) or ""
+        touched = state.get("touched_files", [])
+        if touched or diff_text:
+            risk = classify_diff_risk(diff_text, touched)
+            actions = recommend_mcp_action(risk, touched, diff_text)
+            risk_label = {"low": "LOW", "medium": "MEDIUM", "high": "HIGH"}.get(risk, risk)
+            reminders.append(
+                f"Risk: {risk_label}. Recommended MCP: {', '.join(actions)}."
+            )
+            if "local_debate_review_diff" in actions and not mcp_calls.get("mcp__local-llm__local_debate_review_diff"):
+                reminders.append("Debate review recommended but not yet called this session.")
+            if "local_generate_test_plan" in actions and not mcp_calls.get("mcp__local-llm__local_generate_test_plan"):
+                reminders.append("Test plan recommended but not yet called this session.")
 
     return reminders
 
