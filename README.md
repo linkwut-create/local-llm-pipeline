@@ -52,9 +52,27 @@ Diagnose hook health at any time:
 python tools/claude_hooks/mcp_doctor.py
 ```
 
-Phase 2C.1 hardening ensures PowerShell here-string commit messages are not falsely blocked.
+Phase 3E.1 hardening ensures real-time participation detection works with
+real tool response formats and cross-platform path handling.
 
-See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current freeze readiness.
+### MCP Completion Status
+
+**Goal complete.** The system provides default participation, review enforcement, safety blocking, risk routing, diagnostics, and cross-project readiness. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for full capability matrix and freeze status.
+
+Verify before starting work on any project:
+
+```bash
+python tools/claude_hooks/mcp_doctor.py
+python -m pytest tests/ -q
+```
+
+To use MCP hooks with another repo (e.g. local-translator-agent):
+
+```bash
+python tools/claude_hooks/mcp_doctor.py --repo-root /path/to/other/repo
+```
+
+See [Cross-Project Setup](docs/mcp-cross-project-setup.md) for details.
 
 ## Security
 
