@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS mcp_invocation_log (
     reviewed_diff_hash TEXT,
     raw_log_path TEXT,
     linked_failure_id TEXT,
+    linked_recommendation_id TEXT,
     notes TEXT
 );
 
@@ -199,7 +200,9 @@ def connect_audit_db(base_dir: str | Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.commit()
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.commit()
     return conn
 
 
@@ -230,7 +233,7 @@ def insert_invocation(conn: sqlite3.Connection, record: dict):
         "input_summary", "output_summary", "files_involved", "tests_involved",
         "command", "result_status", "blocking", "commit_before", "commit_after",
         "staged_diff_hash", "reviewed_diff_hash", "raw_log_path",
-        "linked_failure_id", "notes",
+        "linked_failure_id", "linked_recommendation_id", "notes",
     ]
     defaults = {"blocking": 0}
     values = {f: _serialize_field(record.get(f), defaults.get(f)) for f in fields}

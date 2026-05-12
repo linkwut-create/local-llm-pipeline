@@ -1501,7 +1501,6 @@ downstream query layer; JSONL remains the source of truth.
 ### Not yet implemented
 
 - No CLI query tool (MCP-AUDIT-4)
-- No automatic phase audit summarizer (MCP-AUDIT-3)
 - No dashboard
 - JSONL is still the source of truth; SQLite is a downstream query layer
 
@@ -1510,3 +1509,63 @@ downstream query layer; JSONL remains the source of truth.
 - **Focused**: 25/25 passed
 - **Combined (logger + DB + gate)**: 88/88 passed
 - **Full suite**: 523 passed, 7 failed (pre-existing Windows subprocess issues)
+
+## MCP-AUDIT-3 Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Generate markdown phase audit reports from SQLite audit DB data.
+
+### Files created
+
+- `tools/mcp_audit_report.py` — phase report generator
+- `tests/test_mcp_audit_report.py` — 25 focused tests
+
+### Output
+
+Reports are written to `docs/mcp-audit/{project}/{phase}.md`.
+
+### Report sections
+
+1. Metadata — project, phase, generated at, commit range, final status
+2. Summary — invocation/failure/blocked/bypass/accept/reject counts, test results
+3. Tool usage — per-tool invocation count, failure rate
+4. Failures — type, severity, tool, resolved status, notes
+5. Commit gate events — blocked commits, hook state mismatches, bypasses
+6. Recommendations — accepted vs rejected/ignored/overridden
+7. Tests — tests run, final result
+8. Risk judgment — `blocked` / `high` / `medium` / `low`
+9. Next recommendation — auto-generated based on risk level
+
+### Risk judgment rules
+
+| Condition | Risk |
+|-----------|------|
+| Unresolved critical/blocking failure | `blocked` |
+| Unresolved high-severity failure | `high` |
+| Gate bypass event detected | `high` |
+| Rejected blocking recommendation | `high` |
+| Failures exist but all resolved | `medium` |
+| No failures, tests pass | `low` |
+
+### API
+
+| Function | Purpose |
+|----------|---------|
+| `generate_phase_report(conn, phase_id, project_name)` | Generate markdown report string |
+| `write_phase_report(base_dir, phase_id, project_name, output_dir)` | Generate and write report to disk |
+| `collect_phase_report_data(conn, phase_id, project_name)` | Collect all data from SQLite |
+| `format_phase_report_markdown(data)` | Format data dict as markdown |
+
+### Not yet implemented
+
+- No CLI query tool (MCP-AUDIT-4)
+- No automatic trigger on phase completion
+- No dashboard or visual report
+
+### Tests
+
+- **Focused**: 25/25 passed
+- **Combined (report + DB + logger + gate)**: 113/113 passed
