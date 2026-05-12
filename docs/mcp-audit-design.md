@@ -1712,3 +1712,50 @@ a424ea3 MCP-AUDIT-0: design document
 Return to `local-translator-agent` for:
 - TM-1C: TMX / CSV / JSONL import/export
 - TM-2A: embedding semantic search
+
+## MCP-USAGE-RETRO-1: Usage Discipline Hardening
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+After MCP-AUDIT-0 through MCP-AUDIT-5, a review identified that the MCP audit
+system is complete, but MCP usage discipline was inconsistent:
+
+- `local_summarize_file` was never used (Claude Code read files directly)
+- `local_generate_test_plan` was never used (tests written directly)
+- `local_debate_review_diff` was skipped for MCP-AUDIT-4 and MCP-AUDIT-5
+- `deep_reviewer` and `reasoning_checker` were barely used
+- Risk analysis timed out once and was never retried
+
+### Changes made
+
+Updated `CLAUDE.md` and `AGENTS.md` with MCP 2.1 — Hardened:
+
+1. **Mandatory `local_summarize_file`** before first edit of any file > 200 lines
+2. **Mandatory `local_generate_test_plan`** before new API, schema, parser, or UI behavior
+3. **Mandatory `local_debate_review_diff`** for hook/gate/DB/schema/security/release
+4. **Mandatory MCP Usage Matrix** in every phase completion report
+5. **Reasoning models required** for high-risk classification and pre-release assessment
+6. Added explicit prohibition: `local_debate_review_diff` MUST NOT be skipped for these categories
+
+### MCP Usage Matrix (required format for phase completion reports)
+
+```
+MCP Usage Matrix
+- local_check: used / not used / reason
+- local_summarize_file: used / not used / reason
+- local_generate_test_plan: used / not used / reason
+- local_review_diff: used / not used / result
+- local_debate_review_diff: used / not used / reason
+- deep_reviewer / reasoning_checker: used / not used / reason
+- recommendations accepted: N
+- recommendations rejected: N
+- deviations from plan: (list)
+```
+
+### Files modified
+
+- `CLAUDE.md` — MCP 2.0 → MCP 2.1 (hardened rules, matrix, prohibitions)
+- `AGENTS.md` — MCP 2.0 → MCP 2.1 (same rules, synced)
+- `docs/mcp-audit-design.md` — This section

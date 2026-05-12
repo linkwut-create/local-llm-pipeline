@@ -61,13 +61,71 @@ The pipeline exposes 7 source-non-mutating MCP tools via `tools/local_llm_mcp_se
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
 Verify with `/mcp` — should show `local-llm connected 8 tools`.
 
-### Task-Level MCP Usage Policy (MCP 2.0)
+### Task-Level MCP Usage Policy (MCP 2.1 — Hardened)
 
 **Every development task must have a local model participation point.**
-Not every keystroke — every task. This is enforced by process discipline, not hooks.
+Not every keystroke — every task. Missing MCP participation points block commit.
+This is enforced by process discipline, with audit trail.
 
 Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
 Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
+Usage retro: [docs/mcp-audit-design.md](docs/mcp-audit-design.md) (MCP-USAGE-RETRO-1 section)
+
+#### MCP Participation Must-Follow Rules (MCP-USAGE-RETRO-1)
+
+These are NOT advisory. Skipping any of these without documented reason is a
+process deviation and must be recorded in the phase completion report.
+
+**1. local_summarize_file — mandatory before first edit of any file > 200 lines.**
+
+If you read a file > 200 lines for the first time and plan to edit it, you
+MUST run `local_summarize_file` first. Direct Read-only inspection does not
+satisfy this requirement — the local model must produce a structured summary.
+
+**2. local_generate_test_plan — mandatory before implementing new API, schema, parser, or UI behavior.**
+
+If the phase introduces new functions, classes, CLI commands, DB schema changes,
+import/export logic, or parsing, you MUST run `local_generate_test_plan` before
+writing tests or implementation code.
+
+**3. local_debate_review_diff — mandatory for specific change categories.**
+
+You MUST run debate review (fast mode minimum, full 3-round for architecture)
+when the diff touches any of:
+- `tools/claude_hooks/` (hook logic, gate logic, doctor)
+- `tools/local_llm_mcp_server.py` (MCP server)
+- `tools/local_llm_router.py` (routing logic)
+- Safety policy, blocked paths, security boundaries
+- Database schema changes (SQLite DDL)
+- Audit system infrastructure
+- Release/freeze boundaries
+
+MCP-AUDIT-4 and MCP-AUDIT-5 both involved these categories but skipped debate
+review. This is a documented process deviation — not a precedent.
+
+**4. Phase completion report MUST include an MCP Usage Matrix.**
+
+Every phase completion report must contain:
+
+```
+MCP Usage Matrix
+- local_check: used / not used / reason
+- local_summarize_file: used / not used / reason
+- local_generate_test_plan: used / not used / reason
+- local_review_diff: used / not used / result
+- local_debate_review_diff: used / not used / reason
+- deep_reviewer / reasoning_checker: used / not used / reason
+- recommendations accepted: N
+- recommendations rejected: N
+- deviations from plan: (list)
+```
+
+**5. Reasoning models must be used for high-risk classification tasks.**
+
+`deep_reviewer` or `reasoning_checker` must be used when:
+- Classifying whether a diff is high-risk
+- Evaluating gate bypass risks
+- Pre-release/freeze risk assessment
 
 #### Task → MCP Tool Mapping
 
@@ -83,6 +141,8 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 | Safety policy, blocked paths | `local_debate_review_diff` | fast mode | Must use debate |
 | Feature/bug/release test plan | `local_generate_test_plan` | `code_worker` | Before implementing |
 | Draft code (fix/feature/refactor) | `local_draft_code` | `code_worker` | Output → `.local_llm_out/` only |
+| DB schema, CLI, import/export, parser | `local_generate_test_plan` | `code_worker` | Before implementing |
+| Phase freeze, release audit | `local_debate_review_diff` | full 3-round | Must use full debate |
 
 #### Escalation Rules
 
@@ -92,6 +152,8 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 | `review` returns `uncertain_points` > 3 | Upgrade to `diff_reviewer` or `deep_reviewer` |
 | Diff touches MCP server, commit gate, router | Debate or deep review mandatory |
 | Pre-release / tag / publish | `release_auditor` mandatory |
+| MCP tool timeout | Retry with smaller input or faster model; record failure |
+| Reasoning model timeout | Fall back to code_worker; record deviation |
 
 #### Prohibition Rules (Hard Stops)
 
@@ -101,6 +163,7 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 - Commit gate MUST use `commit_reviewer`. MUST NOT use reasoning, >30B, or release auditor.
 - Experimental / known-bad models MUST NOT enter automated routing.
 - Draft code MUST NOT be treated as directly applied code. Controller must inspect and manually apply.
+- `local_debate_review_diff` MUST NOT be skipped for hook/gate/DB/schema/security/release changes.
 
 #### Model Selection Rules
 
@@ -109,6 +172,7 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 - Translation (CLI/MCP): `glm-4.7-flash` only. `translategemma-12b-it` does not work with current CLI prompt.
 - Reasoning models: never default. Triggered by explicit request or high-risk classification.
 - Release audit models: never in commit gate or default review path.
+- Debate review: fast mode (2 rounds) default; full 3-round for architecture/DB/schema/release.
 
 ### MCP Boundaries
 

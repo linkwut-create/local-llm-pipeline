@@ -58,11 +58,20 @@ MCP tools are source-non-mutating:
 - `local_draft_code` writes drafts to `.local_llm_out/` and requires controller verification before any source change.
 - No write/delete/shell/git/deploy.
 
-### Task-Level MCP Usage (MCP 2.0)
+### Task-Level MCP Usage (MCP 2.1 — Hardened)
 
 Every development task must have a local model participation point.
+Missing MCP participation points block commit.
 Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
 Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
+
+#### MCP Participation Must-Follow Rules (MCP-USAGE-RETRO-1)
+
+1. **`local_summarize_file`** — mandatory before first edit of any file > 200 lines.
+2. **`local_generate_test_plan`** — mandatory before new API, schema, parser, or UI behavior.
+3. **`local_debate_review_diff`** — mandatory for hook/gate/DB/schema/security/release changes.
+4. **Phase completion report** must include an MCP Usage Matrix.
+5. **Reasoning models** must be used for high-risk classification and pre-release assessment.
 
 #### Task → MCP Tool
 
@@ -75,8 +84,10 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 | Staged review | `local_review_diff` | `commit_reviewer` (`commit_gate=true`) |
 | tools/ changes | `local_review_diff` | `diff_reviewer` |
 | Hook/gate/router changes | `local_debate_review_diff` | fast mode |
+| DB schema, CLI, parser | `local_debate_review_diff` | fast mode (full 3-round for release) |
 | Test plan | `local_generate_test_plan` | `code_worker` |
 | Code draft | `local_draft_code` | `code_worker` |
+| Release/freeze | `local_debate_review_diff` | full 3-round |
 
 #### Hard Stops
 
@@ -84,6 +95,8 @@ Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 - Controller must not manually substitute for failed MCP review.
 - Staged diff must be re-reviewed even if same as unstaged.
 - Commit gate: `commit_reviewer` only. No reasoning, no >30B, no release auditor.
+- `local_debate_review_diff` must NOT be skipped for hook/gate/DB/schema/security/release changes.
+- Phase completion report must include MCP Usage Matrix.
 
 ### Standard Commands
 
