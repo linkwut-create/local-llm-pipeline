@@ -65,7 +65,7 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
 
     try:
         from tools.claude_hooks.mcp_gate import run_git
-        git_root = run_git(["rev-parse", "--show-toplevel"])
+        git_root = run_git(["rev-parse", "--show-toplevel"], cwd=repo_root)
         if git_root:
             ok("git_repo", f"Git repo detected: {git_root}")
         else:

@@ -338,9 +338,10 @@ def classify_diff_risk(diff_text: str, touched_files: list[str] | None = None) -
     """
     touched = touched_files or []
     for f in touched:
-        if "tools/claude_hooks/" in f or "mcp_gate" in f or "mcp_doctor" in f:
+        fn = f.replace("\\", "/")
+        if "tools/claude_hooks/" in fn or "mcp_gate" in fn or "mcp_doctor" in fn:
             return "high"
-        if "release" in f.lower() or "publish" in f.lower():
+        if "release" in fn.lower() or "publish" in fn.lower():
             return "high"
 
     lines = diff_text.count("\n")
@@ -356,11 +357,12 @@ def recommend_mcp_action(risk: str, touched_files: list[str] | None = None,
     Never returns empty — always recommends at least local_review_diff.
     """
     touched = touched_files or []
+    nt = [f.replace("\\", "/") for f in touched]
     actions = []
 
-    has_tests = any("tests/" in f or f.endswith("_test.py") for f in touched)
-    has_docs_only = all("docs/" in f or f.endswith(".md") for f in touched) if touched else False
-    has_hook_files = any("tools/claude_hooks/" in f or "mcp_gate" in f for f in touched)
+    has_tests = any("tests/" in f or f.endswith("_test.py") for f in nt)
+    has_docs_only = all("docs/" in f or f.endswith(".md") for f in nt) if nt else False
+    has_hook_files = any("tools/claude_hooks/" in f or "mcp_gate" in f for f in nt)
 
     if risk == "high" or has_hook_files:
         actions.append("local_debate_review_diff")
@@ -586,10 +588,11 @@ def handle_post_tooluse(config_dir: str, payload: dict):
                 stf.append(target)
                 state["session_touched_files"] = stf
             # Phase 3E: real-time risk classification
-            if "tools/claude_hooks/" in target or "mcp_gate" in target or "mcp_doctor" in target:
+            norm = target.replace("\\", "/")
+            if "tools/claude_hooks/" in norm or "mcp_gate" in norm or "mcp_doctor" in norm:
                 state["needs_debate"] = True
                 _add_recommendation(state, "local_debate_review_diff")
-            elif "tests/" in target or target.endswith("_test.py"):
+            elif "tests/" in norm or norm.endswith("_test.py"):
                 state["needs_test_plan"] = True
                 _add_recommendation(state, "local_generate_test_plan")
                 _add_recommendation(state, "local_review_diff")
