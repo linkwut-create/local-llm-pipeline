@@ -17,7 +17,9 @@
       "max_output_chars": 3000,
       "use_for": ["summarize-file", "summarize-tree", "rewrite-text"],
       "risk_level": "low",
-      "_benchmark": "21s review, 37s summarize — Opus-distilled quality (zero12)"
+      "_benchmark": "28.6s summarize, 47.6s review — Opus-distilled quality in 9.5GB (zero12)",
+      "_community_reputation": "Qwen3.5 distilled from Claude Opus. Hidden gem — small (9.5GB) but high-quality output. Confirmed 67.5s summarize on worker.py (2026-05-12 live test).",
+      "_last_tested": "2026-05-12"
     },
     "code_worker": {
       "model": "qwen3-coder-next-q8:latest",
@@ -39,7 +41,8 @@
       "risk_level": "medium",
       "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
       "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
-      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s."
+      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s.",
+      "_last_tested": "2026-05-12"
     },
     "fast_code": {
       "model": "qwen3-coder:30b",
@@ -112,7 +115,8 @@
       "use_for": ["translate-text"],
       "risk_level": "low",
       "_benchmark": "151s translate — only reliable option via MCP (zero12)",
-      "_community_reputation": "GLM-4.7 Flash has strong multilingual/CJK capability. Translategemma models are also available as purpose-built alternatives."
+      "_community_reputation": "GLM-4.7 Flash is the only CLI-verified translation model on this machine (151.4s, 2026-05-12 live test). translategemma-12b-it can translate via immersive plugin but the CLI prompt template does not trigger its translation behavior — prompt fix needed before it can be used as a faster alternative.",
+      "_last_tested": "2026-05-12"
     },
     "release_auditor": {
       "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
