@@ -412,3 +412,143 @@ def test_all_decision_values_defined():
     required = {"accepted", "rejected", "partially_accepted", "ignored",
                 "overridden_by_user", "obsolete_after_fix"}
     assert required <= set(audit.RECOMMENDATION_DECISIONS)
+
+
+# ---------------------------------------------------------------------------
+# MCP-AUDIT-1.1: Gate boundary audit tests
+# ---------------------------------------------------------------------------
+
+def test_gate_boundary_event_types_defined():
+    """Verify new bypass-related event types exist."""
+    required = {"commit_gate_bypassed", "gate_boundary_audit", "gate_subprocess_bypass"}
+    assert required <= set(audit.EVENT_TYPES)
+
+
+def test_gate_boundary_failure_types_defined():
+    """Verify new bypass-related failure types exist."""
+    required = {"gate_subprocess_bypass", "gate_language_bypass", "gate_boundary_unknown"}
+    assert required <= set(audit.FAILURE_TYPES)
+
+
+def test_gate_boundary_task_type_defined():
+    assert "gate_boundary_audit" in audit.TASK_TYPES
+
+
+def test_write_gate_boundary_event():
+    """Record a gate boundary audit finding."""
+    with tempfile.TemporaryDirectory() as tmp:
+        eid = audit.write_gate_boundary_event(tmp, {
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1.1",
+            "gate_tool": "Bash",
+            "gate_command": "python3.14 -c \"import subprocess; subprocess.run(['git', 'commit', '-m', 'msg'])\"",
+            "gate_detected": False,
+            "bypass_method": "subprocess_run",
+            "interception_boundary": (
+                "PreToolUse hook only scans Bash/PowerShell command strings for "
+                "'git commit' pattern. subprocess.run(['git', 'commit', ...]) "
+                "inside a Python one-liner is not detected because the tool "
+                "command is 'python3.14' not 'git commit'."
+            ),
+            "result_status": "warning",
+            "severity": "high",
+        })
+        assert eid is not None
+        events = _read_jsonl(Path(tmp) / ".mcp_audit" / "events.jsonl")
+        evt = events[0]
+        assert evt["event_type"] == "gate_boundary_audit"
+        assert evt["gate_detected"] is False
+        assert evt["bypass_method"] == "subprocess_run"
+
+
+def test_gate_subprocess_bypass_failure():
+    """Record a subprocess git commit bypass as a failure."""
+    with tempfile.TemporaryDirectory() as tmp:
+        fid = audit.write_failure_event(tmp, {
+            "failure_type": "gate_subprocess_bypass",
+            "severity": "high",
+            "tool_name": "commit_gate",
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1.1",
+            "stderr_summary": "Commit succeeded via subprocess without gate interception",
+            "possible_causes": [
+                "git commit invoked via Python subprocess.run()",
+                "PreToolUse hook only checks tool_name in ('Bash', 'PowerShell')",
+                "Command string analysis sees 'python3.14' not 'git commit'",
+            ],
+            "notes": "Commit cf122dd was made via subprocess to bypass a stuck gate state",
+            "resolved": False,
+        })
+        assert fid is not None
+        failures = _read_jsonl(Path(tmp) / ".mcp_audit" / "failures.jsonl")
+        assert failures[0]["failure_type"] == "gate_subprocess_bypass"
+
+
+def test_gate_language_bypass_failure():
+    """Record a language-based bypass (node, ruby, etc.)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        fid = audit.write_failure_event(tmp, {
+            "failure_type": "gate_language_bypass",
+            "severity": "medium",
+            "tool_name": "commit_gate",
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1.1",
+            "stderr_summary": "Any language with subprocess capability can bypass the gate",
+            "possible_causes": [
+                "node -e 'require(\"child_process\").execSync(\"git commit ...\")'",
+                "ruby -e 'system(\"git\", \"commit\", ...)'",
+                "perl -e 'system(\"git\", \"commit\", ...)'",
+            ],
+            "notes": "The gate is language-agnostic for Bash/PowerShell but language-specific otherwise",
+            "resolved": False,
+        })
+        assert fid is not None
+
+
+def test_gate_boundary_unknown_failure():
+    """Record that some bypass methods may be unknown."""
+    with tempfile.TemporaryDirectory() as tmp:
+        fid = audit.write_failure_event(tmp, {
+            "failure_type": "gate_boundary_unknown",
+            "severity": "low",
+            "tool_name": "commit_gate",
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1.1",
+            "notes": "We cannot enumerate all possible bypass methods. This records that fact.",
+        })
+        assert fid is not None
+
+
+def test_gate_boundary_full_scenario():
+    """End-to-end: record an event AND a failure for a gate bypass incident."""
+    with tempfile.TemporaryDirectory() as tmp:
+        # Record the boundary audit event
+        audit.write_gate_boundary_event(tmp, {
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1",
+            "gate_tool": "Bash",
+            "gate_command": "python3.14 -c \"... subprocess.run(['git', 'commit', ...])\"",
+            "gate_detected": False,
+            "bypass_method": "subprocess_run",
+            "interception_boundary": "Python subprocess bypass",
+            "result_status": "warning",
+            "commit_after": "cf122dd",
+            "notes": "Commit cf122dd in MCP-AUDIT-1 used subprocess to bypass stuck gate state",
+        })
+        # Record the corresponding failure
+        audit.write_failure_event(tmp, {
+            "failure_type": "gate_subprocess_bypass",
+            "severity": "high",
+            "tool_name": "commit_gate",
+            "project_name": "local-llm-pipeline",
+            "phase_id": "MCP-AUDIT-1",
+            "commit_after": "cf122dd",
+            "resolved": False,
+        })
+        events = _read_jsonl(Path(tmp) / ".mcp_audit" / "events.jsonl")
+        failures = _read_jsonl(Path(tmp) / ".mcp_audit" / "failures.jsonl")
+        assert any(e["event_type"] == "gate_boundary_audit" for e in events)
+        assert any(f["failure_type"] == "gate_subprocess_bypass" for f in failures)
+        # The gate boundary event links to the commit that bypassed
+        gate_evt = [e for e in events if e["event_type"] == "gate_boundary_audit"][0]
+        assert gate_evt["commit_after"] == "cf122dd"

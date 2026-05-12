@@ -47,6 +47,9 @@ EVENT_TYPES = frozenset({
     "cli_review_not_recognized",
     "staged_diff_hash_mismatch",
     "manual_hook_state_alignment",
+    "commit_gate_bypassed",
+    "gate_boundary_audit",
+    "gate_subprocess_bypass",
 })
 
 TASK_TYPES = frozenset({
@@ -62,6 +65,7 @@ TASK_TYPES = frozenset({
     "documentation_review",
     "hook_state_check",
     "audit_logging",
+    "gate_boundary_audit",
 })
 
 FAILURE_TYPES = frozenset({
@@ -88,6 +92,9 @@ FAILURE_TYPES = frozenset({
     "recommendation_rejected",
     "fixed_after_mcp",
     "unresolved_failure",
+    "gate_subprocess_bypass",
+    "gate_language_bypass",
+    "gate_boundary_unknown",
 })
 
 RECOMMENDATION_DECISIONS = frozenset({
@@ -413,5 +420,36 @@ def write_phase_audit_event(base_dir: str | Path, phase_audit: dict) -> str | No
         }
         evt_path = audit_dir / DEFAULT_EVENTS_FILE
         append_jsonl(evt_path, _sanitize_record(evt))
+        return record["id"]
+    return None
+
+
+def write_gate_boundary_event(base_dir: str | Path, event: dict) -> str | None:
+    """Record a gate boundary audit finding.
+
+    Use this for documenting gate interception boundary issues such as
+    subprocess bypasses, language-based bypasses, and unknown boundaries.
+
+    Recommended fields:
+    - gate_tool: the tool used (e.g., 'Bash', 'Python subprocess')
+    - gate_command: the actual command invoked
+    - gate_detected: whether the hook detected the command (true/false)
+    - bypass_method: how the bypass occurred
+    - interception_boundary: description of the gate boundary limitation
+    """
+    record = dict(event)
+    record.setdefault("id", generate_event_id())
+    record.setdefault("created_at", utc_now_iso())
+    record.setdefault("event_type", "gate_boundary_audit")
+    record.setdefault("task_type", "gate_boundary_audit")
+
+    errors = validate_event(record)
+    if errors:
+        return None
+
+    record = _sanitize_record(record)
+    audit_dir = ensure_audit_dirs(base_dir)
+    path = audit_dir / DEFAULT_EVENTS_FILE
+    if append_jsonl(path, record):
         return record["id"]
     return None

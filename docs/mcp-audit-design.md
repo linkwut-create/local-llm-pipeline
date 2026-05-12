@@ -1269,3 +1269,90 @@ The following real failures discovered during MCP-AUDIT-0 are first-class record
 - **Focused**: 23/23 passed
 - **Full suite**: 454 passed, 11 failed (pre-existing Windows+Python 3.14 subprocess handle inheritance, unrelated)
 - **Test coverage**: event writing, failure recording, recommendation tracking, phase audits, validation, privacy, append-only behavior, Windows path handling, env var configuration, enum completeness
+
+## MCP-AUDIT-1.1: Commit Gate Boundary Audit
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Audit the real interception boundary of the commit gate (`mcp_gate.py` PreToolUse hook)
+and document what it does and does not intercept. Add bypass scenarios as first-class
+recordable events in the audit logger.
+
+### Gate boundary findings
+
+The commit gate (`handle_pre_tooluse` in `tools/claude_hooks/mcp_gate.py`) has the
+following interception boundary:
+
+**Intercepted:**
+| Entry point | Detection method |
+|-------------|-----------------|
+| `Bash` tool: `git commit ...` | `is_git_commit()` scans command string for `git` + `commit` |
+| `PowerShell` tool: `git commit ...` | Same as Bash |
+| `Bash` tool: `git -C /path commit ...` | `extract_git_c_path()` extracts alternate repo path |
+| Chained commands: `cmd1 && git commit ...` | `_split_command_chain()` isolates sub-commands |
+
+**NOT intercepted (bypass paths):**
+| Bypass method | Example | Reason |
+|---------------|---------|--------|
+| Python subprocess | `python -c "import subprocess; subprocess.run(['git','commit',...])"` | Tool is `Bash` but command string starts with `python`, not `git` |
+| Python script | `python commit_helper.py` | Command string contains `python`, not `git commit` |
+| Node.js subprocess | `node -e 'require("child_process").execSync("git commit ...")'` | Same pattern — tool command is `node` |
+| Ruby subprocess | `ruby -e 'system("git", "commit", ...)'` | Same pattern |
+| Perl subprocess | `perl -e 'system("git", "commit", ...)'` | Same pattern |
+| Any compiled binary | `./my-commit-tool` | Command string doesn't contain `git commit` |
+| Direct `.git` manipulation | `python -c "..."` modifying `.git/` directly | No `git` invocation at all |
+
+**Root cause:** `is_git_commit()` (line 182-195) first checks `tool_name in ("Bash", "PowerShell")`,
+then regex-matches the command string. Any indirection through a language runtime
+(python, node, ruby, perl, etc.) hides the `git commit` invocation behind the runtime's
+command name.
+
+### Impact
+
+In MCP-AUDIT-1, commit `cf122dd` was made via Python `subprocess.run(['git', 'commit', ...])`
+because the direct `git commit` via Bash was blocked by a stale hook state. The subprocess
+path succeeded without gate interception.
+
+### New event types added
+
+| event_type | Purpose |
+|------------|---------|
+| `commit_gate_bypassed` | A commit succeeded without gate interception |
+| `gate_boundary_audit` | A documented gate boundary limitation |
+| `gate_subprocess_bypass` | A subprocess-based bypass was detected |
+
+### New failure types added
+
+| failure_type | Purpose |
+|--------------|---------|
+| `gate_subprocess_bypass` | git commit invoked via language subprocess (Python, Node, etc.) |
+| `gate_language_bypass` | Any non-Bash/PowerShell language used to bypass |
+| `gate_boundary_unknown` | We cannot enumerate all possible bypass methods |
+
+### New task type added
+
+| task_type | Purpose |
+|-----------|---------|
+| `gate_boundary_audit` | Systematic gate interception boundary audit |
+
+### New API added
+
+| Function | Purpose |
+|----------|---------|
+| `write_gate_boundary_event(base_dir, event)` | Record a gate boundary audit finding |
+
+### Tests
+
+- **Focused**: 31/31 passed (8 new gate boundary tests)
+- **New test coverage**: gate boundary event types, failure types, task type, gate boundary event writing, subprocess bypass failure, language bypass failure, unknown boundary failure, full end-to-end scenario
+
+### Recommendation for MCP-AUDIT-2
+
+Before entering MCP-AUDIT-2 (SQLite), consider:
+1. Whether the gate boundary should be hardened (MCP-AUDIT-5 or separate MCP-GATE phase)
+2. Whether the JSONL audit logger should be wired into hook events to auto-capture bypasses
+3. Whether `mcp_doctor.py` should include a gate boundary check
+
+These are design decisions, not implementation tasks for MCP-AUDIT-1.1.
