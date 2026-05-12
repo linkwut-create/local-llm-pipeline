@@ -194,12 +194,12 @@ class TestDoctorFailures:
         size_check = [r for r in results if r["check"] == "log_size"]
         assert size_check and size_check[0]["status"] == "WARN"
 
-    def test_very_large_log_file_fails(self, healthy_dirs):
-        """Phase 2F: log > 20 MB should produce a FAIL."""
+    def test_very_large_log_file_warns_strongly(self, healthy_dirs):
+        """Phase 2F: log > 20 MB should WARN, not FAIL — it's a maintenance issue."""
         repo, config = healthy_dirs
         log_file = config / "hook-events.jsonl"
         # Write 21 MB of data
         log_file.write_text("x" * (21 * 1024 * 1024))
         results = mcp_doctor.run_checks(str(repo), str(config))
         size_check = [r for r in results if r["check"] == "log_size"]
-        assert size_check and size_check[0]["status"] == "FAIL"
+        assert size_check and size_check[0]["status"] == "WARN"

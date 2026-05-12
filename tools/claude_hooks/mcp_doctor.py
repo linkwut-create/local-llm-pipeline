@@ -226,8 +226,9 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
              "The log will continue to grow. Periodically archive or delete it "
              f"({log_file}). No automatic rotation is performed.")
     else:
-        fail("log_size", f"hook-events.jsonl size: {mb:.1f} MB — archive recommended",
-             f"The log is very large. Archive or delete it: {log_file}")
+        warn("log_size", f"hook-events.jsonl size: {mb:.1f} MB — archive strongly recommended",
+             "The log is very large but this is a maintenance issue, not a hook failure. "
+             f"Archive or delete it: {log_file}")
 
     # =================================================================
     # 6. Session health
