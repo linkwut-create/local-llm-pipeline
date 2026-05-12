@@ -1,26 +1,32 @@
-"""Test Stop hook session summary (Phase 2A).
+"""Test Stop hook session summary and commit gate (Phase 2A.1).
 
-The hook file lives at ~/.claude/hooks/mcp_gate.py (outside repo).
-These tests import key functions from there and validate behavior.
+Imports from the repository-local module tools/claude_hooks/mcp_gate.py.
+No dependency on ~/.claude/hooks/.
 """
 
 import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-HOOK_DIR = Path(os.environ.get("LOCALAPPDATA", "C:\\Users\\Zero\\AppData\\Local")) / "mcp-gate"
-sys.path.insert(0, str(Path.home() / ".claude" / "hooks"))
-import mcp_gate  # type: ignore
+from tools.claude_hooks import mcp_gate
 
+
+@pytest.fixture
+def tmp_config_dir():
+    """Create a temporary config directory for isolated state/log files."""
+    with tempfile.TemporaryDirectory() as d:
+        yield d
+
+
+# ---------------------------------------------------------------------------
+# review_tool_succeeded
+# ---------------------------------------------------------------------------
 
 class TestReviewToolSucceeded:
-    """Commit gate review validation — unchanged from Phase 2A.1."""
-
     def test_ok_true_with_no_error(self):
         payload = {
             "tool_response": {
@@ -28,7 +34,7 @@ class TestReviewToolSucceeded:
                 "text": json.dumps({"ok": True}),
             }
         }
-        assert mcp_gate._review_tool_succeeded(payload) is True
+        assert mcp_gate.review_tool_succeeded(payload) is True
 
     def test_ok_false(self):
         payload = {
@@ -37,7 +43,7 @@ class TestReviewToolSucceeded:
                 "text": json.dumps({"ok": False}),
             }
         }
-        assert mcp_gate._review_tool_succeeded(payload) is False
+        assert mcp_gate.review_tool_succeeded(payload) is False
 
     def test_error_field_non_null(self):
         payload = {
@@ -46,7 +52,7 @@ class TestReviewToolSucceeded:
                 "text": json.dumps({"ok": True, "error": "something broke"}),
             }
         }
-        assert mcp_gate._review_tool_succeeded(payload) is False
+        assert mcp_gate.review_tool_succeeded(payload) is False
 
     def test_unicode_warning_in_response(self):
         payload = {
@@ -58,237 +64,263 @@ class TestReviewToolSucceeded:
                 }),
             }
         }
-        assert mcp_gate._review_tool_succeeded(payload) is False
+        assert mcp_gate.review_tool_succeeded(payload) is False
 
     def test_no_tool_response(self):
-        assert mcp_gate._review_tool_succeeded({}) is False
-        assert mcp_gate._review_tool_succeeded({"tool_response": {}}) is False
+        assert mcp_gate.review_tool_succeeded({}) is False
+        assert mcp_gate.review_tool_succeeded({"tool_response": {}}) is False
 
+
+# ---------------------------------------------------------------------------
+# handle_stop (session summary)
+# ---------------------------------------------------------------------------
 
 class TestStopHook:
-    """Stop hook: reminder-only, never blocks."""
+    def test_empty_session_reminders(self, tmp_config_dir):
+        """Session with no MCP calls should produce reminders."""
+        mcp_gate._clear_session(tmp_config_dir)
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": ""})
+        assert any("local_check" in r.lower() for r in reminders)
 
-    def test_empty_session_no_crash(self, monkeypatch):
-        """Stop hook with no state and no cwd should not crash."""
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file({}))
-        mcp_gate._handle_stop({"cwd": ""})
-        output = "".join(written)
-        assert "local_check" in output.lower() or "mcp" in output.lower()
-
-    def test_full_session_no_warnings(self, monkeypatch):
-        """Session with check + review + clean tree should be quiet."""
-        state = {
-            "diff_reviewed": True,
-            "dirty_since_review": False,
-            "mcp_calls": {
-                "mcp__local-llm__local_check": True,
-                "mcp__local-llm__local_review_diff": True,
-                "mcp__local-llm__local_summarize_file": True,
-                "_last_mcp_failed": False,
-            },
+    def test_full_session_no_false_warnings(self, tmp_config_dir):
+        """Session with check + review + summarize should not warn about missing tools."""
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["mcp_calls"] = {
+            "mcp__local-llm__local_check": True,
+            "mcp__local-llm__local_review_diff": True,
+            "mcp__local-llm__local_summarize_file": True,
+            "_last_mcp_failed": False,
         }
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file(state))
-        monkeypatch.setattr(mcp_gate, "_run_git", lambda *a, **kw: "")
-        mcp_gate._handle_stop({"cwd": "/fake/repo"})
-        output = "".join(written)
-        # Should not warn about check or review since both were called
-        assert "local_check was not called" not in output
-        assert "No local_review_diff" not in output
+        state["diff_reviewed"] = True
+        state["dirty_since_review"] = False
+        mcp_gate.save_state(tmp_config_dir, state)
 
-    def test_no_mcp_calls_shows_reminders(self, monkeypatch):
-        """Empty mcp_calls should produce reminders for check and review."""
-        state = {"mcp_calls": {}}
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file(state))
-        monkeypatch.setattr(mcp_gate, "_run_git", lambda *a, **kw: "")
-        mcp_gate._handle_stop({"cwd": "/fake/repo"})
-        output = "".join(written)
-        assert "local_check was not called" in output
-        assert "No local_review_diff" in output
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": ""})
+        # Should not contain "was not called" for check or review
+        assert not any("local_check was not called" in r for r in reminders)
+        assert not any("No local_review_diff" in r for r in reminders)
 
-    def test_failed_mcp_shows_warning(self, monkeypatch):
-        """A failed MCP call should produce a warning."""
-        state = {
-            "mcp_calls": {
-                "mcp__local-llm__local_check": True,
-                "mcp__local-llm__local_review_diff": True,
-                "_last_mcp_failed": True,
-            },
-            "diff_reviewed": False,
-            "last_review_error": "2026-05-12T00:00:00+00:00",
+    def test_no_mcp_calls_shows_reminders(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": ""})
+        assert any("local_check was not called" in r for r in reminders)
+        assert any("No local_review_diff" in r for r in reminders)
+
+    def test_failed_mcp_shows_warning(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["mcp_calls"] = {
+            "mcp__local-llm__local_check": True,
+            "mcp__local-llm__local_review_diff": True,
+            "_last_mcp_failed": True,
         }
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file(state))
-        monkeypatch.setattr(mcp_gate, "_run_git", lambda *a, **kw: "")
-        mcp_gate._handle_stop({"cwd": "/fake/repo"})
-        output = "".join(written)
-        assert "FAILED" in output or "failed" in output.lower()
+        mcp_gate.save_state(tmp_config_dir, state)
 
-    def test_dirty_tree_without_review_shows_reminder(self, monkeypatch):
-        """Dirty tree without diff_reviewed should show reminder."""
-        state = {
-            "diff_reviewed": False,
-            "mcp_calls": {"mcp__local-llm__local_check": True},
-        }
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file(state))
-        monkeypatch.setattr(
-            mcp_gate, "_run_git",
-            lambda args, **kw: (
-                " M test.txt\n M src/foo.py" if args == ["status", "--short"] else ""
-            ),
-        )
-        mcp_gate._handle_stop({"cwd": "/fake/repo"})
-        output = "".join(written)
-        assert "dirty" in output.lower()
-        assert "review" in output.lower()
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": ""})
+        assert any("failed" in r.lower() or "FAILED" in r for r in reminders)
 
-    def test_staged_diff_reminder(self, monkeypatch):
-        """Staged changes should trigger re-review reminder."""
-        state = {
-            "diff_reviewed": True,
-            "dirty_since_review": False,
-            "mcp_calls": {
-                "mcp__local-llm__local_check": True,
-                "mcp__local-llm__local_review_diff": True,
-            },
+    def test_dirty_tree_without_review(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+
+        def _fake_git(args, cwd=None):
+            if args == ["status", "--short"]:
+                return " M test.txt\n M src/foo.py"
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/fake/repo"})
+        assert any("dirty" in r.lower() for r in reminders)
+        assert any("review" in r.lower() for r in reminders)
+
+    def test_staged_diff_reminder(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["diff_reviewed"] = True
+        state["mcp_calls"] = {
+            "mcp__local-llm__local_check": True,
+            "mcp__local-llm__local_review_diff": True,
         }
-        written = []
-        monkeypatch.setattr(sys, "stderr", _FakeStderr(written))
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", _temp_state_file(state))
-        def _fake_git(args, **kw):
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        def _fake_git(args, cwd=None):
             if args == ["status", "--short"]:
                 return ""
             if args == ["diff", "--cached", "--stat"]:
                 return " test.txt | 2 +-"
             return ""
-        monkeypatch.setattr(mcp_gate, "_run_git", _fake_git)
-        mcp_gate._handle_stop({"cwd": "/fake/repo"})
-        output = "".join(written)
-        assert "staged" in output.lower()
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
 
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/fake/repo"})
+        assert any("staged" in r.lower() for r in reminders)
+
+
+# ---------------------------------------------------------------------------
+# session boundary
+# ---------------------------------------------------------------------------
+
+class TestSessionBoundary:
+    def test_session_start_clears_mcp_calls(self, tmp_config_dir):
+        """SessionStart must clear previous session's mcp_calls."""
+        # Simulate a previous session with MCP calls
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["mcp_calls"] = {
+            "mcp__local-llm__local_check": True,
+            "mcp__local-llm__local_review_diff": True,
+        }
+        old_session_id = state["session_id"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        # Start new session
+        mcp_gate.handle_session_start(tmp_config_dir, {})
+
+        # Verify
+        new_state = mcp_gate.load_state(tmp_config_dir)
+        assert new_state["session_id"] != old_session_id
+        assert new_state["mcp_calls"] == {}
+        assert new_state["_last_mcp_failed"] is False
+
+    def test_session_boundary_prevents_contamination(self, tmp_config_dir):
+        """Previous session's mcp_calls must not leak into Stop summary."""
+        # Session 1: did local_check
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["mcp_calls"] = {"mcp__local-llm__local_check": True}
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        # Session 2: fresh, no MCP calls
+        mcp_gate.handle_session_start(tmp_config_dir, {})
+
+        reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": ""})
+        assert any("local_check was not called" in r for r in reminders), \
+            "Session 2 should not see Session 1's local_check"
+
+
+# ---------------------------------------------------------------------------
+# MCP tracking in PostToolUse
+# ---------------------------------------------------------------------------
 
 class TestMcpTracking:
-    """MCP tool tracking in PostToolUse feeds Stop hook summary."""
-
-    def test_mcp_call_recorded_in_state(self, monkeypatch):
-        state_file = _temp_state_file({})
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", state_file)
-        payload = {
+    def test_mcp_call_recorded(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
             "tool_name": "mcp__local-llm__local_check",
-            "tool_response": {
-                "type": "text",
-                "text": json.dumps({"ok": True}),
-            },
-        }
-        # Simulate PostToolUse handling for MCP tracking
-        state = mcp_gate._load_state()
-        mcp_calls = state.get("mcp_calls", {})
-        mcp_calls["mcp__local-llm__local_check"] = True
-        mcp_calls["_last_mcp_ts"] = datetime.now(timezone.utc).isoformat()
-        state["mcp_calls"] = mcp_calls
-        mcp_gate._save_state(state)
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["mcp_calls"]["mcp__local-llm__local_check"] is True
 
-        reloaded = mcp_gate._load_state()
-        assert reloaded["mcp_calls"]["mcp__local-llm__local_check"] is True
+    def test_failed_mcp_tracked(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": False})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["mcp_calls"]["_last_mcp_failed"] is True
+        assert state["diff_reviewed"] is False
 
-    def test_failed_mcp_tracked(self, monkeypatch):
-        state_file = _temp_state_file({})
-        monkeypatch.setattr(mcp_gate, "STATE_FILE", state_file)
-        state = mcp_gate._load_state()
-        mcp_calls = state.get("mcp_calls", {})
-        mcp_calls["mcp__local-llm__local_review_diff"] = True
-        mcp_calls["_last_mcp_failed"] = True
-        mcp_calls["_last_mcp_error_ts"] = datetime.now(timezone.utc).isoformat()
-        state["mcp_calls"] = mcp_calls
-        mcp_gate._save_state(state)
 
-        reloaded = mcp_gate._load_state()
-        assert reloaded["mcp_calls"]["_last_mcp_failed"] is True
-
+# ---------------------------------------------------------------------------
+# commit gate unchanged
+# ---------------------------------------------------------------------------
 
 class TestCommitGateUnchanged:
-    """Phase 2A must not break existing commit gate behavior."""
+    def test_commit_without_review_blocked(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
 
-    def test_commit_without_review_blocked(self):
-        state = {
-            "diff_reviewed": False,
-            "dirty_since_review": False,
-        }
-        # Without valid review, reviewed_ok should be False
+    def test_commit_with_valid_review_allowed(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
         fp = {"repo": "/fake/repo", "head": "abc123", "diff_hash": "def456"}
-        reviewed_ok = (
-            state.get("diff_reviewed")
-            and not state.get("dirty_since_review")
-            and fp is not None
-            and state.get("reviewed_repo") == fp["repo"]
-            and state.get("reviewed_head") == fp["head"]
-            and state.get("reviewed_diff_hash") == fp["diff_hash"]
-        )
-        assert reviewed_ok is False
-
-    def test_commit_with_valid_review_allowed(self):
-        state = {
+        monkeypatch.setattr(mcp_gate, "get_repo_fingerprint", lambda cwd=None: fp)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state.update({
             "diff_reviewed": True,
             "dirty_since_review": False,
             "reviewed_repo": "/fake/repo",
             "reviewed_head": "abc123",
             "reviewed_diff_hash": "def456",
-        }
-        fp = {"repo": "/fake/repo", "head": "abc123", "diff_hash": "def456"}
-        reviewed_ok = (
-            state.get("diff_reviewed")
-            and not state.get("dirty_since_review")
-            and fp is not None
-            and state.get("reviewed_repo") == fp["repo"]
-            and state.get("reviewed_head") == fp["head"]
-            and state.get("reviewed_diff_hash") == fp["diff_hash"]
-        )
-        assert reviewed_ok is True
+        })
+        mcp_gate.save_state(tmp_config_dir, state)
 
-    def test_dirty_after_review_invalidates(self):
-        state = {
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+            "cwd": "/fake/repo",
+        })
+        assert result["allow"] is True
+
+    def test_dirty_after_review_invalidates(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        fp = {"repo": "/fake/repo", "head": "abc123", "diff_hash": "def456"}
+        monkeypatch.setattr(mcp_gate, "get_repo_fingerprint", lambda cwd=None: fp)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state.update({
             "diff_reviewed": True,
-            "dirty_since_review": True,  # files modified after review
+            "dirty_since_review": True,
             "reviewed_repo": "/fake/repo",
             "reviewed_head": "abc123",
             "reviewed_diff_hash": "def456",
-        }
-        fp = {"repo": "/fake/repo", "head": "abc123", "diff_hash": "def456"}
-        reviewed_ok = (
-            state.get("diff_reviewed")
-            and not state.get("dirty_since_review")
-            and fp is not None
-            and state.get("reviewed_repo") == fp["repo"]
-            and state.get("reviewed_head") == fp["head"]
-            and state.get("reviewed_diff_hash") == fp["diff_hash"]
-        )
-        assert reviewed_ok is False  # dirty_since_review blocks
+        })
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+            "cwd": "/fake/repo",
+        })
+        assert result["allow"] is False
+
+    def test_cross_repo_review_rejected(self, tmp_config_dir, monkeypatch):
+        """Review from a different repo must not be accepted."""
+        mcp_gate._clear_session(tmp_config_dir)
+        fp_current = {"repo": "/fake/repo-B", "head": "xyz", "diff_hash": "999"}
+        monkeypatch.setattr(mcp_gate, "get_repo_fingerprint", lambda cwd=None: fp_current)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state.update({
+            "diff_reviewed": True,
+            "dirty_since_review": False,
+            "reviewed_repo": "/fake/repo-A",
+            "reviewed_head": "abc123",
+            "reviewed_diff_hash": "def456",
+        })
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+            "cwd": "/fake/repo-B",
+        })
+        assert result["allow"] is False
 
 
-# --- helpers ---
+# ---------------------------------------------------------------------------
+# handle_session_start
+# ---------------------------------------------------------------------------
 
-class _FakeStderr:
-    def __init__(self, capture_list):
-        self._capture = capture_list
+class TestSessionStart:
+    def test_creates_session_id(self, tmp_config_dir):
+        mcp_gate.handle_session_start(tmp_config_dir, {})
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["session_id"] is not None
+        assert len(state["session_id"]) == 12
 
-    def write(self, s):
-        self._capture.append(s)
+    def test_does_not_clear_commit_gate_state(self, tmp_config_dir):
+        """SessionStart clears mcp_calls but preserves commit gate fields."""
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["diff_reviewed"] = True
+        state["reviewed_repo"] = "/some/repo"
+        mcp_gate.save_state(tmp_config_dir, state)
 
-    def flush(self):
-        pass
+        mcp_gate.handle_session_start(tmp_config_dir, {})
 
-
-def _temp_state_file(initial: dict):
-    """Create a temporary state file for isolated testing."""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w")
-    json.dump(initial, tmp)
-    tmp.close()
-    return Path(tmp.name)
+        new_state = mcp_gate.load_state(tmp_config_dir)
+        assert new_state["diff_reviewed"] is True
+        assert new_state["reviewed_repo"] == "/some/repo"
+        assert new_state["mcp_calls"] == {}
