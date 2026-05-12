@@ -1611,4 +1611,45 @@ Provide a CLI entry point for querying the MCP audit database and generating rep
 
 - No automatic trigger on phase completion
 - No dashboard or visual report
-- No deep hook/wrapper integration (MCP-AUDIT-5)
+
+## MCP-AUDIT-5 Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Integrate MCP audit with hooks and wrappers for automatic event recording.
+
+### Changes
+
+**Hook auto-recording** (`mcp_gate.py` — from MCP-GATE-1B):
+- `commit_gate_blocked` — git commit blocked by gate
+- `hook_state_mismatch` — repo/head mismatch
+- `staged_diff_hash_mismatch` — diff hash changed since review
+- `gate_subprocess_bypass` — subprocess git commit pattern detected
+
+**Router call recording** (`local_llm_router.py`):
+- `mcp_invocation_started` — before worker subprocess launches
+- `mcp_invocation_finished` — successful completion
+- `mcp_invocation_failed` — failure with failure_type mapping
+
+**Per-repo state sync** (`mcp_gate.py`):
+- `_ensure_repo_state()` transparently saves/restores per-repo review state
+
+**JSONL → SQLite sync**:
+- `python tools/mcp_audit_cli.py import-jsonl` serves as sync command (idempotent)
+
+### Integration tests
+
+`tests/test_mcp_audit_integration.py` — 14 tests
+
+### Test results
+
+- **Integration**: 14/14 passed
+- **Combined (integration + CLI + report + DB + logger + gate)**: 142/142 passed
+
+### Known limitations
+
+- Compiled binaries cannot be inspected for git commit bypass
+- Audit records are local-only (per-project filesystem)
+- Manual hook state alignment may still be needed in edge cases

@@ -64,6 +64,70 @@ def check_model_available(model: str, available: list[str]) -> bool:
     return False
 
 
+def _try_audit_start(task: str, profile: str, model: str,
+                     args: list[str], has_stdin: bool):
+    """Record invocation start to MCP audit logger. Never raises."""
+    try:
+        from mcp_audit_logger import write_audit_event
+        input_summary = "stdin" if has_stdin else (
+            args[0] if args else "no args"
+        )
+        write_audit_event(None, {
+            "event_type": "mcp_invocation_started",
+            "task_type": task,
+            "tool_name": f"local_llm_router:{task}",
+            "profile_name": profile,
+            "model_name": model,
+            "command": f"python tools/local_llm_router.py {task}",
+            "input_summary": input_summary,
+            "result_status": "started",
+        })
+    except Exception:
+        pass
+
+
+def _try_audit_result(task: str, profile: str, model: str,
+                      returncode: int, elapsed_ms: int):
+    """Record invocation result to MCP audit logger. Never raises."""
+    try:
+        from mcp_audit_logger import write_audit_event, write_failure_event
+        if returncode == 0:
+            write_audit_event(None, {
+                "event_type": "mcp_invocation_finished",
+                "task_type": task,
+                "tool_name": f"local_llm_router:{task}",
+                "profile_name": profile,
+                "model_name": model,
+                "result_status": "passed",
+                "output_summary": f"Completed in {elapsed_ms}ms",
+            })
+        else:
+            write_audit_event(None, {
+                "event_type": "mcp_invocation_failed",
+                "task_type": task,
+                "tool_name": f"local_llm_router:{task}",
+                "profile_name": profile,
+                "model_name": model,
+                "result_status": "failed",
+                "output_summary": f"Exit code {returncode} in {elapsed_ms}ms",
+            })
+            # Map return code to failure type
+            failure_map = {
+                1: "tool_failed",
+                49: "model_unavailable",
+            }
+            write_failure_event(None, {
+                "failure_type": failure_map.get(returncode, "tool_failed"),
+                "severity": "high" if returncode != 0 else "low",
+                "tool_name": f"local_llm_router:{task}",
+                "command": f"python tools/local_llm_router.py {task}",
+                "exit_code": returncode,
+                "resolved": 0,
+            })
+    except Exception:
+        pass
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python tools/local_llm_router.py <task> [target] [options]", file=sys.stderr)
@@ -150,7 +214,12 @@ def main():
         "--model", model,
     ] + filtered_args
 
+    import time
+    started = time.time()
     has_stdin = "--stdin" in filtered_args
+
+    # MCP-AUDIT-5: record invocation start
+    _try_audit_start(task, profile_name, model, filtered_args, has_stdin)
     if has_stdin:
         stdin_data = sys.stdin.buffer.read().decode("utf-8", errors="replace") if not sys.stdin.isatty() else ""
         result = subprocess.run(cmd, input=stdin_data, text=True,
@@ -160,6 +229,10 @@ def main():
         result = subprocess.run(cmd, text=True,
                                 encoding="utf-8", errors="replace",
                                 capture_output=False, env=subprocess_env)
+    elapsed_ms = int((time.time() - started) * 1000)
+
+    # MCP-AUDIT-5: record invocation result
+    _try_audit_result(task, profile_name, model, result.returncode, elapsed_ms)
 
     sys.exit(result.returncode)
 
