@@ -63,6 +63,36 @@ _GIT_SUBCMD_FALLBACK_RE = re.compile(
     r'(commit|tag|push)\b'
 )
 
+# Phase MCP-GATE-1B: subprocess git commit bypass risk patterns.
+# These detect when a language runtime is used to invoke git commit indirectly.
+# Each entry is (pattern, description, language).
+_BYPASS_RISK_PATTERNS = [
+    # Python subprocess.run(['git', 'commit', ...]) — must contain git in the args
+    (r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[[^\]]*\bgit\b[^\]]*\bcommit\b",
+     "Python subprocess git commit (list form)", "python"),
+    (r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\([^)]*\bgit\s+commit",
+     "Python subprocess git commit (string form)", "python"),
+    # Python os.system / os.popen git commit
+    (r"os\.(?:system|popen)\s*\(\s*[\"'][^\"']*\bgit\s+commit",
+     "Python os.system git commit", "python"),
+    # Node.js: child_process.execSync('git commit ...') — dotted form
+    (r"child_process[.\w]*\.(?:exec|execSync|execFile|execFileSync|spawn|spawnSync)\s*\([^)]*\bgit\s+commit",
+     "Node child_process git commit (dotted form)", "node"),
+    # Node.js: destructured execSync('git commit ...') — when child_process AND execSync + git commit both present
+    (r"\bexec(?:Sync)?\s*\(\s*[\"'][^\"']*\bgit\s+commit",
+     "Node destructured git commit", "node"),
+    # Ruby system / backticks / exec
+    (r"system\s*\(\s*[\"'][^\"']*git[\"']\s*,\s*[\"']commit",
+     "Ruby system git commit", "ruby"),
+    (r"`\s*git\s+commit",
+     "Ruby backtick git commit", "ruby"),
+    # Perl system / backticks / exec
+    (r"system\s*\(\s*[\"'][^\"']*\bgit\s+commit",
+     "Perl system git commit", "perl"),
+    (r"`\s*git\s+commit.*`",
+     "Perl backtick git commit", "perl"),
+]
+
 _BENIGN_OUTPUT_COMMANDS = {"echo", "printf", "Write-Output", "Write-Host"}
 
 # Phase 2B: dangerous shell command patterns. Each entry is (pattern, description).
@@ -193,6 +223,47 @@ def is_git_commit(payload: dict) -> bool:
         if _single_cmd_is_git_commit(sub):
             return True
     return False
+
+
+def is_git_commit_bypass_risk(payload: dict) -> tuple[bool, str, str]:
+    """Detect subprocess/language-based git commit bypass attempts.
+
+    Checks if a Bash/PowerShell command uses a language runtime (python, node,
+    ruby, perl) to indirectly invoke git commit. Only triggers when BOTH the
+    language runtime AND a git-commit-like subprocess pattern are present.
+
+    Returns (is_risk, description, language) or (False, "", "").
+    """
+    name = payload.get("tool_name", "")
+    if name not in ("Bash", "PowerShell"):
+        return False, "", ""
+    cmd = str(payload.get("tool_input", {}).get("command", ""))
+
+    # Must contain a language runtime invocation
+    has_lang = False
+    lang = ""
+    if re.search(r'\bpython3?(?:\.\d+)?\b', cmd):
+        has_lang = True
+        lang = "python"
+    elif re.search(r'\bnode\b', cmd):
+        has_lang = True
+        lang = "node"
+    elif re.search(r'\bruby\b', cmd):
+        has_lang = True
+        lang = "ruby"
+    elif re.search(r'\bperl\b', cmd):
+        has_lang = True
+        lang = "perl"
+
+    if not has_lang:
+        return False, "", ""
+
+    # Must contain a subprocess git commit pattern
+    for pattern, desc, pat_lang in _BYPASS_RISK_PATTERNS:
+        if pat_lang == lang and re.search(pattern, cmd, re.IGNORECASE):
+            return True, desc, lang
+
+    return False, "", ""
 
 
 def is_dangerous_command(payload: dict) -> tuple[bool, str]:
@@ -475,6 +546,99 @@ def log_event(config_dir: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
+# MCP-GATE-1B: per-repo state isolation
+# ---------------------------------------------------------------------------
+
+def _repo_state_key(repo_root: str) -> str:
+    """Stable short key derived from repo root path."""
+    return hashlib.sha256(repo_root.encode()).hexdigest()[:12]
+
+
+# Fields that are per-repo (saved/restored on repo switch)
+_REPO_SCOPED_FIELDS = [
+    "diff_reviewed", "dirty_since_review", "touched_files",
+    "reviewed_at", "reviewed_by", "reviewed_repo", "reviewed_head",
+    "reviewed_diff_hash",
+]
+
+
+def _ensure_repo_state(state: dict, repo_root: str):
+    """Swap flat state fields to/from per-repo storage when repo changes.
+
+    The flat top-level fields always reflect the CURRENT active repo.
+    On repo change, the current flat values are saved to the old repo's
+    per-repo store, and the new repo's values are loaded into flat fields.
+    On first access to a new repo, it starts with clean defaults.
+    On very first call (no prior active repo), the current flat state is
+    preserved as the initial state for that repo.
+    """
+    if not repo_root:
+        return
+    if "repos" not in state:
+        state["repos"] = {}
+    key = _repo_state_key(repo_root)
+    current_repo = state.get("_active_repo_key")
+
+    if current_repo == key:
+        return  # Same repo, no swap needed
+
+    # Save current flat state to old repo's per-repo storage
+    if current_repo:
+        entry = state["repos"].setdefault(current_repo, {"repo_root": ""})
+        for field in _REPO_SCOPED_FIELDS:
+            entry[field] = state.get(field)
+    else:
+        # Very first call: persist current flat state as initial state for this repo
+        state["repos"][key] = {
+            "repo_root": repo_root,
+            "diff_reviewed": state.get("diff_reviewed", False),
+            "dirty_since_review": state.get("dirty_since_review", False),
+            "touched_files": list(state.get("touched_files", [])),
+            "reviewed_at": state.get("reviewed_at"),
+            "reviewed_by": state.get("reviewed_by"),
+            "reviewed_repo": state.get("reviewed_repo"),
+            "reviewed_head": state.get("reviewed_head"),
+            "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+        }
+        state["_active_repo_key"] = key
+        return  # Don't overwrite flat fields — keep what's already there
+
+    # Load new repo's state (or use defaults for first access)
+    if key in state["repos"]:
+        for field in _REPO_SCOPED_FIELDS:
+            state[field] = state["repos"][key].get(field, _STATE_DEFAULTS.get(field))
+    else:
+        # First time accessing this repo after a swap: use clean defaults
+        state["repos"][key] = {"repo_root": repo_root}
+        for field in _REPO_SCOPED_FIELDS:
+            state[field] = _STATE_DEFAULTS.get(field)
+
+    state["_active_repo_key"] = key
+
+
+# ---------------------------------------------------------------------------
+# MCP-GATE-1B: audit logger integration (best-effort)
+# ---------------------------------------------------------------------------
+
+def _try_audit_event(event: dict):
+    """Write an audit event via mcp_audit_logger if available. Never raises."""
+    try:
+        from mcp_audit_logger import write_audit_event
+        write_audit_event(None, event)
+    except Exception:
+        pass
+
+
+def _try_audit_failure(failure: dict):
+    """Write an audit failure via mcp_audit_logger if available. Never raises."""
+    try:
+        from mcp_audit_logger import write_failure_event
+        write_failure_event(None, failure)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # per-session state helpers
 # ---------------------------------------------------------------------------
 
@@ -549,10 +713,14 @@ def handle_post_tooluse(config_dir: str, payload: dict):
 
     # --- Review tools ---
     if name in _REVIEW_TOOLS:
+        state = load_state(config_dir)
+        cwd = payload.get("cwd", "")
+        fp = get_repo_fingerprint(cwd=cwd) if cwd else None
+        repo_root = fp["repo"] if fp else cwd or None
+        if repo_root:
+            _ensure_repo_state(state, repo_root)
+
         if review_tool_succeeded(payload):
-            state = load_state(config_dir)
-            cwd = payload.get("cwd", "")
-            fp = get_repo_fingerprint(cwd=cwd) if cwd else None
             state["diff_reviewed"] = True
             state["dirty_since_review"] = False
             state["reviewed_at"] = datetime.now(timezone.utc).isoformat()
@@ -565,11 +733,15 @@ def handle_post_tooluse(config_dir: str, payload: dict):
             if name == "mcp__local-llm__local_debate_review_diff":
                 state["needs_debate"] = False
             state["needs_review"] = False
+            # Persist per-repo state on save
+            if repo_root:
+                _ensure_repo_state(state, repo_root)
             save_state(config_dir, state)
         else:
-            state = load_state(config_dir)
-            state["last_review_error"] = datetime.now(timezone.utc).isoformat()
             state["diff_reviewed"] = False
+            if repo_root:
+                _ensure_repo_state(state, repo_root)
+            state["last_review_error"] = datetime.now(timezone.utc).isoformat()
             save_state(config_dir, state)
 
     # --- Dirty tools (Edit/Write/MultiEdit) ---
@@ -577,6 +749,10 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         target = str(payload.get("tool_input", {}).get("file_path", ""))
         if "mcp-gate" not in target and ".claude/hooks" not in target:
             state = load_state(config_dir)
+            cwd = payload.get("cwd", "")
+            repo_root = get_repo_root(cwd) if cwd else None
+            if repo_root:
+                _ensure_repo_state(state, repo_root)
             state["dirty_since_review"] = True
             state["needs_review"] = True
             if "touched_files" not in state:
@@ -681,13 +857,72 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
             ),
         }
 
+    # --- MCP-GATE-1B: bypass risk detection (runs before normal commit gate) ---
+    is_bypass, bypass_desc, bypass_lang = is_git_commit_bypass_risk(payload)
+    if is_bypass:
+        cmd = str(payload.get("tool_input", {}).get("command", ""))
+        cwd = payload.get("cwd", "")
+        repo_root = get_repo_root(cwd) if cwd else None
+
+        # Record bypass risk to audit logger
+        _try_audit_event({
+            "event_type": "gate_subprocess_bypass",
+            "task_type": "gate_boundary_audit",
+            "tool_name": "commit_gate",
+            "project_name": Path(repo_root).name if repo_root else "unknown",
+            "project_path": repo_root,
+            "command": cmd[:500],
+            "gate_detected": True,
+            "bypass_method": f"subprocess_{bypass_lang}",
+            "bypass_detail": bypass_desc,
+            "interception_boundary": (
+                f"Detected {bypass_lang} subprocess git commit pattern. "
+                "Commit via language runtime subprocess is blocked."
+            ),
+            "result_status": "blocked",
+            "blocking": True,
+            "severity": "high",
+        })
+        _try_audit_failure({
+            "failure_type": "gate_subprocess_bypass",
+            "severity": "high",
+            "tool_name": "commit_gate",
+            "project_name": Path(repo_root).name if repo_root else "unknown",
+            "project_path": repo_root,
+            "command": cmd[:500],
+            "stderr_summary": f"Blocked: {bypass_desc}",
+            "possible_causes": [
+                f"git commit invoked via {bypass_lang} subprocess",
+                "Direct Bash/PowerShell git commit is required",
+            ],
+            "resolved": False,
+        })
+
+        return {
+            "allow": False,
+            "reason": (
+                f"BLOCKED: git commit via {bypass_lang} subprocess detected ({bypass_desc}).\n"
+                f"Use a direct 'git commit' command via Bash or PowerShell.\n"
+                f"Command: {cmd[:200]}\n"
+                "This block is recorded in MCP audit log."
+            ),
+        }
+
+    # --- Normal commit gate ---
     if is_git_commit(payload):
         state = load_state(config_dir)
         cmd = str(payload.get("tool_input", {}).get("command", ""))
         c_path = extract_git_c_path(cmd)
         target_cwd = c_path or payload.get("cwd", "")
         fp = get_repo_fingerprint(cwd=target_cwd) if target_cwd else None
+        repo_root = fp["repo"] if fp else None
+        project_name = Path(repo_root).name if repo_root else "unknown"
 
+        # Sync flat state with per-repo storage for this repo
+        if repo_root:
+            _ensure_repo_state(state, repo_root)
+
+        # Use flat state fields (now swapped to current repo)
         reviewed_ok = (
             state.get("diff_reviewed")
             and not state.get("dirty_since_review")
@@ -704,9 +939,11 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                 "BLOCKED: git commit requires prior local model review.",
                 "Call mcp__local-llm__local_review_diff with commit_gate=true.",
             ]
+            mismatch_type = None
             if state.get("diff_reviewed"):
                 if state.get("dirty_since_review"):
                     parts.append("Reason: files modified after review.")
+                    mismatch_type = "dirty_since_review"
                 elif fp is None:
                     parts.append("Reason: cannot determine current repo/HEAD.")
                 elif state.get("reviewed_repo") != fp["repo"]:
@@ -714,10 +951,13 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                         f"Reason: review was for {state.get('reviewed_repo')}, "
                         f"current is {fp['repo']}."
                     )
+                    mismatch_type = "repo_mismatch"
                 elif state.get("reviewed_head") != fp["head"]:
                     parts.append("Reason: HEAD has changed since review.")
+                    mismatch_type = "head_mismatch"
                 elif state.get("reviewed_diff_hash") != fp["diff_hash"]:
                     parts.append("Reason: staged diff has changed since review.")
+                    mismatch_type = "diff_hash_mismatch"
                 else:
                     parts.append("Reason: review state mismatch.")
             parts.append(
@@ -736,6 +976,61 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                 pending.append("local_summarize_file")
             if pending:
                 parts.append(f"MCP pending recommendations: {', '.join(pending)}")
+
+            # MCP-GATE-1B: write audit events for blocked commit
+            audit_reason = "\n".join(parts)
+            _try_audit_event({
+                "event_type": "commit_gate_blocked",
+                "task_type": "commit_gate",
+                "tool_name": "commit_gate",
+                "project_name": project_name,
+                "project_path": repo_root,
+                "command": cmd[:500],
+                "result_status": "blocked",
+                "blocking": True,
+                "output_summary": audit_reason[:500],
+                "commit_before": fp["head"] if fp else None,
+                "staged_diff_hash": fp["diff_hash"] if fp else None,
+                "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+                "hook_state_summary": json.dumps({
+                    "reviewed_repo": state.get("reviewed_repo"),
+                    "current_repo": fp["repo"] if fp else None,
+                    "reviewed_head": state.get("reviewed_head"),
+                    "current_head": fp["head"] if fp else None,
+                    "dirty_since_review": state.get("dirty_since_review"),
+                    "diff_reviewed": state.get("diff_reviewed"),
+                }),
+                "notes": f"Mismatch type: {mismatch_type}" if mismatch_type else "",
+            })
+
+            if mismatch_type in ("repo_mismatch", "head_mismatch"):
+                _try_audit_failure({
+                    "failure_type": "hook_state_mismatch",
+                    "severity": "high",
+                    "tool_name": "commit_gate",
+                    "project_name": project_name,
+                    "project_path": repo_root,
+                    "command": cmd[:500],
+                    "hook_state_summary": json.dumps({
+                        "reviewed_repo": state.get("reviewed_repo"),
+                        "current_repo": fp["repo"] if fp else None,
+                        "reviewed_head": state.get("reviewed_head"),
+                        "current_head": fp["head"] if fp else None,
+                    }),
+                    "resolved": False,
+                })
+            elif mismatch_type == "diff_hash_mismatch":
+                _try_audit_failure({
+                    "failure_type": "staged_diff_hash_mismatch",
+                    "severity": "high",
+                    "tool_name": "commit_gate",
+                    "project_name": project_name,
+                    "project_path": repo_root,
+                    "staged_diff_hash": fp["diff_hash"] if fp else None,
+                    "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+                    "resolved": False,
+                })
+
             return {"allow": False, "reason": "\n".join(parts)}
     return {"allow": True, "reason": ""}
 

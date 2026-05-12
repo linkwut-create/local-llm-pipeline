@@ -1356,3 +1356,82 @@ Before entering MCP-AUDIT-2 (SQLite), consider:
 3. Whether `mcp_doctor.py` should include a gate boundary check
 
 These are design decisions, not implementation tasks for MCP-AUDIT-1.1.
+
+## MCP-GATE-1B Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Harden the commit gate against subprocess bypasses, fix cross-project state
+pollution, and wire gate events into the JSONL audit logger.
+
+### Changes to `mcp_gate.py`
+
+**1. Subprocess bypass detection**
+
+Added `is_git_commit_bypass_risk()` function that detects when a language
+runtime is used to indirectly invoke git commit. Covers:
+
+| Language | Patterns detected |
+|----------|------------------|
+| Python | `subprocess.run(['git', 'commit', ...])`, `subprocess.run("git commit ...")`, `os.system("git commit ...")`, `subprocess.Popen(...)` |
+| Node.js | `child_process.execSync("git commit ...")`, destructured `execSync("git commit ...")` |
+| Ruby | `system("git", "commit", ...)`, backtick `` `git commit ...` `` |
+| Perl | `system("git commit ...")`, backtick `` `git commit ...` `` |
+
+Detection logic:
+1. Only fires for Bash/PowerShell tool calls
+2. Checks for language runtime keyword (python/node/ruby/perl)
+3. Checks for subprocess pattern containing git commit
+4. Both conditions must match — `python -m pytest` does NOT trigger
+
+When a bypass is detected, the command is BLOCKED and both an audit event
+(`gate_subprocess_bypass`) and failure record are written.
+
+**2. Per-repo state isolation**
+
+Added `_ensure_repo_state()` function that transparently swaps flat state
+fields when the active repo changes:
+
+- On first access: current flat state is persisted as the initial state for the current repo
+- On repo change: current state is saved to old repo's per-repo store, new repo's state is restored
+- Backward compatible: existing tests that read/write flat `state["diff_reviewed"]` etc. continue to work
+- Per-repo fields: `diff_reviewed`, `dirty_since_review`, `touched_files`, `reviewed_at`, `reviewed_by`, `reviewed_repo`, `reviewed_head`, `reviewed_diff_hash`
+
+This prevents cross-project state pollution (e.g., `local-translator-agent` state leaking into `local-llm-pipeline`).
+
+**3. Audit logger integration**
+
+Gate events now automatically write to JSONL audit logger (best-effort, never crashes):
+
+| Event | When |
+|-------|------|
+| `commit_gate_blocked` | Any git commit blocked by the gate |
+| `hook_state_mismatch` | repo_reviewed or head mismatch |
+| `staged_diff_hash_mismatch` | Staged diff changed since review |
+| `gate_subprocess_bypass` | Subprocess bypass detected and blocked |
+
+### New tests
+
+`tests/test_mcp_gate_boundary.py` — 32 tests covering:
+- Direct git commit detection (9 tests)
+- Subprocess bypass risk detection (11 tests)
+- Per-repo state isolation (4 tests)
+- PreToolUse block scenarios (3 tests)
+- Audit wiring (4 tests)
+- Windows paths (2 tests)
+
+### Test results
+
+- **Gate boundary**: 32/32 passed
+- **Combined (gate + audit + stop-hook)**: 194/194 passed
+- **Full suite**: 483 passed, 22 failed (pre-existing Windows subprocess issues only)
+
+### Known remaining limitations
+
+- Compiled binaries or obfuscated scripts cannot be fully inspected
+- The gate detects obvious subprocess patterns but not all possible indirect invocations
+- Audit logger integration is best-effort (silently skipped if `mcp_audit_logger` is not importable)
+- `mcp_doctor.py` does not yet include gate boundary checks (future MCP-AUDIT-5)
+- Full hook/wrapper integration for automatic review state tracking remains for MCP-AUDIT-5
