@@ -7,7 +7,8 @@
       "max_output_chars": 3000,
       "use_for": ["summarize-file", "summarize-tree", "rewrite-text"],
       "risk_level": "low",
-      "_benchmark": "31s summarize-file (zero12)"
+      "_benchmark": "31s summarize-file (zero12)",
+      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks."
     },
     "smart_summary": {
       "model": "qwen3.5-claude-opus-9b-q8_0:latest",
@@ -25,7 +26,8 @@
       "max_output_chars": 4000,
       "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "generate-test-draft", "draft-fix", "draft-feature", "draft-refactor"],
       "risk_level": "medium",
-      "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)"
+      "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
+      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks."
     },
     "commit_reviewer": {
       "model": "qwen3-coder:30b",
@@ -35,7 +37,9 @@
       "use_for": ["review-diff"],
       "candidates": ["qwen3-coder:30b", "qwen3.5-9b-q8:latest"],
       "risk_level": "medium",
-      "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)"
+      "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
+      "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
+      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s."
     },
     "fast_code": {
       "model": "qwen3-coder:30b",
@@ -53,7 +57,9 @@
       "max_output_chars": 5000,
       "use_for": ["review-diff"],
       "risk_level": "medium",
-      "_benchmark": "27s review + reasoning capability — best combo (zero12)"
+      "_benchmark": "27s review + reasoning capability — best combo (zero12)",
+      "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Good balance of reasoning depth and speed.",
+      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap."
     },
     "deep_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
@@ -62,7 +68,8 @@
       "max_output_chars": 6000,
       "use_for": ["deep-code-review"],
       "risk_level": "high",
-      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)"
+      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)",
+      "_community_reputation": "Qwen3.6 35B is a strong generalist with wide community adoption. Reliable on this machine (0 timeouts)."
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
@@ -71,7 +78,9 @@
       "max_output_chars": 6000,
       "use_for": ["deep-code-review", "architecture-review"],
       "risk_level": "high",
-      "_benchmark": "70s review, 23s summarize — 120B model (zero12)"
+      "_benchmark": "70s review, 23s summarize — 120B model (zero12)",
+      "_community_reputation": "GPT-OSS 120B is a large open-source model. Good review quality for its size. Backup for Mistral Medium.",
+      "_constraints": "Backup only. Prefer mistral-medium for release audit. Never in commit gate."
     },
     "reasoning_checker": {
       "model": "qwen3.5-27b-reasoning:latest",
@@ -80,7 +89,9 @@
       "max_output_chars": 5000,
       "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
       "risk_level": "medium-high",
-      "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)"
+      "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)",
+      "_community_reputation": "Qwen3.5 reasoning variant. Reliable for structured analysis. Top performer in local benchmarks (2/2 passed).",
+      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only."
     },
     "deep_reasoning": {
       "model": "deepseek-r1-distill-qwen:32b-q8-fixed",
@@ -89,7 +100,9 @@
       "max_output_chars": 5000,
       "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
       "risk_level": "high",
-      "_benchmark": "140s risk — CLI only, critical reasoning (zero12)"
+      "_benchmark": "140s risk — CLI only, critical reasoning (zero12)",
+      "_community_reputation": "DeepSeek R1 reasoning distilled into Qwen 32B. Official model card targets reasoning, math, and code. Strong community validation for deep analysis tasks.",
+      "_constraints": "CLI only. Only for architecture changes, security risks, root cause analysis. Never for commit gate or default routing."
     },
     "translation": {
       "model": "glm-4.7-flash-q8:latest",
@@ -98,7 +111,8 @@
       "max_output_chars": 6000,
       "use_for": ["translate-text"],
       "risk_level": "low",
-      "_benchmark": "151s translate — only reliable option via MCP (zero12)"
+      "_benchmark": "151s translate — only reliable option via MCP (zero12)",
+      "_community_reputation": "GLM-4.7 Flash has strong multilingual/CJK capability. Translategemma models are also available as purpose-built alternatives."
     },
     "release_auditor": {
       "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
@@ -107,7 +121,9 @@
       "max_output_chars": 6000,
       "use_for": ["architecture-review", "deep-code-review", "risk-analysis", "release-risk-review"],
       "risk_level": "high",
-      "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)"
+      "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)",
+      "_community_reputation": "Mistral Medium 3.5 128B MoE. Widely regarded for accuracy in deep review tasks. Top of local benchmarks.",
+      "_constraints": "Release audit only. Must never enter commit gate or default review path."
     },
     "architecture_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
