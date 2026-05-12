@@ -594,6 +594,51 @@ class TestSafeCommandsNotBlocked:
         })
         assert result == (False, "")
 
+    # Phase 2C: safe commands must not trigger release guard
+
+    def test_git_fetch_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git fetch"},
+        })
+        assert result["allow"] is True
+
+    def test_git_pull_ff_only_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git pull --ff-only"},
+        })
+        assert result["allow"] is True
+
+    def test_git_remote_v_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git remote -v"},
+        })
+        assert result["allow"] is True
+
+    def test_git_tag_listing_allowed(self, tmp_config_dir):
+        """git tag (no args, listing) must not be blocked."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git tag"},
+        })
+        assert result["allow"] is True
+
+    def test_git_tag_list_l_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git tag -l"},
+        })
+        assert result["allow"] is True
+
+    def test_git_tag_list_pattern_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git tag -l "v0.1*"'},
+        })
+        assert result["allow"] is True
+
 
 class TestDangerousCommandDoesNotBreakCommitGate:
     """Dangerous command guard must not affect commit gate behavior."""
@@ -615,3 +660,176 @@ class TestDangerousCommandDoesNotBreakCommitGate:
         assert result["allow"] is False
         # Reason should mention dangerous command, not commit gate
         assert "dangerous" in result["reason"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2C: release / tag / push guard
+# ---------------------------------------------------------------------------
+
+class TestReleaseCommandGuard:
+    """Release/publish commands must be blocked."""
+
+    def test_git_tag_lightweight_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git tag v0.1.0"},
+        })
+        assert result["allow"] is False
+        assert "tag" in result["reason"].lower()
+
+    def test_git_tag_annotated_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git tag -a v0.1.0 -m "release"'},
+        })
+        assert result["allow"] is False
+        assert "tag" in result["reason"].lower()
+
+    def test_git_push_master_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push origin master"},
+        })
+        assert result["allow"] is False
+        assert "push" in result["reason"].lower()
+
+    def test_git_push_main_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push origin main"},
+        })
+        assert result["allow"] is False
+        assert "push" in result["reason"].lower()
+
+    def test_git_push_tags_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push --tags"},
+        })
+        assert result["allow"] is False
+        assert "push" in result["reason"].lower()
+
+    def test_git_push_specific_tag_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push origin v0.1.0"},
+        })
+        assert result["allow"] is False
+        assert "push" in result["reason"].lower()
+
+    def test_git_push_bare_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push"},
+        })
+        assert result["allow"] is False
+        assert "push" in result["reason"].lower()
+
+    def test_npm_publish_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "npm publish"},
+        })
+        assert result["allow"] is False
+        assert "publish" in result["reason"].lower()
+
+    def test_twine_upload_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "twine upload dist/*"},
+        })
+        assert result["allow"] is False
+        assert "twine" in result["reason"].lower()
+
+    def test_python_m_twine_upload_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "python -m twine upload dist/*"},
+        })
+        assert result["allow"] is False
+        assert "twine" in result["reason"].lower()
+
+    def test_npm_run_release_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "npm run release"},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
+
+
+class TestReleaseGuardFalsePositives:
+    """Release guard must not trigger on commit messages, echo, or tag listing."""
+
+    def test_echo_release_text_not_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'echo "git push origin main is dangerous"'},
+        })
+        assert result["allow"] is True
+
+    def test_commit_message_mentioning_push_not_release_blocked(self, tmp_config_dir):
+        """git commit -m mentioning push must fall through to commit gate,
+        not be blocked by release guard."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git commit -m "docs: mention git push origin main"'},
+        })
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+        assert "release" not in result["reason"].lower()
+        assert "push" not in result["reason"].lower()
+
+    def test_commit_message_mentioning_tag_not_release_blocked(self, tmp_config_dir):
+        """git commit -m mentioning tag must fall through to commit gate."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git commit -m "docs: mention git tag v0.1.0"'},
+        })
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+        assert "release" not in result["reason"].lower()
+        assert "tag" not in result["reason"].lower()
+
+    def test_tag_message_with_push_keyword_still_tag_blocked(self, tmp_config_dir):
+        """git tag -a with 'push' in message must be blocked as tag creation,
+        not confused by the message content."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git tag -a v0.1.0 -m "push notes"'},
+        })
+        assert result["allow"] is False
+        assert "tag" in result["reason"].lower()
+
+
+class TestReleaseGuardGuardOrdering:
+    """Release guard must layer correctly with dangerous guard and commit gate."""
+
+    def test_dangerous_blocked_before_release(self, tmp_config_dir):
+        """git push --force must be blocked by dangerous guard (first),
+        not by release guard."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push --force origin main"},
+        })
+        assert result["allow"] is False
+        assert "dangerous" in result["reason"].lower()
+
+    def test_release_blocked_before_commit_check(self, tmp_config_dir):
+        """Chained release + commit must be blocked by release guard first."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git push origin main && git commit -m "test"'},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
+
+    def test_release_guard_does_not_affect_commit_gate(self, tmp_config_dir):
+        """Plain git commit without review must still be blocked by commit gate."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+        assert "release" not in result["reason"].lower()

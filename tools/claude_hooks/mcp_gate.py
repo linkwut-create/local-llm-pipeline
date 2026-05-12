@@ -77,8 +77,15 @@ _DANGEROUS_PATTERNS = [
     (r'ri\s+-r\s+-fo\b', "ri -r -fo (PowerShell Remove-Item alias)"),
 ]
 
-# Phase 2C candidates (detected but not blocked yet):
-#   git tag, git push --tags, npm publish, twine upload, release scripts
+# Phase 2C: release / tag / push patterns. Each entry is (pattern, description).
+# Git tag and git push are detected by dedicated helpers (see _is_git_tag_creation,
+# _is_git_push). npm/twine/release scripts use regex patterns below.
+_RELEASE_PATTERNS = [
+    (r'^npm\s+publish\b', "npm publish (publishes to npm registry)"),
+    (r'^npm\s+run\s+release\b', "npm run release (executes release script)"),
+    (r'\btwine\s+upload\b', "twine upload (publishes to PyPI)"),
+    (r'\bpython\s+-m\s+twine\s+upload\b', "python -m twine upload (publishes to PyPI)"),
+]
 
 _STATE_DEFAULTS = {
     "diff_reviewed": False,
@@ -195,6 +202,42 @@ def is_dangerous_command(payload: dict) -> tuple[bool, str]:
         if _sub_cmd_is_benign_output(sub):
             continue
         for pattern, description in _DANGEROUS_PATTERNS:
+            if re.search(pattern, sub):
+                return True, description
+    return False, ""
+
+
+def is_release_command(payload: dict) -> tuple[bool, str]:
+    """Check if a Bash/PowerShell command is a release/publish action.
+
+    Returns (is_release, description) or (False, "").
+    Only checks Bash and PowerShell tool calls.
+
+    Splits chained commands and skips benign sub-commands:
+    - git commit (commit gate handles blocking; commit message body may
+      contain release-related text that is harmless)
+    - echo, printf, Write-Output, Write-Host (output-only commands)
+
+    Detects:
+    - git tag creation (not listing)
+    - git push (non-force; force pushes caught by dangerous guard)
+    - npm publish, twine upload, release scripts
+    """
+    name = payload.get("tool_name", "")
+    if name not in ("Bash", "PowerShell"):
+        return False, ""
+    cmd = str(payload.get("tool_input", {}).get("command", ""))
+
+    for sub in _split_command_chain(cmd):
+        if _single_cmd_is_git_commit(sub):
+            continue
+        if _sub_cmd_is_benign_output(sub):
+            continue
+        if _is_git_tag_creation(sub):
+            return True, "git tag creation (creates a tag in the repository)"
+        if _is_git_push(sub):
+            return True, "git push (publishes commits/refs to remote repository)"
+        for pattern, description in _RELEASE_PATTERNS:
             if re.search(pattern, sub):
                 return True, description
     return False, ""
@@ -400,6 +443,19 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
             "allow": False,
             "reason": (
                 f"BLOCKED: dangerous command detected ({danger_desc}).\n"
+                f"Command: {cmd[:200]}\n"
+                "If you intentionally need this, run it manually in a terminal."
+            ),
+        }
+
+    # Phase 2C: release / tag / push guard (runs after dangerous, before commit gate)
+    is_release, release_desc = is_release_command(payload)
+    if is_release:
+        cmd = str(payload.get("tool_input", {}).get("command", ""))
+        return {
+            "allow": False,
+            "reason": (
+                f"BLOCKED: release/publish command detected ({release_desc}).\n"
                 f"Command: {cmd[:200]}\n"
                 "If you intentionally need this, run it manually in a terminal."
             ),
@@ -668,3 +724,63 @@ def _sub_cmd_is_benign_output(cmd: str) -> bool:
         return False
     base = tokens[0].rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     return base in _BENIGN_OUTPUT_COMMANDS
+
+
+def _get_git_subcommand(cmd: str) -> str | None:
+    """Extract the git subcommand name, skipping global options.
+
+    Returns the subcommand (e.g. "tag", "push", "commit") or None if
+    the command is not a git invocation or parsing fails.
+    """
+    try:
+        raw_tokens = shlex.split(cmd, posix=False)
+    except ValueError:
+        return None
+    tokens = [t.strip('"').strip("'") for t in raw_tokens]
+    if not tokens or tokens[0] != "git":
+        return None
+    i = 1
+    while i < len(tokens):
+        t = tokens[i]
+        if t in _GIT_ARG_OPTS:
+            i += 2
+        elif t.startswith("-"):
+            i += 1
+        else:
+            break
+    return tokens[i] if i < len(tokens) else None
+
+
+def _is_git_tag_creation(cmd: str) -> bool:
+    """Return True if cmd creates a git tag (not listing).
+
+    git tag / git tag -l / git tag --list => False (listing)
+    git tag v0.1.0 / git tag -a v0.1.0 -m "msg" => True (creation)
+    """
+    if _get_git_subcommand(cmd) != "tag":
+        return False
+    try:
+        raw_tokens = shlex.split(cmd, posix=False)
+    except ValueError:
+        return False
+    tokens = [t.strip('"').strip("'") for t in raw_tokens]
+    try:
+        tag_idx = tokens.index("tag")
+    except ValueError:
+        return False
+    remaining = tokens[tag_idx + 1:]
+    if any(t in ("-l", "--list") for t in remaining):
+        return False
+    for t in remaining:
+        if not t.startswith("-"):
+            return True
+    return False
+
+
+def _is_git_push(cmd: str) -> bool:
+    """Return True if cmd is a git push (any form).
+
+    git push --force / git push -f are already caught by the dangerous
+    command guard. This catches all other push variants.
+    """
+    return _get_git_subcommand(cmd) == "push"
