@@ -1101,3 +1101,174 @@ class TestPhase3AStopRecommendations:
 
         reminders = mcp_gate.handle_stop(tmp_config_dir, {"cwd": "/repo"})
         assert any("test_plan" in r.lower() for r in reminders)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3E: real-time default participation
+# ---------------------------------------------------------------------------
+
+class TestPhase3ESessionStart:
+    def test_session_start_sets_local_check_flag(self, tmp_config_dir):
+        mcp_gate.handle_session_start(tmp_config_dir, {})
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["session_needs_local_check"] is True
+        assert state["local_check_done"] is False
+
+    def test_local_check_clears_flag(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_check",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["local_check_done"] is True
+        assert state["session_needs_local_check"] is False
+
+    def test_failed_local_check_does_not_clear_flag(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_check",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": False})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["session_needs_local_check"] is True
+
+
+class TestPhase3EEditWriteRealTime:
+    def test_edit_sets_needs_review(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/src/main.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_review"] is True
+        assert "local_review_diff" in state["session_recommendations"]
+
+    def test_edit_hook_file_sets_needs_debate(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/tools/claude_hooks/mcp_gate.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_debate"] is True
+        assert "local_debate_review_diff" in state["session_recommendations"]
+
+    def test_edit_test_file_sets_needs_test_plan(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/tests/test_new.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_test_plan"] is True
+        assert "local_generate_test_plan" in state["session_recommendations"]
+
+    def test_session_touched_files_accumulates(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/a.py"},
+        })
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/b.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert len(state["session_touched_files"]) == 2
+
+
+class TestPhase3EMcpClearsRecs:
+    def test_review_success_clears_needs_review(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        # Set needs_review first
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_review"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_review"] is False
+        assert state["diff_reviewed"] is True
+
+    def test_debate_success_clears_needs_debate(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_debate"] = True
+        state["needs_review"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_debate_review_diff",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_debate"] is False
+        assert state["needs_review"] is False
+
+    def test_summarize_success_clears_needs_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_summarize"] = ["/repo/big.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_summarize_file",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_summarize"] == []
+
+    def test_test_plan_success_clears_needs_test_plan(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_test_plan"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_generate_test_plan",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_test_plan"] is False
+
+    def test_failed_mcp_does_not_clear_flags(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_review"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": False})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_review"] is True
+
+
+class TestPhase3EReadDetection:
+    def test_small_read_no_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/small.py", "limit": 50},
+            "tool_response": {"type": "text", "text": "short\n" * 10},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_summarize"] == []
+
+    def test_large_read_triggers_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/big.py"},
+            "tool_response": {"type": "text", "text": "line\n" * 400},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert "/repo/big.py" in state["needs_summarize"]
+        assert "/repo/big.py" in state["session_large_reads"]
+        assert "local_summarize_file" in state["session_recommendations"]

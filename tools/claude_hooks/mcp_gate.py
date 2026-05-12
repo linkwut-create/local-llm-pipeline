@@ -107,6 +107,17 @@ _STATE_DEFAULTS = {
     "mcp_calls": {},
     "session_id": None,
     "session_started_at": None,
+    # Phase 3E: real-time default participation
+    "session_needs_local_check": True,
+    "local_check_done": False,
+    "needs_summarize": [],
+    "needs_review": False,
+    "needs_debate": False,
+    "needs_test_plan": False,
+    "session_recommendations": [],
+    "session_large_reads": [],
+    "session_touched_files": [],
+    "diff_line_count": 0,
 }
 
 
@@ -435,6 +446,16 @@ def _clear_session(config_dir: str):
     state["mcp_calls"] = {}
     state["_last_mcp_failed"] = False
     state["touched_files"] = []
+    state["session_needs_local_check"] = True
+    state["local_check_done"] = False
+    state["needs_summarize"] = []
+    state["needs_review"] = False
+    state["needs_debate"] = False
+    state["needs_test_plan"] = False
+    state["session_recommendations"] = []
+    state["session_large_reads"] = []
+    state["session_touched_files"] = []
+    state["diff_line_count"] = 0
     save_state(config_dir, state)
 
 
@@ -442,11 +463,20 @@ def _clear_session(config_dir: str):
 # hook event handlers
 # ---------------------------------------------------------------------------
 
+def _add_recommendation(state: dict, rec: str):
+    """Add a recommendation to the session accumulator, avoiding duplicates."""
+    recs = state.get("session_recommendations", [])
+    if rec not in recs:
+        recs.append(rec)
+    state["session_recommendations"] = recs
+
+
 def handle_post_tooluse(config_dir: str, payload: dict):
-    """Track review state, dirty flag, and MCP tool usage."""
+    """Track review state, dirty flag, MCP tool usage, and Phase 3E real-time participation."""
     _ensure_session(config_dir)
     name = tool_name(payload)
 
+    # --- Review tools ---
     if name in _REVIEW_TOOLS:
         if review_tool_succeeded(payload):
             state = load_state(config_dir)
@@ -460,6 +490,10 @@ def handle_post_tooluse(config_dir: str, payload: dict):
             state["reviewed_head"] = fp["head"] if fp else None
             state["reviewed_diff_hash"] = fp["diff_hash"] if fp else None
             state.pop("last_review_error", None)
+            # Phase 3E: clear review/debate recommendations on success
+            if name == "mcp__local-llm__local_debate_review_diff":
+                state["needs_debate"] = False
+            state["needs_review"] = False
             save_state(config_dir, state)
         else:
             state = load_state(config_dir)
@@ -467,19 +501,55 @@ def handle_post_tooluse(config_dir: str, payload: dict):
             state["diff_reviewed"] = False
             save_state(config_dir, state)
 
+    # --- Dirty tools (Edit/Write/MultiEdit) ---
     if name in _DIRTY_TOOLS:
-        # Skip state/log files — writing hook state is not a code change
         target = str(payload.get("tool_input", {}).get("file_path", ""))
         if "mcp-gate" not in target and ".claude/hooks" not in target:
             state = load_state(config_dir)
             state["dirty_since_review"] = True
-            # Phase 3A: track touched files for risk routing
+            state["needs_review"] = True
             if "touched_files" not in state:
                 state["touched_files"] = []
             if target and target not in state["touched_files"]:
                 state["touched_files"].append(target)
+            if target and target not in state.get("session_touched_files", []):
+                stf = state.get("session_touched_files", [])
+                stf.append(target)
+                state["session_touched_files"] = stf
+            # Phase 3E: real-time risk classification
+            if "tools/claude_hooks/" in target or "mcp_gate" in target or "mcp_doctor" in target:
+                state["needs_debate"] = True
+                _add_recommendation(state, "local_debate_review_diff")
+            elif "tests/" in target or target.endswith("_test.py"):
+                state["needs_test_plan"] = True
+                _add_recommendation(state, "local_generate_test_plan")
+                _add_recommendation(state, "local_review_diff")
+            else:
+                _add_recommendation(state, "local_review_diff")
             save_state(config_dir, state)
 
+    # --- Read tool: large-file detection ---
+    if name == "Read":
+        target = str(payload.get("tool_input", {}).get("file_path", ""))
+        limit = payload.get("tool_input", {}).get("limit")
+        # If the Read returned content, estimate size from response
+        resp = payload.get("tool_response", {})
+        text = _extract_mcp_response_text(resp) if isinstance(resp, (dict, list)) else ""
+        line_count = text.count("\n") if text else 0
+        if target and (line_count > 300 or (limit and isinstance(limit, int) and limit > 300)):
+            state = load_state(config_dir)
+            needs = state.get("needs_summarize", [])
+            if target not in needs:
+                needs.append(target)
+            state["needs_summarize"] = needs
+            if target not in state.get("session_large_reads", []):
+                lr = state.get("session_large_reads", [])
+                lr.append(target)
+                state["session_large_reads"] = lr
+            _add_recommendation(state, "local_summarize_file")
+            save_state(config_dir, state)
+
+    # --- MCP tools: track calls and clear recommendations on success ---
     if name in _MCP_TOOLS:
         state = load_state(config_dir)
         mcp_calls = state.get("mcp_calls", {})
@@ -491,6 +561,14 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         else:
             mcp_calls["_last_mcp_failed"] = False
             mcp_calls.pop("_last_mcp_error_ts", None)
+            # Phase 3E: clear specific recommendations on MCP success
+            if name == "mcp__local-llm__local_check":
+                state["session_needs_local_check"] = False
+                state["local_check_done"] = True
+            elif name == "mcp__local-llm__local_summarize_file":
+                state["needs_summarize"] = []
+            elif name == "mcp__local-llm__local_generate_test_plan":
+                state["needs_test_plan"] = False
         state["mcp_calls"] = mcp_calls
         save_state(config_dir, state)
 
@@ -582,6 +660,10 @@ def handle_stop(config_dir: str, payload: dict) -> list:
     mcp_calls = state.get("mcp_calls", {})
     reminders = []
 
+    # Phase 3E: session_needs_local_check
+    if state.get("session_needs_local_check") and not mcp_calls.get("mcp__local-llm__local_check"):
+        reminders.append("Task start: local_check recommended (not yet called this session).")
+
     # MCP tool usage
     if not mcp_calls.get("mcp__local-llm__local_check"):
         reminders.append("local_check was not called this session.")
@@ -645,6 +727,23 @@ def handle_stop(config_dir: str, payload: dict) -> list:
                 reminders.append("Debate review recommended but not yet called this session.")
             if "local_generate_test_plan" in actions and not mcp_calls.get("mcp__local-llm__local_generate_test_plan"):
                 reminders.append("Test plan recommended but not yet called this session.")
+
+        # Phase 3E: real-time participation flags
+        if state.get("needs_review") and not state.get("diff_reviewed"):
+            reminders.append("ACTIVE: needs_review — files were edited, run local_review_diff.")
+        if state.get("needs_debate") and not mcp_calls.get("mcp__local-llm__local_debate_review_diff"):
+            reminders.append("ACTIVE: needs_debate — high-risk files touched, run local_debate_review_diff.")
+        if state.get("needs_test_plan") and not mcp_calls.get("mcp__local-llm__local_generate_test_plan"):
+            reminders.append("ACTIVE: needs_test_plan — test files modified, run local_generate_test_plan.")
+        if state.get("needs_summarize"):
+            reminders.append(f"ACTIVE: needs_summarize — {len(state['needs_summarize'])} large file(s) read, run local_summarize_file.")
+        if state.get("session_large_reads"):
+            reminders.append(f"Large files read this session: {', '.join(state['session_large_reads'][:5])}")
+
+    # Phase 3E: accumulated session recommendations
+    recs = state.get("session_recommendations", [])
+    if recs:
+        reminders.append(f"Session recommendations: {', '.join(recs)}")
 
     return reminders
 
