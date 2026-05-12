@@ -61,34 +61,54 @@ The pipeline exposes 7 source-non-mutating MCP tools via `tools/local_llm_mcp_se
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
 Verify with `/mcp` — should show `local-llm connected 8 tools`.
 
-### Local LLM Usage Policy
+### Task-Level MCP Usage Policy (MCP 2.0)
 
-**Prefer using local-llm MCP tools for low-risk heavy reading and review tasks.**
+**Every development task must have a local model participation point.**
+Not every keystroke — every task. This is enforced by process discipline, not hooks.
 
-Use `local_check` when:
-- starting work in a newly opened project
-- diagnosing model/backend availability
+Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
+Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
 
-Use `local_summarize_tree` when:
-- first understanding an unfamiliar project
-- planning a feature across multiple files
+#### Task → MCP Tool Mapping
 
-Use `local_summarize_file` when:
-- reading long files before making a plan
+| Task type | MCP Tool | Profile | Required |
+|-----------|----------|---------|----------|
+| Session start | `local_check` | (no LLM) | Always first |
+| File > 200 lines, first read | `local_summarize_file` | `fast_summary` | Before editing |
+| New directory | `local_summarize_tree` | `fast_summary` | Before planning |
+| Code change → pre-commit | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
+| Code change → staged | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
+| Changes to `tools/` (MCP/router/worker) | `local_review_diff` | `diff_reviewer` | Explicit review |
+| Hook/gate/MCP server/router logic | `local_debate_review_diff` | fast mode | Must use debate |
+| Safety policy, blocked paths | `local_debate_review_diff` | fast mode | Must use debate |
+| Feature/bug/release test plan | `local_generate_test_plan` | `code_worker` | Before implementing |
+| Draft code (fix/feature/refactor) | `local_draft_code` | `code_worker` | Output → `.local_llm_out/` only |
 
-Use `local_generate_test_plan` when:
-- adding a feature, fixing a bug, or preparing a release
+#### Escalation Rules
 
-Use `local_review_diff` before commit when:
-- there is a small or medium diff
-- the change touches installer, MCP, router, tasks, profiles, or safety policy
+| Trigger | Action |
+|---------|--------|
+| `summarize` returns `confidence=low` | Upgrade to `smart_summary` |
+| `review` returns `uncertain_points` > 3 | Upgrade to `diff_reviewer` or `deep_reviewer` |
+| Diff touches MCP server, commit gate, router | Debate or deep review mandatory |
+| Pre-release / tag / publish | `release_auditor` mandatory |
 
-Use `local_debate_review_diff` only for small diffs or high-risk changes.
-Default is fast mode (2 rounds) + summary-only. For large diffs use CLI.
+#### Prohibition Rules (Hard Stops)
 
-Use `local_draft_code` to draft possible fixes, features, refactors, or improvements.
-Drafts write only to `.local_llm_out/` — NEVER modify source files.
-Controller must inspect and manually apply any draft. Never treat draft output as directly applied code.
+- MCP `ok=false`, timeout, `UnicodeDecodeError`, or non-null `error` → **STOP. Do not commit.**
+- Controller MUST NOT say "I reviewed it manually" as substitute for failed MCP review.
+- Staged diff MUST be re-reviewed even if identical to unstaged reviewed diff.
+- Commit gate MUST use `commit_reviewer`. MUST NOT use reasoning, >30B, or release auditor.
+- Experimental / known-bad models MUST NOT enter automated routing.
+- Draft code MUST NOT be treated as directly applied code. Controller must inspect and manually apply.
+
+#### Model Selection Rules
+
+- Default: match model to task type (coder→code, translator→translation).
+- Commit gate: `commit_reviewer` (qwen3-coder:30b) only. Target < 30s.
+- Translation (CLI/MCP): `glm-4.7-flash` only. `translategemma-12b-it` does not work with current CLI prompt.
+- Reasoning models: never default. Triggered by explicit request or high-risk classification.
+- Release audit models: never in commit gate or default review path.
 
 ### MCP Boundaries
 

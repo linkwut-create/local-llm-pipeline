@@ -58,6 +58,33 @@ MCP tools are source-non-mutating:
 - `local_draft_code` writes drafts to `.local_llm_out/` and requires controller verification before any source change.
 - No write/delete/shell/git/deploy.
 
+### Task-Level MCP Usage (MCP 2.0)
+
+Every development task must have a local model participation point.
+Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
+Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
+
+#### Task → MCP Tool
+
+| Task | MCP Tool | Profile |
+|------|----------|---------|
+| Session start | `local_check` | (no LLM) |
+| File > 200 lines | `local_summarize_file` | `fast_summary` |
+| New directory | `local_summarize_tree` | `fast_summary` |
+| Pre-commit review | `local_review_diff` | `commit_reviewer` (`commit_gate=true`) |
+| Staged review | `local_review_diff` | `commit_reviewer` (`commit_gate=true`) |
+| tools/ changes | `local_review_diff` | `diff_reviewer` |
+| Hook/gate/router changes | `local_debate_review_diff` | fast mode |
+| Test plan | `local_generate_test_plan` | `code_worker` |
+| Code draft | `local_draft_code` | `code_worker` |
+
+#### Hard Stops
+
+- MCP failure (ok=false, timeout, UnicodeDecodeError) → STOP, do not commit.
+- Controller must not manually substitute for failed MCP review.
+- Staged diff must be re-reviewed even if same as unstaged.
+- Commit gate: `commit_reviewer` only. No reasoning, no >30B, no release auditor.
+
 ### Standard Commands
 
 ```bash
