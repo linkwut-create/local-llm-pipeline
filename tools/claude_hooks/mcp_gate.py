@@ -435,6 +435,9 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         if not review_tool_succeeded(payload):
             mcp_calls["_last_mcp_failed"] = True
             mcp_calls["_last_mcp_error_ts"] = datetime.now(timezone.utc).isoformat()
+        else:
+            mcp_calls["_last_mcp_failed"] = False
+            mcp_calls.pop("_last_mcp_error_ts", None)
         state["mcp_calls"] = mcp_calls
         save_state(config_dir, state)
 

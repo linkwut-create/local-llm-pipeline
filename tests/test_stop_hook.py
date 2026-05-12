@@ -319,6 +319,26 @@ class TestMcpTracking:
         assert state["mcp_calls"]["_last_mcp_failed"] is True
         assert state["diff_reviewed"] is False
 
+    def test_mcp_failure_cleared_by_success(self, tmp_config_dir):
+        """Phase 2F: _last_mcp_failed must be cleared after a successful MCP call."""
+        mcp_gate._clear_session(tmp_config_dir)
+        # Simulate a failed MCP call
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_check",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": False})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["mcp_calls"]["_last_mcp_failed"] is True
+
+        # A subsequent successful call must clear the failure flag
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_check",
+            "tool_response": {"type": "text", "text": json.dumps({"ok": True})},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["mcp_calls"]["_last_mcp_failed"] is False
+        assert "_last_mcp_error_ts" not in state["mcp_calls"]
+
 
 # ---------------------------------------------------------------------------
 # commit gate unchanged

@@ -217,6 +217,18 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
         fail("log_writable", f"Cannot write to hook-events.jsonl: {e}",
              f"Check disk space and permissions on {log_file}")
 
+    log_size = log_file.stat().st_size if log_file.is_file() else 0
+    mb = log_size / (1024 * 1024)
+    if mb < 5:
+        ok("log_size", f"hook-events.jsonl size: {mb:.1f} MB")
+    elif mb < 20:
+        warn("log_size", f"hook-events.jsonl size: {mb:.1f} MB — consider manual archival",
+             "The log will continue to grow. Periodically archive or delete it "
+             f"({log_file}). No automatic rotation is performed.")
+    else:
+        fail("log_size", f"hook-events.jsonl size: {mb:.1f} MB — archive recommended",
+             f"The log is very large. Archive or delete it: {log_file}")
+
     # =================================================================
     # 6. Session health
     # =================================================================

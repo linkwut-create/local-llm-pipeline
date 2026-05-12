@@ -21,6 +21,10 @@ Local multi-model LLM pipeline for Claude Code integration. Provides:
 | 2C | `4b27d37` | Release / tag / push guard | 75 |
 | 2C.1 | `6f53418` | PowerShell here-string false positive fix | 87 |
 | 2D | `cc8ec0d` | Hook doctor diagnostic tool | 97 |
+| 2E | `3aa3dc1` | Final dogfood / status docs / freeze readiness | 97 |
+| 2F | *pending* | Post-freeze hardening (state fix, log diagnostics) | 100 |
+
+Phase 2 is frozen. Phase 2F is post-freeze hardening only.
 
 ### Guards (ordered by PreToolUse execution)
 
@@ -51,7 +55,7 @@ python tools/claude_hooks/mcp_doctor.py --json   # machine-readable
 | `python tools/claude_hooks/mcp_doctor.py` | 23 OK, 0 WARN, 0 FAIL |
 | `python -m pytest tests/test_stop_hook.py -v` | 87 passed |
 | `python -m pytest tests/test_mcp_doctor.py -v` | 10 passed |
-| `python -m pytest tests/ -q` | 385 passed |
+| `python -m pytest tests/ -q` | 388 passed |
 | Phase 2E dogfood (15 scenarios) | 15/15 passed |
 | Unstaged + staged MCP review | both passed |
 

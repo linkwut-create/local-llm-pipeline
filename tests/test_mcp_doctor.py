@@ -183,3 +183,23 @@ class TestDoctorFailures:
         # All checks should run without error with custom paths
         statuses = {r["status"] for r in results}
         assert "FAIL" not in statuses
+
+    def test_large_log_file_warns(self, healthy_dirs):
+        """Phase 2F: log > 5 MB should produce a WARN."""
+        repo, config = healthy_dirs
+        log_file = config / "hook-events.jsonl"
+        # Write 6 MB of data
+        log_file.write_text("x" * (6 * 1024 * 1024))
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        size_check = [r for r in results if r["check"] == "log_size"]
+        assert size_check and size_check[0]["status"] == "WARN"
+
+    def test_very_large_log_file_fails(self, healthy_dirs):
+        """Phase 2F: log > 20 MB should produce a FAIL."""
+        repo, config = healthy_dirs
+        log_file = config / "hook-events.jsonl"
+        # Write 21 MB of data
+        log_file.write_text("x" * (21 * 1024 * 1024))
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        size_check = [r for r in results if r["check"] == "log_size"]
+        assert size_check and size_check[0]["status"] == "FAIL"
