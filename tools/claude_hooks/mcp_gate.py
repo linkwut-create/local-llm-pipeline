@@ -55,6 +55,14 @@ _REDACT_RE = re.compile(
 
 _GIT_ARG_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 
+# Fallback regex for git subcommand detection when shlex.split fails
+# (e.g. PowerShell here-string @'...'@ confuses shlex quoting).
+# Matches: git [optional -C/-c/--flags] <subcommand>
+_GIT_SUBCMD_FALLBACK_RE = re.compile(
+    r'^git\s+(?:[-]C\s+\S+\s+|[-]c\s+\S+\s+|--\S+(?:=\S+)?\s+)*'
+    r'(commit|tag|push)\b'
+)
+
 _BENIGN_OUTPUT_COMMANDS = {"echo", "printf", "Write-Output", "Write-Host"}
 
 # Phase 2B: dangerous shell command patterns. Each entry is (pattern, description).
@@ -698,7 +706,9 @@ def _single_cmd_is_git_commit(cmd: str) -> bool:
     try:
         raw_tokens = shlex.split(cmd, posix=False)
     except ValueError:
-        return False
+        # Fallback for shlex-unparseable input (e.g. PowerShell here-strings)
+        m = _GIT_SUBCMD_FALLBACK_RE.match(cmd.strip())
+        return bool(m and m.group(1) == "commit" and "commit-tree" not in cmd)
     tokens = [t.strip('"').strip("'") for t in raw_tokens]
     if not tokens or tokens[0] != "git":
         return False
@@ -735,7 +745,9 @@ def _get_git_subcommand(cmd: str) -> str | None:
     try:
         raw_tokens = shlex.split(cmd, posix=False)
     except ValueError:
-        return None
+        # Fallback for shlex-unparseable input (e.g. PowerShell here-strings)
+        m = _GIT_SUBCMD_FALLBACK_RE.match(cmd.strip())
+        return m.group(1) if m else None
     tokens = [t.strip('"').strip("'") for t in raw_tokens]
     if not tokens or tokens[0] != "git":
         return None

@@ -833,3 +833,113 @@ class TestReleaseGuardGuardOrdering:
         assert result["allow"] is False
         assert "review" in result["reason"].lower()
         assert "release" not in result["reason"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2C.1: PowerShell here-string commit message false positive fix
+# ---------------------------------------------------------------------------
+
+class TestHereStringCommitMessages:
+    """git commit with PowerShell here-string @'...'@ must not trigger
+    dangerous or release guards. These must fall through to commit gate."""
+
+    def _assert_commit_gate_blocks(self, result):
+        assert result["allow"] is False
+        reason = result["reason"].lower()
+        assert "review" in reason or "commit" in reason
+        assert "dangerous" not in reason
+        assert "release" not in reason
+
+    def test_herestring_mentioning_twine_upload(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention twine upload\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+    def test_herestring_mentioning_npm_publish(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention npm publish\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+    def test_herestring_mentioning_push_origin_main(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention git push origin main\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+    def test_herestring_mentioning_git_tag(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention git tag v0.1.0\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+    def test_herestring_mentioning_git_reset_hard(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention git reset --hard\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+    def test_herestring_mentioning_del(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m @'\ndocs: mention del /s /q\n'@"},
+        })
+        self._assert_commit_gate_blocks(result)
+
+
+class TestHereStringRealCommandsStillBlocked:
+    """Real commands must still be blocked after here-string fix."""
+
+    def test_git_push_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push origin main"},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
+
+    def test_npm_publish_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "npm publish"},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
+
+    def test_git_tag_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git tag v0.1.0"},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
+
+    def test_git_reset_hard_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git reset --hard HEAD"},
+        })
+        assert result["allow"] is False
+        assert "dangerous" in result["reason"].lower()
+
+    def test_del_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "PowerShell",
+            "tool_input": {"command": "del /s /q *.tmp"},
+        })
+        assert result["allow"] is False
+        assert "dangerous" in result["reason"].lower()
+
+    def test_twine_upload_still_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "twine upload dist/*"},
+        })
+        assert result["allow"] is False
+        assert "release" in result["reason"].lower()
