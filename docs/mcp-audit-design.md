@@ -1561,11 +1561,54 @@ Reports are written to `docs/mcp-audit/{project}/{phase}.md`.
 
 ### Not yet implemented
 
-- No CLI query tool (MCP-AUDIT-4)
 - No automatic trigger on phase completion
 - No dashboard or visual report
+- No deep hook/wrapper integration (MCP-AUDIT-5)
 
 ### Tests
 
 - **Focused**: 25/25 passed
 - **Combined (report + DB + logger + gate)**: 113/113 passed
+
+## MCP-AUDIT-4 Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Provide a CLI entry point for querying the MCP audit database and generating reports.
+
+### File
+
+- `tools/mcp_audit_cli.py` — CLI query tool
+
+### Commands
+
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `summary` | Phase summary stats | `python tools/mcp_audit_cli.py summary --phase MCP-AUDIT-3` |
+| `failures` | List failures | `python tools/mcp_audit_cli.py failures --project local-llm-pipeline` |
+| `blocked-commits` | List blocked commits | `python tools/mcp_audit_cli.py blocked-commits` |
+| `rejected-recommendations` | List rejected recommendations | `python tools/mcp_audit_cli.py rejected-recommendations` |
+| `tool-reliability` | Tool reliability stats | `python tools/mcp_audit_cli.py tool-reliability` |
+| `import-jsonl` | Import JSONL to SQLite | `python tools/mcp_audit_cli.py import-jsonl` |
+| `generate-report` | Generate phase report | `python tools/mcp_audit_cli.py generate-report --phase MCP-AUDIT-3` |
+
+### Options
+
+- `--base-dir` — project root directory
+- `--format` — `text`, `json`, or `markdown` (default: `text`)
+- `--phase` — filter by phase ID
+- `--project` — filter by project name
+- `--output-dir` — report output directory (generate-report only)
+
+### Tests
+
+- **Focused**: 15/15 passed
+- **Combined (CLI + report + DB + logger + gate)**: 128/128 passed
+
+### Not yet implemented
+
+- No automatic trigger on phase completion
+- No dashboard or visual report
+- No deep hook/wrapper integration (MCP-AUDIT-5)
