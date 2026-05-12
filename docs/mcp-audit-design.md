@@ -1194,3 +1194,78 @@ The local model risk analysis (2026-05-13, `qwen3-coder-next-q8`) identified the
 | 19 | Clock skew (missed) | Section 7: `wall_clock_start/end` (ISO 8601 with timezone) |
 | 20 | Hook recursion (missed) | Section 6: `nested_invocation_timeout`, Section 7: `trace_id` for nesting |
 | 21 | --no-verify bypass (missed) | Section 6: `commit_gate_bypassed` |
+
+## MCP-AUDIT-1 Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Files created
+
+- `tools/mcp_audit_logger.py` — JSONL event logger module (336 lines)
+- `tests/test_mcp_audit_logger.py` — 23 focused tests
+
+### JSONL output files
+
+Default location: `.mcp_audit/` in project root (configurable via `MCP_AUDIT_DIR`).
+
+| File | Purpose |
+|------|---------|
+| `.mcp_audit/events.jsonl` | All audit events (invocations, results, blocks, fixes) |
+| `.mcp_audit/failures.jsonl` | All failures (denormalized for fast query) |
+| `.mcp_audit/recommendations.jsonl` | Recommendations with adoption status |
+| `.mcp_audit/phase_audits.jsonl` | Per-phase summary records |
+
+### API
+
+| Function | Description |
+|----------|-------------|
+| `ensure_audit_dirs(base_dir)` | Create `.mcp_audit/` directory |
+| `utc_now_iso()` | ISO 8601 UTC timestamp |
+| `generate_event_id()` | UUID v4 event ID |
+| `append_jsonl(path, record)` | Append one JSON line to a JSONL file |
+| `write_audit_event(base_dir, event)` | Write to `events.jsonl` |
+| `write_failure_event(base_dir, failure)` | Write to `failures.jsonl` + `events.jsonl` |
+| `write_recommendation_event(base_dir, rec)` | Write to `recommendations.jsonl` + `events.jsonl` |
+| `write_phase_audit_event(base_dir, audit)` | Write to `phase_audits.jsonl` + `events.jsonl` |
+| `validate_event(record)` | Validate event type, task type, result status |
+| `validate_failure(record)` | Validate failure type, severity |
+| `validate_recommendation(record)` | Validate decision, severity |
+| `validate_phase_audit(record)` | Validate phase_id, final_status |
+
+### Enumerations implemented
+
+- **event_type**: 18 values including `hook_state_mismatch`, `cli_review_not_recognized`, `staged_diff_hash_mismatch`, `manual_hook_state_alignment`
+- **task_type**: 12 values
+- **failure_type**: 23 values including `hook_state_mismatch`, `cli_review_not_recognized`, `staged_diff_hash_mismatch`, `manual_state_alignment_required`
+- **recommendation decision**: 6 values (`accepted`, `rejected`, `partially_accepted`, `ignored`, `overridden_by_user`, `obsolete_after_fix`)
+- **severity**: 6 values (`info`, `low`, `medium`, `high`, `critical`, `blocking`)
+- **result_status**: 9 values (`started`, `passed`, `failed`, `blocked`, `warning`, `skipped`, `timeout`, `resolved`, `unresolved`)
+
+### Privacy enforcement
+
+- Forbidden fields (`prompt_body`, `full_diff`, `full_code`, `file_content`, `api_key`, `token`, `password`, `secret`) are stripped before write
+- Secret patterns (API keys, tokens, passwords) in summary fields are redacted to `[REDACTED]`
+- `raw_log_path` is writable but raw content never goes into JSONL
+
+### First-class failure scenarios from MCP-AUDIT-0
+
+The following real failures discovered during MCP-AUDIT-0 are first-class recordable events:
+
+1. **CLI review not recognized**: `event_type=cli_review_not_recognized`, `failure_type=cli_review_not_recognized`
+2. **Hook state repo mismatch**: `event_type=hook_state_mismatch`, `failure_type=hook_state_mismatch`
+3. **Staged diff hash mismatch**: `event_type=staged_diff_hash_mismatch`, `failure_type=staged_diff_hash_mismatch`
+4. **Manual hook state alignment**: `event_type=manual_hook_state_alignment`, `failure_type=manual_state_alignment_required`
+
+### Known limitations
+
+- **No SQLite yet** — next phase (MCP-AUDIT-2)
+- **No automatic hook/wrapper integration** — future phase (MCP-AUDIT-5). Currently the logger exists but automatic capture depends on hooks calling it.
+- **No query CLI** — future phase (MCP-AUDIT-4)
+- **No dashboard** — non-goal for now
+- **Commit gate still requires MCP-protocol review** — CLI-based review is recordable but does not satisfy the gate. This is by design: the gate enforces process, the logger records what happened.
+
+### Tests
+
+- **Focused**: 23/23 passed
+- **Full suite**: 454 passed, 11 failed (pre-existing Windows+Python 3.14 subprocess handle inheritance, unrelated)
+- **Test coverage**: event writing, failure recording, recommendation tracking, phase audits, validation, privacy, append-only behavior, Windows path handling, env var configuration, enum completeness
