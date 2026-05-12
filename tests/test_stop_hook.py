@@ -1272,3 +1272,175 @@ class TestPhase3EReadDetection:
         assert "/repo/big.py" in state["needs_summarize"]
         assert "/repo/big.py" in state["session_large_reads"]
         assert "local_summarize_file" in state["session_recommendations"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3E.1: Read parsing fix, diff_line_count, commit reason
+# ---------------------------------------------------------------------------
+
+class TestPhase3E1ReadFormats:
+    """Read large-file detection must work with real tool_response formats."""
+
+    def test_read_file_content_format_triggers_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        # Real Claude Code Read response: {"type":"text","file":{"content":"...","numLines":N}}
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/big.py"},
+            "tool_response": {
+                "type": "text",
+                "file": {"filePath": "/repo/big.py", "content": "x\n" * 400, "numLines": 400},
+            },
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert "/repo/big.py" in state["needs_summarize"]
+
+    def test_read_numlines_only_triggers_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        # Even without content, numLines=400 is enough
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/big.py"},
+            "tool_response": {
+                "type": "text",
+                "file": {"filePath": "/repo/big.py", "numLines": 400},
+            },
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert "/repo/big.py" in state["needs_summarize"]
+
+    def test_read_small_file_not_triggered(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/small.py"},
+            "tool_response": {
+                "type": "text",
+                "file": {"filePath": "/repo/small.py", "numLines": 50},
+            },
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_summarize"] == []
+
+    def test_read_missing_response_no_crash(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        # No tool_response at all — should not crash
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/big.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["needs_summarize"] == []
+
+
+class TestPhase3E1DiffLineCount:
+    """diff_line_count must be calculated after Edit/Write."""
+
+    def test_edit_calculates_diff_line_count(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+
+        def _fake_git(args, cwd=None):
+            if args == ["diff", "--numstat"]:
+                return "10\t5\tsrc/main.py"
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/src/main.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["diff_line_count"] == 15
+
+    def test_large_diff_triggers_needs_debate(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+
+        def _fake_git(args, cwd=None):
+            if args == ["diff", "--numstat"]:
+                return "80\t30\tsrc/big.py"
+            return ""
+        monkeypatch.setattr(mcp_gate, "run_git", _fake_git)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/src/big.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["diff_line_count"] == 110
+        assert state["needs_debate"] is True
+
+    def test_git_diff_failure_no_crash(self, tmp_config_dir, monkeypatch):
+        mcp_gate._clear_session(tmp_config_dir)
+        monkeypatch.setattr(mcp_gate, "run_git", lambda *a, **kw: None)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/repo/src/main.py"},
+        })
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["diff_line_count"] == 0
+
+
+class TestPhase3E1CommitReason:
+    """Commit gate reason must list pending MCP recommendations."""
+
+    def test_commit_block_lists_needs_review(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_review"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "local_review_diff" in result["reason"]
+
+    def test_commit_block_lists_needs_debate(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_debate"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "local_debate_review_diff" in result["reason"]
+
+    def test_commit_block_lists_needs_test_plan(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_test_plan"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "local_generate_test_plan" in result["reason"]
+
+    def test_commit_block_lists_needs_summarize(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["needs_summarize"] = ["/repo/big.py"]
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "local_summarize_file" in result["reason"]
+
+    def test_commit_block_no_pending_when_clean(self, tmp_config_dir):
+        mcp_gate._clear_session(tmp_config_dir)
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "MCP pending recommendations" not in result["reason"]

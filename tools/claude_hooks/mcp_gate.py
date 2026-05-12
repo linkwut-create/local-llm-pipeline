@@ -376,6 +376,57 @@ def recommend_mcp_action(risk: str, touched_files: list[str] | None = None,
     return actions
 
 
+def _extract_read_info(payload: dict) -> tuple[str | None, int | None]:
+    """Extract (file_path, num_lines) from a Read tool PostToolUse payload.
+
+    Handles multiple response formats:
+    - {"type":"text","text":"..."}
+    - [{"type":"text","text":"..."}]
+    - {"type":"text","file":{"filePath":"...","content":"...","numLines":N}}
+    - {"file":{"content":"...","numLines":N}}
+    Returns (file_path, num_lines) where num_lines may be None if unknown.
+    """
+    resp = payload.get("tool_response", {})
+    file_path = str(payload.get("tool_input", {}).get("file_path", ""))
+
+    num_lines = None
+    content = ""
+
+    # Normalize to a flat dict if it's a list (MCP array format)
+    if isinstance(resp, list):
+        for item in resp:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    content = item.get("text", "")
+                    # Also check for nested file info
+                    if "file" in item:
+                        fi = item["file"]
+                        if isinstance(fi, dict):
+                            file_path = fi.get("filePath", file_path)
+                            if "numLines" in fi:
+                                num_lines = fi["numLines"]
+                            if not content:
+                                content = fi.get("content", "")
+                    break
+    elif isinstance(resp, dict):
+        # Check for file wrapper
+        if "file" in resp:
+            fi = resp["file"]
+            if isinstance(fi, dict):
+                file_path = fi.get("filePath", file_path)
+                if "numLines" in fi:
+                    num_lines = fi["numLines"]
+                content = fi.get("content", content)
+        if "text" in resp and not content:
+            content = resp.get("text", "")
+
+    # Compute num_lines from content if not explicitly provided
+    if num_lines is None and content:
+        num_lines = content.count("\n")
+
+    return file_path if file_path else None, num_lines
+
+
 def tool_name(payload: dict) -> str:
     return payload.get("tool_name", "")
 
@@ -463,6 +514,24 @@ def _clear_session(config_dir: str):
 # hook event handlers
 # ---------------------------------------------------------------------------
 
+def _get_diff_line_count(cwd: str | None = None) -> int:
+    """Return total changed lines from git diff --numstat, or 0 on failure."""
+    try:
+        output = run_git(["diff", "--numstat"], cwd=cwd)
+        if not output:
+            return 0
+        total = 0
+        for line in output.strip().split("\n"):
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                added = int(parts[0]) if parts[0] not in ("-", "") else 0
+                removed = int(parts[1]) if parts[1] not in ("-", "") else 0
+                total += added + removed
+        return total
+    except Exception:
+        return 0
+
+
 def _add_recommendation(state: dict, rec: str):
     """Add a recommendation to the session accumulator, avoiding duplicates."""
     recs = state.get("session_recommendations", [])
@@ -526,25 +595,31 @@ def handle_post_tooluse(config_dir: str, payload: dict):
                 _add_recommendation(state, "local_review_diff")
             else:
                 _add_recommendation(state, "local_review_diff")
+
+            # Phase 3E.1: real-time diff_line_count
+            try:
+                cwd = payload.get("cwd", "") or None
+                dlc = _get_diff_line_count(cwd=cwd)
+                state["diff_line_count"] = dlc
+                if dlc > 100:
+                    state["needs_debate"] = True
+                    _add_recommendation(state, "local_debate_review_diff")
+            except Exception:
+                pass
             save_state(config_dir, state)
 
-    # --- Read tool: large-file detection ---
+    # --- Read tool: large-file detection (Phase 3E.1: fixed parsing) ---
     if name == "Read":
-        target = str(payload.get("tool_input", {}).get("file_path", ""))
-        limit = payload.get("tool_input", {}).get("limit")
-        # If the Read returned content, estimate size from response
-        resp = payload.get("tool_response", {})
-        text = _extract_mcp_response_text(resp) if isinstance(resp, (dict, list)) else ""
-        line_count = text.count("\n") if text else 0
-        if target and (line_count > 300 or (limit and isinstance(limit, int) and limit > 300)):
+        file_path, num_lines = _extract_read_info(payload)
+        if file_path and num_lines is not None and num_lines > 300:
             state = load_state(config_dir)
             needs = state.get("needs_summarize", [])
-            if target not in needs:
-                needs.append(target)
+            if file_path not in needs:
+                needs.append(file_path)
             state["needs_summarize"] = needs
-            if target not in state.get("session_large_reads", []):
+            if file_path not in state.get("session_large_reads", []):
                 lr = state.get("session_large_reads", [])
-                lr.append(target)
+                lr.append(file_path)
                 state["session_large_reads"] = lr
             _add_recommendation(state, "local_summarize_file")
             save_state(config_dir, state)
@@ -646,6 +721,18 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                 f"State: diff_reviewed={state.get('diff_reviewed')}, "
                 f"dirty_since_review={state.get('dirty_since_review')}"
             )
+            # Phase 3E.1: list pending MCP recommendations
+            pending = []
+            if state.get("needs_review"):
+                pending.append("local_review_diff")
+            if state.get("needs_debate"):
+                pending.append("local_debate_review_diff")
+            if state.get("needs_test_plan"):
+                pending.append("local_generate_test_plan")
+            if state.get("needs_summarize"):
+                pending.append("local_summarize_file")
+            if pending:
+                parts.append(f"MCP pending recommendations: {', '.join(pending)}")
             return {"allow": False, "reason": "\n".join(parts)}
     return {"allow": True, "reason": ""}
 
