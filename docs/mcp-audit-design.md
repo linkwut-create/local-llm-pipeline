@@ -1653,3 +1653,62 @@ Integrate MCP audit with hooks and wrappers for automatic event recording.
 - Compiled binaries cannot be inspected for git commit bypass
 - Audit records are local-only (per-project filesystem)
 - Manual hook state alignment may still be needed in edge cases
+
+## MCP-AUDIT-FREEZE / v0.8.0
+
+**Status**: Frozen (2026-05-13)
+
+### Completed capabilities
+
+| Category | Capability |
+|----------|-----------|
+| Recording | JSONL event logger (4 files: events, failures, recommendations, phase_audits) |
+| Recording | Hook auto-records commit_gate_blocked, hook_state_mismatch, staged_diff_hash_mismatch, gate_subprocess_bypass |
+| Recording | Router auto-records invocation_started, finished, failed with failure_type mapping |
+| Storage | SQLite audit DB (4 tables + 2 views) |
+| Storage | JSONL → SQLite import (idempotent) |
+| Reporting | Phase report generator (9-section markdown) |
+| Query | CLI query tool (7 commands: summary, failures, blocked-commits, rejected-recommendations, tool-reliability, import-jsonl, generate-report) |
+| Gate | Subprocess bypass detection (Python/Node/Ruby/Perl patterns) |
+| Gate | Per-repo hook state isolation |
+| Privacy | No full prompt/diff/code in audit records |
+
+### Commit chain
+
+```
+d66ab72 MCP-AUDIT-5: hook/wrapper integration
+fee73ba MCP-AUDIT-4: CLI query tool
+3410f4f MCP-AUDIT-3: phase report generator
+974e6f0 MCP-AUDIT-2: SQLite audit DB
+c085c7e MCP-GATE-1B: gate hardening
+2e45715 MCP-AUDIT-1.1: gate boundary audit
+cf122dd MCP-AUDIT-1: JSONL logger
+a424ea3 MCP-AUDIT-0: design document
+```
+
+### Test results
+
+| Test suite | Result |
+|------------|--------|
+| `test_mcp_audit_logger.py` | 31/31 |
+| `test_mcp_audit_db.py` | 25/25 |
+| `test_mcp_audit_report.py` | 25/25 |
+| `test_mcp_audit_cli.py` | 15/15 |
+| `test_mcp_audit_integration.py` | 14/14 |
+| `test_mcp_gate_boundary.py` | 32/32 |
+| **Combined** | **142/142** |
+
+### Known limitations
+
+- No dashboard or visual report
+- No automatic policy engine
+- Compiled binaries cannot be fully inspected for git commit bypass
+- Some manual hook state alignment may still be needed in rare edge cases where PostToolUse hooks race with manual state changes
+- Full MCP protocol instrumentation may need future work
+- Pre-existing Windows + Python 3.14 subprocess handle inheritance test failures (unrelated to MCP Audit)
+
+### Next steps
+
+Return to `local-translator-agent` for:
+- TM-1C: TMX / CSV / JSONL import/export
+- TM-2A: embedding semantic search
