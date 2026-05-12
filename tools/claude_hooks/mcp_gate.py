@@ -55,6 +55,29 @@ _REDACT_RE = re.compile(
 
 _GIT_ARG_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 
+# Phase 2B: dangerous shell command patterns. Each entry is (pattern, description).
+# Patterns use word-boundary anchors where possible.
+_DANGEROUS_PATTERNS = [
+    # git destructive
+    (r'\bgit\s+reset\s+.*--hard', "git reset --hard (irreversible working tree reset)"),
+    (r'\bgit\s+clean\s+.*-[-xfd]*[df]', "git clean -fd/-xdf (deletes untracked files)"),
+    (r'\bgit\s+push\s+.*(--force|-f)\b', "git push --force (overwrites remote history)"),
+    # Unix destructive (rm must appear at command start or after separator,
+    # not inside quotes — avoids matching echo 'rm -rf is dangerous')
+    (r'(?:^|[\s;&|]+)rm\s+-r[fw]?\s', "rm -rf (recursive force delete)"),
+    # Windows cmd destructive
+    (r'\bdel\s+/[fsq]', "del /s /q (recursive silent delete)"),
+    (r'\brmdir\s+/s', "rmdir /s (recursive directory delete)"),
+    # PowerShell destructive
+    (r'Remove-Item\s+.*-Recurse\s+.*-Force', "Remove-Item -Recurse -Force (force recursive delete)"),
+    (r'Remove-Item\s+.*-Force\s+.*-Recurse', "Remove-Item -Force -Recurse (force recursive delete)"),
+    (r'rm\s+-r\s+-fo\b', "rm -r -fo (PowerShell force recursive delete)"),
+    (r'ri\s+-r\s+-fo\b', "ri -r -fo (PowerShell Remove-Item alias)"),
+]
+
+# Phase 2C candidates (detected but not blocked yet):
+#   git tag, git push --tags, npm publish, twine upload, release scripts
+
 _STATE_DEFAULTS = {
     "diff_reviewed": False,
     "dirty_since_review": False,
@@ -122,6 +145,24 @@ def is_git_commit(payload: dict) -> bool:
         if _single_cmd_is_git_commit(sub):
             return True
     return False
+
+
+def is_dangerous_command(payload: dict) -> tuple[bool, str]:
+    """Check if a Bash/PowerShell command matches known dangerous patterns.
+
+    Returns (is_dangerous, matched_description) or (False, "").
+    Only checks Bash and PowerShell tool calls. Does not match comments or
+    echo strings — patterns require the command to appear as a real invocation.
+    """
+    name = payload.get("tool_name", "")
+    if name not in ("Bash", "PowerShell"):
+        return False, ""
+    cmd = str(payload.get("tool_input", {}).get("command", ""))
+
+    for pattern, description in _DANGEROUS_PATTERNS:
+        if re.search(pattern, cmd):
+            return True, description
+    return False, ""
 
 
 def run_git(args, cwd=None):
@@ -292,9 +333,12 @@ def handle_post_tooluse(config_dir: str, payload: dict):
             save_state(config_dir, state)
 
     if name in _DIRTY_TOOLS:
-        state = load_state(config_dir)
-        state["dirty_since_review"] = True
-        save_state(config_dir, state)
+        # Skip state/log files — writing hook state is not a code change
+        target = str(payload.get("tool_input", {}).get("file_path", ""))
+        if "mcp-gate" not in target and ".claude/hooks" not in target:
+            state = load_state(config_dir)
+            state["dirty_since_review"] = True
+            save_state(config_dir, state)
 
     if name in _MCP_TOOLS:
         state = load_state(config_dir)
@@ -309,8 +353,22 @@ def handle_post_tooluse(config_dir: str, payload: dict):
 
 
 def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
-    """Check commit gate. Returns {"allow": bool, "reason": str}."""
+    """Check dangerous commands and commit gate. Returns {"allow": bool, "reason": str}."""
     _ensure_session(config_dir)
+
+    # Phase 2B: dangerous command guard (runs before all other checks)
+    is_dangerous, danger_desc = is_dangerous_command(payload)
+    if is_dangerous:
+        cmd = str(payload.get("tool_input", {}).get("command", ""))
+        return {
+            "allow": False,
+            "reason": (
+                f"BLOCKED: dangerous command detected ({danger_desc}).\n"
+                f"Command: {cmd[:200]}\n"
+                "If you intentionally need this, run it manually in a terminal."
+            ),
+        }
+
     if is_git_commit(payload):
         state = load_state(config_dir)
         cmd = str(payload.get("tool_input", {}).get("command", ""))

@@ -324,3 +324,144 @@ class TestSessionStart:
         assert new_state["diff_reviewed"] is True
         assert new_state["reviewed_repo"] == "/some/repo"
         assert new_state["mcp_calls"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B: dangerous command guard
+# ---------------------------------------------------------------------------
+
+class TestDangerousCommandGuard:
+    """Dangerous shell commands must be blocked."""
+
+    def test_git_reset_hard_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git reset --hard HEAD~1"},
+        })
+        assert result["allow"] is False
+        assert "reset" in result["reason"].lower()
+
+    def test_git_clean_fd_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git clean -fd"},
+        })
+        assert result["allow"] is False
+
+    def test_git_clean_xdf_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git clean -xdf"},
+        })
+        assert result["allow"] is False
+
+    def test_rm_rf_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "rm -rf /tmp/build"},
+        })
+        assert result["allow"] is False
+
+    def test_windows_del_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "PowerShell",
+            "tool_input": {"command": "del /s /q *.tmp"},
+        })
+        assert result["allow"] is False
+
+    def test_remove_item_recurse_force_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "PowerShell",
+            "tool_input": {"command": "Remove-Item -Recurse -Force build/"},
+        })
+        assert result["allow"] is False
+
+    def test_git_push_force_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push --force origin main"},
+        })
+        assert result["allow"] is False
+
+    def test_git_push_f_blocked(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git push -f"},
+        })
+        assert result["allow"] is False
+
+
+class TestSafeCommandsNotBlocked:
+    """Safe commands must pass through."""
+
+    def test_git_status_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status"},
+        })
+        assert result["allow"] is True
+
+    def test_git_diff_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git diff"},
+        })
+        assert result["allow"] is True
+
+    def test_git_log_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git log --oneline"},
+        })
+        assert result["allow"] is True
+
+    def test_pytest_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "python -m pytest tests/ -q"},
+        })
+        assert result["allow"] is True
+
+    def test_git_branch_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git branch"},
+        })
+        assert result["allow"] is True
+
+    def test_echo_allowed(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo 'rm -rf is dangerous'"},
+        })
+        assert result["allow"] is True
+
+    def test_no_tool_name_allowed(self, tmp_config_dir):
+        """Non-Bash/PowerShell tools never match dangerous patterns."""
+        result = mcp_gate.is_dangerous_command({
+            "tool_name": "Edit",
+            "tool_input": {"command": "rm -rf /"},
+        })
+        assert result == (False, "")
+
+
+class TestDangerousCommandDoesNotBreakCommitGate:
+    """Dangerous command guard must not affect commit gate behavior."""
+
+    def test_commit_still_blocked_without_review(self, tmp_config_dir):
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m test"},
+        })
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+
+    def test_dangerous_blocked_before_commit_check(self, tmp_config_dir):
+        """Dangerous command should be blocked before we even check review state."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git reset --hard HEAD"},
+        })
+        assert result["allow"] is False
+        # Reason should mention dangerous command, not commit gate
+        assert "dangerous" in result["reason"].lower()
