@@ -1435,3 +1435,78 @@ Gate events now automatically write to JSONL audit logger (best-effort, never cr
 - Audit logger integration is best-effort (silently skipped if `mcp_audit_logger` is not importable)
 - `mcp_doctor.py` does not yet include gate boundary checks (future MCP-AUDIT-5)
 - Full hook/wrapper integration for automatic review state tracking remains for MCP-AUDIT-5
+
+## MCP-AUDIT-2 Implementation Notes
+
+**Status**: Complete (2026-05-13)
+
+### Purpose
+
+Implement the SQLite audit database layer designed in Section 9. SQLite is a
+downstream query layer; JSONL remains the source of truth.
+
+### Files created
+
+- `tools/mcp_audit_db.py` — SQLite audit DB module
+- `tests/test_mcp_audit_db.py` — 25 focused tests
+
+### Database
+
+- **Path**: `.mcp_audit/mcp_audit.db` (configurable via `MCP_AUDIT_DIR`)
+- **Mode**: WAL journal, foreign keys ON
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `mcp_invocation_log` | All audit events from `events.jsonl` |
+| `mcp_failure_log` | All failures from `failures.jsonl` |
+| `mcp_recommendation_log` | Recommendations from `recommendations.jsonl` |
+| `mcp_phase_audit` | Phase summaries from `phase_audits.jsonl` |
+
+### Views
+
+| View | Purpose |
+|------|---------|
+| `v_tool_reliability` | Per-tool success/failure/timeout/block counts and failure rate |
+| `v_phase_summary` | Per-phase invocation count, failure count, blocked commit count |
+
+### API
+
+| Function | Purpose |
+|----------|---------|
+| `get_audit_db_path(base_dir)` | Get DB path |
+| `connect_audit_db(base_dir)` | Open connection with WAL mode |
+| `init_audit_db(base_dir)` | Create all tables/indexes/views (idempotent) |
+| `migrate_audit_db(conn)` | Run schema migration (v1 no-op) |
+| `insert_invocation(conn, record)` | Insert/ignore event |
+| `insert_failure(conn, record)` | Insert/ignore failure |
+| `insert_recommendation(conn, record)` | Insert/ignore recommendation |
+| `insert_phase_audit(conn, record)` | Insert/ignore phase audit |
+| `import_jsonl_file(conn, path, type)` | Import one JSONL file |
+| `import_audit_jsonl(base_dir)` | Import all 4 JSONL files into SQLite |
+| `summarize_phase(conn, phase_id)` | Phase summary via `v_phase_summary` |
+| `list_failures(conn, project, phase)` | List failures with optional filters |
+| `list_blocked_commits(conn, project)` | List blocked commit events |
+| `list_rejected_recommendations(conn, project)` | List rejected recommendations |
+| `tool_reliability_summary(conn)` | Tool reliability via `v_tool_reliability` |
+
+### JSONL import
+
+- `import_audit_jsonl()` reads all 4 JSONL files and inserts into corresponding tables
+- `INSERT OR IGNORE` ensures idempotency (duplicate IDs skipped)
+- Malformed JSON lines are counted as errors and skipped
+- Original JSONL files are never modified
+
+### Not yet implemented
+
+- No CLI query tool (MCP-AUDIT-4)
+- No automatic phase audit summarizer (MCP-AUDIT-3)
+- No dashboard
+- JSONL is still the source of truth; SQLite is a downstream query layer
+
+### Tests
+
+- **Focused**: 25/25 passed
+- **Combined (logger + DB + gate)**: 88/88 passed
+- **Full suite**: 523 passed, 7 failed (pre-existing Windows subprocess issues)
