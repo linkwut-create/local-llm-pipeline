@@ -28,8 +28,32 @@ python tools/local_llm_router.py summarize-file README.md
 - [MCP Usage Patterns](docs/local-llm-mcp-usage-patterns.md)
 - [MCP Client Verification](docs/local-llm-mcp-client-verification.md)
 - [Debate Multi-Model Review](docs/local-llm-debate.md)
+- [MCP Hook Gate](docs/claude-code-mcp-gate.md)
+- [Hook Doctor](docs/mcp-phase2d-hook-doctor.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Changelog](CHANGELOG.md)
+
+## MCP Hook Infrastructure
+
+The pipeline includes a multi-layer PreToolUse guard system:
+
+```text
+dangerous guard → release guard → commit gate
+```
+
+- **Dangerous guard**: blocks destructive commands (rm -rf, git reset --hard, del /s /q)
+- **Release guard**: blocks external publication (git push, git tag, npm publish, twine upload)
+- **Commit gate**: requires prior MCP review before git commit
+
+Diagnose hook health at any time:
+
+```bash
+python tools/claude_hooks/mcp_doctor.py
+```
+
+Phase 2C.1 hardening ensures PowerShell here-string commit messages are not falsely blocked.
+
+See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current freeze readiness.
 
 ## Security
 
