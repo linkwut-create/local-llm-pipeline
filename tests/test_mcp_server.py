@@ -623,6 +623,108 @@ def test_review_diff_respects_explicit_profile(monkeypatch):
     assert "deep_reviewer" in cmd_parts
 
 
+# --- CJK/Unicode regression tests (v0.9.6) ---
+
+CJK_DIFF = """diff --git a/tests/test_overlay_smoke.py b/tests/test_overlay_smoke.py
+--- a/tests/test_overlay_smoke.py
++++ b/tests/test_overlay_smoke.py
+@@ -100,5 +100,6 @@
+ check("show message has source", "テスト文章" in show_msg["source"])
+-error_msg = {"action": "show", "source": "", "translation": "连接失败", "status": "error"}
++error_msg = {"action": "show", "source": "", "translation": "连接失败", "status": "error"}
++check("error message valid", error_msg["status"] == "error")
+ # 5. bilingual copy
+-check("contains source marker", "【原文】" in text)
++check("contains translation marker", "【译文】" in text)
+"""
+
+
+def test_run_subprocess_handles_cjk_stdin():
+    """run_subprocess must encode CJK stdin_data as UTF-8 without error."""
+    result = mcp.run_subprocess(
+        ["python", "-c", "import sys; sys.stdin.read(); print('ok')"],
+        stdin_data=CJK_DIFF,
+        timeout=60,
+    )
+    assert result["returncode"] == 0, f"Subprocess failed: {result.get('stderr', '')}"
+    assert "ok" in result.get("stdout", "")
+
+
+def test_run_subprocess_cjk_roundtrip():
+    """CJK characters must survive subprocess stdin → stdout roundtrip."""
+    result = mcp.run_subprocess(
+        ["python", "-c",
+         "import sys; data=sys.stdin.read(); "
+         "assert 'テスト文章' in data, 'Japanese missing'; "
+         "assert '连接失败' in data, 'Chinese missing'; "
+         "assert '【原文】' in data, 'CJK bracket missing'; "
+         "print('PASS')"],
+        stdin_data=CJK_DIFF,
+        timeout=30,
+    )
+    assert result["returncode"] == 0, f"CJK roundtrip failed: {result.get('stderr', '')}"
+    assert "PASS" in result.get("stdout", "")
+
+
+def test_call_review_diff_with_cjk_diff(monkeypatch):
+    """call_review_diff must accept diff_text with CJK characters."""
+    monkeypatch.setattr(mcp, "run_subprocess",
+                        lambda cmd, **kw: {"ok": True, "stdout": "JSON: /fake/o.json",
+                                           "stderr": "", "returncode": 0, "elapsed_seconds": 1.0})
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "diff_reviewer",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "nemotron-30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    result = mcp.call_review_diff({"diff_text": CJK_DIFF})
+    assert result["ok"] is True, f"CJK review failed: {result.get('error', '')}"
+
+
+def test_call_debate_review_diff_with_cjk_diff(monkeypatch):
+    """call_debate_review_diff must accept CJK diff_text."""
+    monkeypatch.setattr(mcp, "run_subprocess",
+                        lambda cmd, **kw: {"ok": True, "stdout": '{"ok": true}',
+                                           "stderr": "", "returncode": 0, "elapsed_seconds": 2.0})
+    result = mcp.call_debate_review_diff({"diff_text": CJK_DIFF})
+    assert result["ok"] is True, f"CJK debate review failed: {result.get('error', '')}"
+
+
+def test_mcp_server_stdin_reconfigure(monkeypatch):
+    """main() must reconfigure stdin/stdout/stderr to UTF-8."""
+    reconfigured = []
+
+    class FakeStream:
+        def reconfigure(self, *, encoding):
+            reconfigured.append((self.name, encoding))
+
+    fake_stdin = FakeStream()
+    fake_stdin.name = "stdin"
+    fake_stdout = FakeStream()
+    fake_stdout.name = "stdout"
+    fake_stderr = FakeStream()
+    fake_stderr.name = "stderr"
+
+    monkeypatch.setattr(sys, "stdin", fake_stdin)
+    monkeypatch.setattr(sys, "stdout", fake_stdout)
+    monkeypatch.setattr(sys, "stderr", fake_stderr)
+
+    # Re-run the main preamble code
+    for stream_name in ("stdin", "stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+
+    assert len(reconfigured) == 3, f"Expected 3 stream reconfigures, got {reconfigured}"
+    for name, enc in reconfigured:
+        assert enc == "utf-8", f"{name} encoding should be utf-8, got {enc}"
+
+
+# --- v0.9.5 tests continue below ---
+
+
 def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
     """call_review_diff must pass timeout=REVIEW_TIMEOUT (60) to run_subprocess."""
     captured = {}

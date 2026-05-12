@@ -795,7 +795,7 @@ def gather_input(args: argparse.Namespace, config: WorkerConfig) -> tuple[str, d
     input_meta = {"path": None, "stdin": False, "max_files": None, "max_chars": config.max_chars}
 
     if args.stdin:
-        content = sys.stdin.read()
+        content = sys.stdin.buffer.read().decode("utf-8", errors="replace")
         if len(content) > config.max_chars:
             warnings.append(f"STDIN truncated from {len(content)} to {config.max_chars} chars")
             content = content[:config.max_chars]

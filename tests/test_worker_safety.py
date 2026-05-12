@@ -104,3 +104,49 @@ def test_worker_output_has_error_fields():
     assert o.error_type == "timeout"
     assert o.suggestion is not None
     assert o.retries == 1
+
+
+# --- CJK stdin regression (v0.9.6) ---
+
+CJK_TEXT = "diff --git a/x b/x\n-连接失败\n+テスト文章\n【原文】\n【译文】\n"
+
+
+def test_worker_stdin_read_handles_cjk(monkeypatch):
+    """Worker gather_input() must decode CJK bytes from stdin correctly."""
+    import argparse, io
+    from local_llm_worker import gather_input, WorkerConfig
+
+    raw = CJK_TEXT.encode("utf-8")
+
+    class MockStdin:
+        buffer = io.BytesIO(raw)
+
+    monkeypatch.setattr(sys, "stdin", MockStdin())
+    args = argparse.Namespace(task="review-diff", stdin=True, target=None)
+    config = WorkerConfig()
+    config.max_chars = 200_000
+    content, _, warnings, _ = gather_input(args, config)
+    assert "连接失败" in content, f"Chinese missing from stdin content"
+    assert "テスト文章" in content, f"Japanese missing from stdin content"
+    assert "【原文】" in content, f"CJK bracket missing from stdin content"
+
+
+def test_worker_stdin_read_handles_invalid_utf8(monkeypatch):
+    """Worker gather_input() must not crash on invalid UTF-8 bytes."""
+    import argparse, io
+    from local_llm_worker import gather_input, WorkerConfig
+
+    # Mix valid UTF-8 with an invalid continuation byte (0xFF)
+    raw = "start ".encode("utf-8") + b"\xff\xfe" + " end".encode("utf-8")
+
+    class MockStdin:
+        buffer = io.BytesIO(raw)
+
+    monkeypatch.setattr(sys, "stdin", MockStdin())
+    args = argparse.Namespace(task="review-diff", stdin=True, target=None)
+    config = WorkerConfig()
+    config.max_chars = 200_000
+    content, _, warnings, _ = gather_input(args, config)
+    # With errors="replace", the invalid bytes are replaced with U+FFFD
+    assert "start" in content
+    assert "end" in content

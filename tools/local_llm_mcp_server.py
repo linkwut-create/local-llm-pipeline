@@ -1025,6 +1025,16 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
 
 
 def main():
+    # Force stdio to UTF-8 regardless of OS locale (Windows CJK codepages
+    # like GBK/CP932 would otherwise corrupt JSON-RPC with CJK characters).
+    for stream_name in ("stdin", "stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+
     if "--version" in sys.argv or "-V" in sys.argv:
         print(f"local-llm-mcp-server v{SERVER_VERSION}")
         return 0

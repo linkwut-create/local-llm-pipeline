@@ -152,7 +152,7 @@ def main():
 
     has_stdin = "--stdin" in filtered_args
     if has_stdin:
-        stdin_data = sys.stdin.read() if not sys.stdin.isatty() else ""
+        stdin_data = sys.stdin.buffer.read().decode("utf-8", errors="replace") if not sys.stdin.isatty() else ""
         result = subprocess.run(cmd, input=stdin_data, text=True,
                                 encoding="utf-8", errors="replace",
                                 capture_output=False, env=subprocess_env)
