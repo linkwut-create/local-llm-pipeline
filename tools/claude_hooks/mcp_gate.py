@@ -55,6 +55,8 @@ _REDACT_RE = re.compile(
 
 _GIT_ARG_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 
+_BENIGN_OUTPUT_COMMANDS = {"echo", "printf", "Write-Output", "Write-Host"}
+
 # Phase 2B: dangerous shell command patterns. Each entry is (pattern, description).
 # Patterns use word-boundary anchors where possible.
 _DANGEROUS_PATTERNS = [
@@ -96,12 +98,31 @@ _STATE_DEFAULTS = {
 # public helpers (imported by tests and user-level wrapper)
 # ---------------------------------------------------------------------------
 
+def _extract_mcp_response_text(resp) -> str:
+    """Extract JSON text from MCP tool_response in either format.
+
+    MCP tools return an array of content blocks:
+        [{"type": "text", "text": "{...}"}]
+    Legacy tools may return a single dict:
+        {"type": "text", "text": "{...}"}
+    """
+    if isinstance(resp, list):
+        for item in resp:
+            if isinstance(item, dict) and item.get("type") == "text":
+                return item.get("text", "")
+        return ""
+    if isinstance(resp, dict):
+        return resp.get("text", "")
+    return ""
+
+
 def review_tool_succeeded(payload: dict) -> bool:
-    """Return True only if the MCP review tool call clearly succeeded."""
-    resp = payload.get("tool_response")
-    if not isinstance(resp, dict):
-        return False
-    text = resp.get("text", "")
+    """Return True only if the MCP review tool call clearly succeeded.
+
+    Handles both MCP array format [{"type": "text", "text": "..."}] and
+    legacy dict format {"type": "text", "text": "..."}.
+    """
+    text = _extract_mcp_response_text(payload.get("tool_response"))
     if not text:
         return False
     try:
@@ -151,17 +172,31 @@ def is_dangerous_command(payload: dict) -> tuple[bool, str]:
     """Check if a Bash/PowerShell command matches known dangerous patterns.
 
     Returns (is_dangerous, matched_description) or (False, "").
-    Only checks Bash and PowerShell tool calls. Does not match comments or
-    echo strings — patterns require the command to appear as a real invocation.
+    Only checks Bash and PowerShell tool calls.
+
+    Splits chained commands and skips benign sub-commands:
+    - git commit (commit gate handles blocking; message body may contain
+      dangerous-looking strings that are harmless)
+    - echo, printf, Write-Output, Write-Host (output-only commands)
     """
     name = payload.get("tool_name", "")
     if name not in ("Bash", "PowerShell"):
         return False, ""
     cmd = str(payload.get("tool_input", {}).get("command", ""))
 
-    for pattern, description in _DANGEROUS_PATTERNS:
-        if re.search(pattern, cmd):
-            return True, description
+    for sub in _split_command_chain(cmd):
+        # git commit sub-commands are handled by the commit gate — skip
+        # dangerous pattern checking so that commit messages mentioning
+        # dangerous command names (e.g. "docs: avoid git reset --hard")
+        # aren't falsely blocked.
+        if _single_cmd_is_git_commit(sub):
+            continue
+        # Benign output commands can echo/print any text safely.
+        if _sub_cmd_is_benign_output(sub):
+            continue
+        for pattern, description in _DANGEROUS_PATTERNS:
+            if re.search(pattern, sub):
+                return True, description
     return False, ""
 
 
@@ -170,6 +205,7 @@ def run_git(args, cwd=None):
     try:
         r = subprocess.run(
             ["git"] + args, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
             timeout=10, cwd=cwd,
         )
         if r.returncode == 0:
@@ -620,3 +656,15 @@ def _single_cmd_is_git_commit(cmd: str) -> bool:
         else:
             break
     return i < len(tokens) and tokens[i] == "commit"
+
+
+def _sub_cmd_is_benign_output(cmd: str) -> bool:
+    """Return True if the command is an output-only command like echo."""
+    try:
+        tokens = shlex.split(cmd, posix=False)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    base = tokens[0].rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return base in _BENIGN_OUTPUT_COMMANDS

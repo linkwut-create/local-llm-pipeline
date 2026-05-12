@@ -70,6 +70,104 @@ class TestReviewToolSucceeded:
         assert mcp_gate.review_tool_succeeded({}) is False
         assert mcp_gate.review_tool_succeeded({"tool_response": {}}) is False
 
+    # Phase 2B.1: MCP array-format tool_response (real Claude Code MCP payloads)
+
+    def test_mcp_array_format_ok_true(self):
+        """Real MCP PostToolUse payloads have tool_response as a LIST of
+        content blocks: [{"type": "text", "text": "{...}"}]."""
+        payload = {
+            "tool_response": [
+                {"type": "text", "text": json.dumps({"ok": True})},
+            ]
+        }
+        assert mcp_gate.review_tool_succeeded(payload) is True
+
+    def test_mcp_array_format_ok_false(self):
+        payload = {
+            "tool_response": [
+                {"type": "text", "text": json.dumps({"ok": False})},
+            ]
+        }
+        assert mcp_gate.review_tool_succeeded(payload) is False
+
+    def test_mcp_array_format_with_error(self):
+        payload = {
+            "tool_response": [
+                {"type": "text", "text": json.dumps({
+                    "ok": True, "error": "worker failed",
+                })},
+            ]
+        }
+        assert mcp_gate.review_tool_succeeded(payload) is False
+
+    def test_mcp_array_format_empty_list(self):
+        payload = {"tool_response": []}
+        assert mcp_gate.review_tool_succeeded(payload) is False
+
+    def test_mcp_array_format_no_text_items(self):
+        payload = {
+            "tool_response": [
+                {"type": "image", "data": "base64..."},
+                {"type": "resource", "uri": "file:///..."},
+            ]
+        }
+        assert mcp_gate.review_tool_succeeded(payload) is False
+
+    def test_mcp_array_format_multiple_items_first_is_text(self):
+        """Should use the first text-type content block."""
+        payload = {
+            "tool_response": [
+                {"type": "text", "text": json.dumps({"ok": True})},
+                {"type": "text", "text": "some extra output"},
+            ]
+        }
+        assert mcp_gate.review_tool_succeeded(payload) is True
+
+    def test_mcp_array_format_review_state_updated(self, tmp_config_dir, monkeypatch):
+        """handle_post_tooluse must correctly update review state when
+        tool_response is in MCP array format."""
+        mcp_gate._clear_session(tmp_config_dir)
+        fp = {"repo": "/fake/repo", "head": "abc123", "diff_hash": "def456"}
+        monkeypatch.setattr(mcp_gate, "get_repo_fingerprint", lambda cwd=None: fp)
+
+        # Simulate a real MCP review_diff PostToolUse with array-format response
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_input": {"diff_text": "...", "commit_gate": True},
+            "tool_response": [
+                {"type": "text", "text": json.dumps({"ok": True})},
+            ],
+            "cwd": "/fake/repo",
+        })
+
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["diff_reviewed"] is True
+        assert state["dirty_since_review"] is False
+        assert state["reviewed_repo"] == "/fake/repo"
+        assert state["reviewed_head"] == "abc123"
+        assert state["reviewed_diff_hash"] == "def456"
+        assert "last_review_error" not in state
+
+    def test_mcp_array_format_failed_review_clears_state(self, tmp_config_dir):
+        """A failed review must clear diff_reviewed."""
+        mcp_gate._clear_session(tmp_config_dir)
+        # Pre-set as reviewed
+        state = mcp_gate.load_state(tmp_config_dir)
+        state["diff_reviewed"] = True
+        mcp_gate.save_state(tmp_config_dir, state)
+
+        mcp_gate.handle_post_tooluse(tmp_config_dir, {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_input": {"diff_text": "...", "commit_gate": True},
+            "tool_response": [
+                {"type": "text", "text": json.dumps({"ok": False})},
+            ],
+        })
+
+        state = mcp_gate.load_state(tmp_config_dir)
+        assert state["diff_reviewed"] is False
+        assert "last_review_error" in state
+
 
 # ---------------------------------------------------------------------------
 # handle_stop (session summary)
@@ -435,6 +533,58 @@ class TestSafeCommandsNotBlocked:
             "tool_input": {"command": "echo 'rm -rf is dangerous'"},
         })
         assert result["allow"] is True
+
+    # Phase 2B.1: regression tests for dangerous guard false positives
+
+    def test_git_commit_message_mentioning_reset_not_dangerous(self, tmp_config_dir):
+        """git commit -m mentioning git reset --hard must NOT be blocked by
+        dangerous guard. It should fall through to the commit gate instead."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git commit -m "docs: mention git reset --hard"'},
+        })
+        # Should not be blocked by dangerous guard
+        # (commit gate will block it, but for lack of review, not danger)
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+        assert "dangerous" not in result["reason"].lower()
+
+    def test_git_commit_message_mentioning_del_not_dangerous(self, tmp_config_dir):
+        """git commit -m mentioning del /s /q must NOT be blocked by
+        dangerous guard."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'git commit -m "docs: mention del /s /q"'},
+        })
+        assert result["allow"] is False
+        assert "review" in result["reason"].lower()
+        assert "dangerous" not in result["reason"].lower()
+
+    def test_echo_dangerous_text_not_blocked(self, tmp_config_dir):
+        """Echo of dangerous-looking text must not be blocked."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'echo "git reset --hard is dangerous"'},
+        })
+        assert result["allow"] is True
+
+    def test_real_git_reset_still_blocked(self, tmp_config_dir):
+        """Real git reset --hard must still be blocked after refactoring."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git reset --hard HEAD~1"},
+        })
+        assert result["allow"] is False
+        assert "dangerous" in result["reason"].lower()
+
+    def test_real_del_still_blocked(self, tmp_config_dir):
+        """Real del /s /q must still be blocked after refactoring."""
+        result = mcp_gate.handle_pre_tooluse(tmp_config_dir, {
+            "tool_name": "PowerShell",
+            "tool_input": {"command": "del /s /q *.tmp"},
+        })
+        assert result["allow"] is False
+        assert "dangerous" in result["reason"].lower()
 
     def test_no_tool_name_allowed(self, tmp_config_dir):
         """Non-Bash/PowerShell tools never match dangerous patterns."""
