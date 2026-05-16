@@ -276,8 +276,7 @@ class TestSessionBoundary:
         # Verify
         new_state = mcp_gate.load_state(tmp_config_dir)
         assert new_state["session_id"] != old_session_id
-        assert new_state["mcp_calls"] == {}
-        assert new_state["_last_mcp_failed"] is False
+        assert new_state["mcp_calls"] == {"_last_mcp_failed": False}
 
     def test_session_boundary_prevents_contamination(self, tmp_config_dir):
         """Previous session's mcp_calls must not leak into Stop summary."""
@@ -441,7 +440,7 @@ class TestSessionStart:
         new_state = mcp_gate.load_state(tmp_config_dir)
         assert new_state["diff_reviewed"] is True
         assert new_state["reviewed_repo"] == "/some/repo"
-        assert new_state["mcp_calls"] == {}
+        assert new_state["mcp_calls"] == {"_last_mcp_failed": False}
 
 
 # ---------------------------------------------------------------------------

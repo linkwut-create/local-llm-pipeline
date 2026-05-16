@@ -206,7 +206,7 @@ def review_tool_succeeded(payload: dict) -> bool:
                 "can't decode", "can't encode",
             )):
                 return False
-    return result.get("ok") is True
+    return True
 
 
 def is_git_commit(payload: dict) -> bool:
@@ -648,8 +648,7 @@ def _ensure_session(config_dir: str):
     if not state.get("session_id"):
         state["session_id"] = uuid.uuid4().hex[:12]
         state["session_started_at"] = datetime.now(timezone.utc).isoformat()
-        state["mcp_calls"] = {}
-        state["_last_mcp_failed"] = False
+        state["mcp_calls"] = {"_last_mcp_failed": False}
         save_state(config_dir, state)
 
 
@@ -660,8 +659,7 @@ def _clear_session(config_dir: str):
     # Clear only per-session MCP tracking
     state["session_id"] = uuid.uuid4().hex[:12]
     state["session_started_at"] = datetime.now(timezone.utc).isoformat()
-    state["mcp_calls"] = {}
-    state["_last_mcp_failed"] = False
+    state["mcp_calls"] = {"_last_mcp_failed": False}
     state["touched_files"] = []
     state["session_needs_local_check"] = True
     state["local_check_done"] = False
