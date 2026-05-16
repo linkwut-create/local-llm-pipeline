@@ -207,6 +207,7 @@ class WorkerConfig:
     style: str = "concise"
     json_only: bool = False
     no_markdown: bool = False
+    stream: bool = False
 
 
 @dataclass
@@ -442,6 +443,61 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> str:
     return ""
 
 
+def call_ollama_stream(system: str, user: str, config: WorkerConfig):
+    """Yield content chunks from Ollama streaming /api/chat (NDJSON)."""
+    url = f"{config.base_url}/api/chat"
+    payload = {
+        "model": config.model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": True,
+        "options": {"num_predict": config.max_output_chars},
+    }
+    resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
+    resp.raise_for_status()
+    for line in resp.iter_lines():
+        if not line:
+            continue
+        chunk = json.loads(line)
+        if chunk.get("done"):
+            break
+        token = chunk.get("message", {}).get("content", "")
+        if token:
+            yield token
+
+
+def call_openai_compat_stream(system: str, user: str, config: WorkerConfig):
+    """Yield content deltas from OpenAI-compatible streaming /v1/chat/completions (SSE)."""
+    url = f"{config.base_url}/chat/completions"
+    payload = {
+        "model": config.model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "max_tokens": config.max_output_chars,
+        "stream": True,
+    }
+    resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
+    resp.raise_for_status()
+    for line in resp.iter_lines():
+        if not line or line.startswith(b":"):
+            continue
+        if line.startswith(b"data: "):
+            data = line[6:]
+            if data == b"[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+                delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                if delta:
+                    yield delta
+            except json.JSONDecodeError:
+                continue
+
+
 # Tasks that should NOT be retried (long-running, expensive, or draft-generating)
 NO_RETRY_TASKS = {
     "debate-review-diff", "debate-risk-analysis",
@@ -536,10 +592,22 @@ def call_model_with_retry(system: str, user: str, config: WorkerConfig,
 
 
 def call_model(system: str, user: str, config: WorkerConfig) -> str:
+    if config.stream:
+        return call_model_stream(system, user, config)
     if config.provider == "ollama":
         return call_ollama(system, user, config)
     elif config.provider == "openai-compatible":
         return call_openai_compat(system, user, config)
+    else:
+        raise ValueError(f"Unknown provider: {config.provider}")
+
+
+def call_model_stream(system: str, user: str, config: WorkerConfig):
+    """Stream tokens from the model. Returns a generator yielding content chunks."""
+    if config.provider == "ollama":
+        return call_ollama_stream(system, user, config)
+    elif config.provider == "openai-compatible":
+        return call_openai_compat_stream(system, user, config)
     else:
         raise ValueError(f"Unknown provider: {config.provider}")
 
@@ -748,6 +816,7 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     config.style = args.style or "concise"
     config.json_only = args.json_only
     config.no_markdown = args.no_markdown
+    config.stream = args.stream
     return config
 
 
@@ -1025,7 +1094,24 @@ def _run_inner(args: argparse.Namespace) -> int:
 
     log_start = time.time()
     print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
-    raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
+
+    if config.stream:
+        # Streaming mode: emit tokens as they arrive, accumulate for output
+        raw_result = []
+        try:
+            for token in call_model_stream(system, user, config):
+                raw_result.append(token)
+                sys.stdout.write(f"DATA: {token}\n")
+                sys.stdout.flush()
+            raw_result = "".join(raw_result)
+            error_info = {}
+        except Exception as exc:
+            raw_result = "".join(raw_result) if isinstance(raw_result, list) else ""
+            error_type, suggestion = classify_error(exc, args.task)
+            error_info = {"error_type": error_type, "error": str(exc)[:300],
+                          "suggestion": suggestion, "retries": 0}
+    else:
+        raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
     log_duration = time.time() - log_start
 
     if error_info:
@@ -1111,6 +1197,7 @@ def main():
     parser.add_argument("--output-dir", default=None, help="Output directory")
     parser.add_argument("--json-only", action="store_true", help="Print JSON to stdout")
     parser.add_argument("--no-markdown", action="store_true", help="Skip Markdown output")
+    parser.add_argument("--stream", action="store_true", help="Stream tokens to stdout in real time")
 
     args = parser.parse_args()
     sys.exit(run(args))

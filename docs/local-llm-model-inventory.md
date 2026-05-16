@@ -97,6 +97,30 @@ All models on zero12 (Ollama, Radeon 8060S, 128GB RAM). 58 total entries.
 
 Loadable via llama.cpp. Some have higher precision than Ollama equivalents.
 
+### Qwen3.6 27B MTP (llama.cpp only, v0.8.2+)
+
+| File | Size | Notes |
+|---|---|---|
+| `/mnt/data/llamacpp-models/qwen3.6-27b-mtp-q8_k_xl.gguf` | 35.8 GB | Q8_K_XL quant. UD format. Served on port 8082. |
+
+**Launch**: `llama-server -m /mnt/data/llamacpp-models/qwen3.6-27b-mtp-q8_k_xl.gguf --spec-type mtp -ngl 99 --port 8082`
+
+Qwen3.6 has native MTP heads built into the model — no separate drafter GGUF required.
+
+**Profile**: `qwen3.6_27b_mtp` — diff review, suggest improvements, summarization. Falls back to `qwen3.6:27b-q8-ud` (Ollama).
+
+### Qwen3.6 35B MoE MTP (llama.cpp only, v0.8.2+)
+
+| File | Size | Notes |
+|---|---|---|
+| `/mnt/data/llamacpp-models/qwen3.6-35b-moe-mtp-q8_k_xl.gguf` | 39.1 GB | Q8_K_XL quant. MoE (A3B active). Served on port 8083. |
+
+**Launch**: `llama-server -m /mnt/data/llamacpp-models/qwen3.6-35b-moe-mtp-q8_k_xl.gguf --spec-type mtp -ngl 99 --port 8083`
+
+Qwen3.6 MoE has native MTP heads built into the model — no separate drafter GGUF required.
+
+**Profile**: `qwen3.6_35b_moe_mtp` — deep code review, architecture review, release risk review. Falls back to `qwen3.6:35b-q8-ud` (Ollama).
+
 ## Newly Added (v0.8.1+)
 
 | Model | Size | Benchmark | Status |
@@ -141,6 +165,12 @@ llama-server -m ~/.cache/modelscope/.../gemma-4-31B-it-IQ4_NL.gguf --port 8080 -
 
 # Mistral Small 119B Q6 (best quality deep review)
 llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8081 -ngl 99
+
+# Qwen3.6 27B MTP (diff review, suggest improvements)
+llama-server -m /mnt/data/llamacpp-models/qwen3.6-27b-mtp-q8_k_xl.gguf --spec-type mtp -ngl 99 --port 8082
+
+# Qwen3.6 35B MoE MTP (deep review, architecture review)
+llama-server -m /mnt/data/llamacpp-models/qwen3.6-35b-moe-mtp-q8_k_xl.gguf --spec-type mtp -ngl 99 --port 8083
 ```
 
 Then use via pipeline:

@@ -65,7 +65,7 @@
     },
     "deep-code-review": {
       "risk": "high",
-      "default_profile": "deep_reviewer",
+      "default_profile": "qwen3.6_35b_moe_mtp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -75,7 +75,7 @@
     },
     "architecture-review": {
       "risk": "high",
-      "default_profile": "architecture_reviewer",
+      "default_profile": "qwen3.6_35b_moe_mtp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -166,7 +166,7 @@
     },
     "suggest-improvements": {
       "risk": "low",
-      "default_profile": "gemma4_26b",
+      "default_profile": "qwen3.6_27b_mtp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,

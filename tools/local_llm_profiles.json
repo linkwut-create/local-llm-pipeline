@@ -6,6 +6,7 @@
       "max_chars": 60000,
       "max_output_chars": 3000,
       "use_for": ["summarize-file", "summarize-tree", "rewrite-text"],
+      "candidates": ["gemma4:e4b", "qwen3.5-claude-opus-9b-q8_0:latest", "gemma-4-e4b-q8:latest"],
       "risk_level": "low",
       "_benchmark": "31s summarize-file (zero12)",
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks."
@@ -27,6 +28,7 @@
       "max_chars": 90000,
       "max_output_chars": 4000,
       "use_for": ["extract-todos", "find-related-files", "generate-test-plan", "generate-test-draft", "draft-fix", "draft-feature", "draft-refactor"],
+      "candidates": ["qwen3-coder-next-q8:latest", "qwen3-coder:30b"],
       "risk_level": "medium",
       "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
       "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks."
@@ -91,6 +93,7 @@
       "max_chars": 100000,
       "max_output_chars": 5000,
       "use_for": ["risk-analysis", "logic-check", "failure-mode-analysis"],
+      "candidates": ["qwen3.5-27b-reasoning:latest", "deepseek-r1-distill-qwen:32b-q8-fixed"],
       "risk_level": "medium-high",
       "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)",
       "_community_reputation": "Qwen3.5 reasoning variant. Reliable for structured analysis. Top performer in local benchmarks (2/2 passed).",
@@ -124,6 +127,7 @@
       "max_chars": 160000,
       "max_output_chars": 6000,
       "use_for": ["architecture-review", "deep-code-review", "risk-analysis", "release-risk-review"],
+      "candidates": ["mistral-medium-3.5-128b-q5_k_xl:latest", "gpt-oss-120b-f16:latest"],
       "risk_level": "high",
       "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)",
       "_community_reputation": "Mistral Medium 3.5 128B MoE. Widely regarded for accuracy in deep review tasks. Top of local benchmarks.",
@@ -167,7 +171,33 @@
       "risk_level": "high",
       "_backend": "llama.cpp only (89GB too large for Ollama)",
       "_launch": "llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8080 -ngl 99",
-      "_env": "LOCAL_LLM_BASE_URL=http://zero12:8080/v1"
+      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1"
+    },
+    "qwen3.6_27b_mtp": {
+      "model": "qwen3.6:27b-q8-ud",
+      "temperature": 0.15,
+      "max_chars": 120000,
+      "max_output_chars": 5000,
+      "use_for": ["review-diff", "suggest-improvements", "summarize-file", "summarize-tree", "rewrite-text"],
+      "candidates": ["qwen3.6:27b-q8-ud", "qwen3.5-27b-q8:latest", "gemma4-26b-it:q8_0"],
+      "risk_level": "medium",
+      "_benchmark": "TBD",
+      "_community_reputation": "Qwen3.6 27B UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama.",
+      "_constraints": "Ollama backend. Q8_K_XL GGUF on disk pending llama.cpp HIP SSM bug fix (gh#22230). Not for commit gate.",
+      "_last_tested": "2026-05-16"
+    },
+    "qwen3.6_35b_moe_mtp": {
+      "model": "qwen3.6:35b-q8-ud",
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": ["deep-code-review", "architecture-review", "release-risk-review", "review-diff"],
+      "candidates": ["qwen3.6:35b-q8-ud", "qwen3.5-35b-q8:latest", "mistral-small-24b-q8_xl:latest"],
+      "risk_level": "high",
+      "_benchmark": "TBD",
+      "_community_reputation": "Qwen3.6 35B MoE UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama.",
+      "_constraints": "Ollama backend. Q8_K_XL GGUF on disk pending llama.cpp HIP SSM bug fix (gh#22230). Not for commit gate (>30B).",
+      "_last_tested": "2026-05-16"
     },
     "embedding": {
       "model": "nomic-embed-text-v2-moe:latest",
@@ -185,11 +215,15 @@
       "models_available": 59
     },
     "llama_cpp_mtp": {
-      "description": "llama.cpp with MTP speculative decoding for Gemma 4 models. Requires manual server start.",
-      "profiles": ["gemma4_26b_mtp"],
+      "description": "llama.cpp with MTP speculative decoding. Requires manual server start.",
+      "profiles": ["gemma4_26b_mtp", "qwen3.6_27b_mtp", "qwen3.6_35b_moe_mtp"],
       "drafter_models": {
         "gemma-4-26B-A4B-it-assistant-F16.gguf": "815MB — MTP drafter for Gemma 4 26B (on laptop)",
         "gemma-4-31B-it-assistant-F16.gguf": "911MB — MTP drafter for Gemma 4 31B (on zero12)"
+      },
+      "native_mtp_models": {
+        "qwen3.6_27b_mtp": "Qwen3.6 has native MTP heads — no drafter needed",
+        "qwen3.6_35b_moe_mtp": "Qwen3.6 MoE has native MTP heads — no drafter needed"
       },
       "launch_example": "llama-server -m <target_gguf> --mtp-head <drafter_gguf> --spec-type mtp -ngl 99 --port 8080"
     }
@@ -200,6 +234,7 @@
     "total_ollama_models": 59,
     "unique_text_models_tested": 32,
     "newly_added_v081": ["gemma4-26b-it:q8_0 (37.8s, working)", "mistral-small-119b (llama.cpp only)"],
+    "newly_added_v082": ["qwen3.6-27b-mtp (llama.cpp MTP, port 8082)", "qwen3.6-35b-moe-mtp (llama.cpp MoE MTP, port 8083)"],
     "broken_models": [],
     "slow_but_working_cli_only": ["deepseek-r1-distill-llama:70b", "translategemma-27b-it-q8", "nemotron-3-super"],
     "hidden_gems": ["nvidia-nemotron-3-nano-omni (27s review + reasoning)", "gpt-oss-120b (70s review for 120B)", "qwen3.5-claude-opus-9b (29s summarize)"],

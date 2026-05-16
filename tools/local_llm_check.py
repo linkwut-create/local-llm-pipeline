@@ -46,17 +46,17 @@ MODEL_HINTS = {
         "description": "lightweight model for fast summarization",
     },
     "code_worker": {
-        "keywords": ["coder", "qwen3-coder", "qwen3.5-9b", "qwen3.6:27b", "gpt-oss-20b"],
+        "keywords": ["coder", "qwen3-coder", "qwen3.5-9b", "qwen3.6:27b", "qwen3.6-27b-mtp", "gpt-oss-20b"],
         "prefer_small": False,
         "description": "coder model for test plans, TODO extraction",
     },
     "diff_reviewer": {
-        "keywords": ["coder", "qwen3-coder", "qwen3.5-27b", "qwen3.6:27b", "qwen3.5-35b"],
+        "keywords": ["coder", "qwen3-coder", "qwen3.5-27b", "qwen3.6:27b", "qwen3.6-27b-mtp", "qwen3.5-35b"],
         "prefer_small": False,
         "description": "stronger coder model for diff review",
     },
     "deep_reviewer": {
-        "keywords": ["mistral-medium", "mistral-small-4", "qwen3.5-35b", "qwen3-coder-next", "llama4", "nemotron-3-super", "qwen3.5-122b"],
+        "keywords": ["mistral-medium", "mistral-small-4", "qwen3.5-35b", "qwen3-coder-next", "llama4", "nemotron-3-super", "qwen3.5-122b", "qwen3.6-35b-moe"],
         "prefer_small": False,
         "description": "large model for deep code review",
     },

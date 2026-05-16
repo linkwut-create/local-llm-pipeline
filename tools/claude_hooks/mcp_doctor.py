@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""MCP Hook Doctor — diagnostic tool for the MCP gate hook system.
-
-Read-only. Reports OK/WARN/FAIL for each subsystem. No automatic fixes.
+"""MCP Hook Doctor — diagnostic and auto-recovery tool for the MCP gate hook system.
 
 Usage:
-    python tools/claude_hooks/mcp_doctor.py
-    python tools/claude_hooks/mcp_doctor.py --json
+    python tools/claude_hooks/mcp_doctor.py              # diagnose only
+    python tools/claude_hooks/mcp_doctor.py --fix        # diagnose + auto-repair
+    python tools/claude_hooks/mcp_doctor.py --json       # machine-readable output
     python tools/claude_hooks/mcp_doctor.py --repo-root /path/to/repo
     python tools/claude_hooks/mcp_doctor.py --config-dir /path/to/config
 """
@@ -13,7 +12,9 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -314,9 +315,23 @@ def main():
                         help=f"Path to the pipeline repo (default: {REPO_ROOT})")
     parser.add_argument("--config-dir", default=_default_config_dir(),
                         help="Path to hook config directory (state.json, hook-events.jsonl)")
+    parser.add_argument("--fix", action="store_true", dest="fix_mode",
+                        help="Apply automatic fixes for failed/warned checks")
     args = parser.parse_args()
 
     results = run_checks(args.repo_root, args.config_dir)
+
+    if args.fix_mode:
+        fixes = run_fixes(results, args.repo_root, args.config_dir)
+        if fixes:
+            print("=== Fixes Applied ===")
+            for f in fixes:
+                print(f"  [FIX] {f}")
+        else:
+            print("=== No fixes needed ===")
+        # Re-run checks after fixes to verify
+        print("\n=== Post-Fix Verification ===")
+        results = run_checks(args.repo_root, args.config_dir)
 
     if args.json_out:
         output = [r for r in results if not r.get("_early_return") or r["status"] == "FAIL"]
@@ -328,6 +343,109 @@ def main():
     if any(r["status"] == "FAIL" for r in results):
         sys.exit(1)
     sys.exit(0)
+
+
+def run_fixes(results: list[dict], repo_root: str, config_dir: str) -> list[str]:
+    """Apply automatic fixes for FAIL and WARN items. Returns list of fix descriptions."""
+    fixes_applied = []
+    repo = Path(repo_root)
+    config = Path(config_dir)
+
+    status = {r["check"]: r["status"] for r in results}
+
+    # --- Fix 1: corrupt state.json → delete ---
+    if status.get("state_readable") == "FAIL" or status.get("state_keys") == "FAIL":
+        sf = config / "state.json"
+        if sf.exists():
+            archive_path = config / f"state.json.corrupt.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+            try:
+                shutil.move(str(sf), str(archive_path))
+                fixes_applied.append(f"state.json: archived corrupt state to {archive_path}. Hook will recreate on next run.")
+            except Exception as e:
+                fixes_applied.append(f"state.json: FAILED to archive ({e}). Delete manually: {sf}")
+
+    # --- Fix 2: large hook-events.jsonl → archive ---
+    if status.get("log_size") == "WARN":
+        lf = config / "hook-events.jsonl"
+        if lf.is_file() and lf.stat().st_size > 5 * 1024 * 1024:
+            archive_dir = repo / ".mcp_audit" / "archive"
+            try:
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                dest = archive_dir / f"hook-events-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.jsonl"
+                shutil.move(str(lf), str(dest))
+                fixes_applied.append(f"hook-events.jsonl: archived ({lf.stat().st_size / 1048576:.1f}MB) to {dest}")
+            except Exception as e:
+                fixes_applied.append(f"hook-events.jsonl: FAILED to archive ({e}). Archive manually: {lf}")
+
+    # --- Fix 3: missing .mcp.json → generate template ---
+    if status.get("mcp_json") == "FAIL":
+        mcp_json = repo / ".mcp.json"
+        if not mcp_json.exists():
+            template = {
+                "mcpServers": {
+                    "local-llm": {
+                        "command": "python",
+                        "args": ["tools/local_llm_mcp_server.py"],
+                        "cwd": str(repo),
+                    }
+                }
+            }
+            try:
+                mcp_json.write_text(json.dumps(template, indent=2, ensure_ascii=False) + "\n",
+                                    encoding="utf-8")
+                fixes_applied.append(f".mcp.json: created template at {mcp_json}")
+            except Exception as e:
+                fixes_applied.append(f".mcp.json: FAILED to create ({e}). Create manually: {mcp_json}")
+
+    # --- Fix 4: missing hook wrapper → generate ---
+    if status.get("wrapper_exists") == "FAIL":
+        wrapper = Path.home() / ".claude" / "hooks" / "mcp_gate.py"
+        wrapper.parent.mkdir(parents=True, exist_ok=True)
+        wrapper_content = (
+            '"""Thin wrapper that imports the repo-resident mcp_gate module."""\n'
+            'import sys\n'
+            f'sys.path.insert(0, r"{repo_root}")\n'
+            'from tools.claude_hooks.mcp_gate import main\n'
+            '\n'
+            'if __name__ == "__main__":\n'
+            f'    main(config_dir=r"{config_dir}")\n'
+        )
+        try:
+            wrapper.write_text(wrapper_content, encoding="utf-8")
+            fixes_applied.append(f"hook wrapper: created {wrapper}")
+        except Exception as e:
+            fixes_applied.append(f"hook wrapper: FAILED to create ({e}). Create manually: {wrapper}")
+
+    # --- Fix 5: missing hook registration → print snippet ---
+    hook_failures = [k for k in status if k.startswith("hook_") and status[k] == "FAIL"]
+    if hook_failures:
+        wrapper_path = Path.home() / ".claude" / "hooks" / "mcp_gate.py"
+        hook_snippet = {
+            "hooks": {
+                "SessionStart": [{
+                    "matcher": "",
+                    "command": f'"{sys.executable}" "{wrapper_path}"'
+                }],
+                "PreToolUse": [{
+                    "matcher": "",
+                    "command": f'"{sys.executable}" "{wrapper_path}"'
+                }],
+                "PostToolUse": [{
+                    "matcher": "",
+                    "command": f'"{sys.executable}" "{wrapper_path}"'
+                }],
+                "Stop": [{
+                    "matcher": "",
+                    "command": f'"{sys.executable}" "{wrapper_path}"'
+                }],
+            }
+        }
+        snippet_str = json.dumps(hook_snippet, indent=2, ensure_ascii=False)
+        fixes_applied.append(
+            f"hook registration: Add the following to ~/.claude/settings.json under 'hooks':\n{snippet_str}"
+        )
+
+    return fixes_applied
 
 
 if __name__ == "__main__":

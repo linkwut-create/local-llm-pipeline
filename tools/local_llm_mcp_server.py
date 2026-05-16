@@ -30,6 +30,9 @@ from local_llm_worker import is_blocked_path
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
 
+# Per-request streaming context — set by handle_tools_call, consumed by _wrap_worker_call
+_stream_ctx = threading.local()
+
 
 def _get_effective_project_root() -> Path:
     """Return the effective project root.
@@ -213,7 +216,7 @@ TOOLS = {
                 },
                 "fast": {
                     "type": "boolean",
-                    "description": "Use fast mode (2 rounds instead of 3). Default: true.",
+                    "description": "Use fast mode (2 rounds instead of 3). Ignored if profiles is set. Default: true.",
                 },
                 "summary_only": {
                     "type": "boolean",
@@ -222,6 +225,14 @@ TOOLS = {
                 "max_chars": {
                     "type": "integer",
                     "description": "Max input characters (default: profile default or 60000, max: 200000).",
+                },
+                "profiles": {
+                    "type": "string",
+                    "description": "Comma-separated profile names overriding default rounds (e.g. 'qwen3.6_27b_mtp,reasoning_checker,qwen3.6_35b_moe_mtp'). Overrides --fast.",
+                },
+                "rounds": {
+                    "type": "integer",
+                    "description": "Number of debate rounds (1-3, default: 3, or 2 with --fast).",
                 },
             },
             "required": ["diff_text"],
@@ -298,6 +309,29 @@ def read_json_request() -> dict | None:
         return None
     except EOFError:
         return None
+
+
+def write_progress_notification(progress_token: str, progress: float, total: float | None = None,
+                                message: str | None = None):
+    """Send a $/progress notification to the MCP client. Never raises."""
+    notification = {
+        "jsonrpc": "2.0",
+        "method": "$/progress",
+        "params": {
+            "progressToken": progress_token,
+            "progress": progress,
+        },
+    }
+    if total is not None:
+        notification["params"]["total"] = total
+    if message:
+        notification["params"]["message"] = message
+    try:
+        line = json.dumps(notification, ensure_ascii=False, default=str)
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
 
 
 def write_json_response(response: dict):
@@ -460,6 +494,124 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
             "ok": False,
             "stdout": "",
             "stderr": f"Subprocess error: {e}",
+            "returncode": -1,
+            "elapsed_seconds": elapsed,
+        }
+
+
+def run_subprocess_streaming(cmd: list[str], progress_token: str,
+                              stdin_data: str | None = None,
+                              timeout: int = DEFAULT_TIMEOUT) -> dict:
+    """Run a subprocess with real-time progress via MCP $/progress notifications.
+
+    Reads stdout line-by-line. Lines prefixed ``DATA:`` are treated as
+    streaming content tokens and forwarded as progress notifications.
+    Lines prefixed ``JSON:`` are the final output marker (same as batch mode).
+    """
+    start = time.time()
+    effective_root = _get_effective_project_root()
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("LOCAL_LLM_OUTPUT_DIR", str(effective_root / ".local_llm_out"))
+
+    accumulated = []
+    token_count = 0
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE if stdin_data else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(effective_root),
+            env=env,
+        )
+
+        stdout_data, stderr_data = "", ""
+        json_path = None
+
+        try:
+            if stdin_data:
+                proc.stdin.write(stdin_data)
+                proc.stdin.close()
+
+            for line in proc.stdout:
+                line = line.rstrip("\n").rstrip("\r")
+                if line.startswith("DATA:"):
+                    token = line[5:].strip()
+                    if token:
+                        accumulated.append(token)
+                        token_count += 1
+                        # Send progress every 10 tokens to avoid flooding
+                        if token_count % 10 == 0:
+                            write_progress_notification(
+                                progress_token, token_count,
+                                message="".join(accumulated[-200:]),
+                            )
+                elif line.startswith("JSON:"):
+                    json_path = line.split(":", 1)[1].strip()
+                    # Don't break — keep reading stderr until process exits
+
+            proc.wait(timeout=timeout)
+            elapsed = round(time.time() - start, 2)
+
+            if stderr_data is None:
+                stderr_data = ""
+            stderr_str = proc.stderr.read() if proc.stderr else ""
+            stderr_data = (stderr_data + stderr_str)[:10000]
+
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            elapsed = round(time.time() - start, 2)
+            return {
+                "ok": False,
+                "stdout": json_path or "",
+                "stderr": f"Subprocess timed out after {timeout}s",
+                "returncode": -1,
+                "elapsed_seconds": elapsed,
+            }
+
+        # Send final progress with full accumulated text
+        if accumulated:
+            write_progress_notification(
+                progress_token, token_count, total=token_count,
+                message="".join(accumulated),
+            )
+
+        # If we have a JSON path, read the output file
+        if json_path:
+            output, _ = load_worker_output(json_path)
+            if output:
+                return {
+                    "ok": proc.returncode == 0,
+                    "stdout": json.dumps(output, ensure_ascii=False, default=str),
+                    "stderr": (stderr_data or "")[:10000],
+                    "returncode": proc.returncode,
+                    "elapsed_seconds": elapsed,
+                    "streamed": True,
+                    "streamed_tokens": token_count,
+                }
+
+        return {
+            "ok": proc.returncode == 0,
+            "stdout": json_path or "",
+            "stderr": (stderr_data or "")[:10000],
+            "returncode": proc.returncode,
+            "elapsed_seconds": elapsed,
+            "streamed": True,
+            "streamed_tokens": token_count,
+        }
+
+    except Exception as exc:
+        elapsed = round(time.time() - start, 2)
+        return {
+            "ok": False,
+            "stdout": "",
+            "stderr": f"Subprocess error: {exc}",
             "returncode": -1,
             "elapsed_seconds": elapsed,
         }
@@ -628,8 +780,36 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
     response. Always loads the JSON file the worker pointed to via its
     `JSON: <path>` marker — never falls back to "latest file in
     .local_llm_out/", which would risk returning a stale, unrelated result.
+
+    When streaming context is active (progress_token + stream=True),
+    adds ``--stream`` to the worker command and uses real-time subprocess
+    output to send MCP $/progress notifications.
     """
     request_id = _make_request_id()
+    stream = getattr(_stream_ctx, "stream", False)
+    progress_token = getattr(_stream_ctx, "progress_token", None)
+
+    if stream and progress_token:
+        if "--stream" not in cmd:
+            cmd = cmd + ["--stream"]
+        result = run_subprocess_streaming(
+            cmd, progress_token, stdin_data=stdin_data, timeout=timeout,
+        )
+        payload, _ = load_worker_output(result["stdout"])
+        if result["ok"] and payload:
+            return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
+        if result["ok"]:
+            return build_error_response(
+                tool=tool,
+                error_type="missing_worker_output",
+                error="worker exited 0 but produced no output file",
+                suggestion="check worker stderr for warnings",
+                elapsed=result["elapsed_seconds"],
+                request_id=request_id,
+            )
+        return coerce_failure_response(tool, payload, result.get("stderr", ""),
+                                       result["elapsed_seconds"], request_id)
+
     result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout)
     payload, parse_err = load_worker_output(result["stdout"])
 
@@ -808,10 +988,17 @@ def call_debate_review_diff(params: dict) -> dict:
 
     use_fast = params.get("fast", True)
     use_summary_only = params.get("summary_only", True)
+    profiles_override = params.get("profiles")
+    rounds_override = params.get("rounds")
 
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_debate.py"), "review-diff", "--stdin"]
-    if use_fast:
+    if profiles_override:
+        cmd.extend(["--profiles", profiles_override])
+    elif use_fast:
         cmd.append("--fast")
+    if rounds_override:
+        cmd.extend(["--rounds", str(min(int(rounds_override), 3))])
+    if use_fast and not profiles_override:
         cmd.extend(["--timeout", str(DEBATE_FAST_PER_ROUND_TIMEOUT)])
     if use_summary_only:
         cmd.append("--summary-only")
@@ -988,6 +1175,13 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
             },
         }
 
+    # Set up streaming context if the client requested it
+    _stream_ctx.stream = arguments.get("stream", False)
+    _stream_ctx.progress_token = (
+        params.get("_meta", {}).get("progressToken")
+        or params.get("progressToken")
+    )
+
     handler = TOOL_HANDLERS[tool_name]
     output: dict
     try:
@@ -1007,6 +1201,8 @@ def handle_tools_call(msg_id: int | str, params: dict) -> dict:
             suggestion="see server stderr for traceback",
         )
     finally:
+        _stream_ctx.stream = False
+        _stream_ctx.progress_token = None
         _call_lock.release()
 
     try:

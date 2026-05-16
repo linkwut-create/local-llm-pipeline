@@ -46,7 +46,7 @@ DEBATE_TASKS = {
     "review-diff", "risk-analysis", "architecture-review", "failure-mode-analysis",
 }
 
-DEFAULT_ROUND_PROFILES = ["code_worker", "reasoning_checker", "deep_reviewer"]
+DEFAULT_ROUND_PROFILES = ["qwen3.6_27b_mtp", "reasoning_checker", "qwen3.6_35b_moe_mtp"]
 
 ROUND_SYSTEM_BASE = """You are a local auxiliary review model, NOT the final decision-maker.
 Rules:

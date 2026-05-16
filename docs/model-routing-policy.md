@@ -49,9 +49,22 @@ Non-reasoning alternative: `Nemotron-3-Nano-30B` (44.6s review, **17.2s** summar
 
 | Task | Model | Benchmark |
 |------|-------|-----------|
-| deep code review | `qwen3.6:35b-q8-ud` | **67.9s** review, 0 timeouts |
-| architecture review | `qwen3.6:35b-q8-ud` | most reliable deep reviewer |
+| deep code review | `qwen3.6-35b-moe-mtp` (llama.cpp MTP) | MoE sparse activation + MTP, TBD |
+| architecture review | `qwen3.6-35b-moe-mtp` (llama.cpp MTP) | same |
+| Ollama fallback | `qwen3.6:35b-q8-ud` | **67.9s** review, 0 timeouts |
 | heavy backup | `gpt-oss-120b` | **70.2s** review, **23.2s** summarize (120B at remarkable speed) |
+
+**Note**: `qwen3.6_35b_moe_mtp` is a Mixture-of-Experts 35B with MTP speculative decoding, served via llama.cpp on zero12:8083. Falls back to the dense Ollama `qwen3.6:35b-q8-ud` if the llama.cpp server is not running.
+
+### Tier 4a — MTP-Accelerated Generalist
+
+| Task | Model | Benchmark |
+|------|-------|-----------|
+| suggest improvements | `qwen3.6-27b-mtp` (llama.cpp MTP) | 27B + MTP, TBD |
+| non-commit diff review | `qwen3.6-27b-mtp` (llama.cpp MTP) | TBD |
+| Ollama fallback | `qwen3.6:27b-q8-ud` | TBD |
+
+**Note**: `qwen3.6_27b_mtp` is a 27B dense model with MTP speculative decoding, served via llama.cpp on zero12:8082. For diff review and improvement suggestions. Not for commit gate.
 
 ### Tier 5 — Reasoning & Risk Analysis (triggered only)
 
@@ -108,7 +121,8 @@ These models exist locally but are broken, too slow, or fail on this hardware:
 ### Community-Validated (blessed for automated use)
 
 - **Qwen3-Coder series** (30B, next-q8): Agentic coding, tool use, multi-step programming. Strong public benchmarks.
-- **Qwen3.5/3.6 series** (9B, 27B-reasoning, 35B): General purpose. Claude-Opus-9b is a hidden gem.
+- **Qwen3.5/3.6 series** (9B, 27B, 27B-reasoning, 35B): General purpose. Claude-Opus-9b is a hidden gem.
+- **Qwen3.6 MTP series** (27B MTP, 35B MoE MTP): llama.cpp MTP-accelerated. MoE sparse activation for fast deep review. Falls back to Ollama equivalents.
 - **DeepSeek-R1-Distill-Qwen-32B-fixed**: R1 reasoning distilled. 139.6s risk analysis.
 - **Mistral Medium 3.5 128B**: Accuracy king for deep review and release audit.
 - **Gemma 4 series** (e4b, 26b): Google. Fast and reliable for low-stakes tasks.
