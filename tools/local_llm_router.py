@@ -15,6 +15,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 SCRIPT_DIR = Path(__file__).parent
 PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
@@ -40,10 +42,24 @@ def get_ollama_models() -> list[str]:
         return []
 
 
-def resolve_profile(task: str, profile_override: str | None, model_override: str | None) -> tuple[str, str, str]:
+def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
+    """Quick health check against a llama.cpp-compatible /models endpoint."""
+    url = base_url.rstrip("/") + "/models"
+    try:
+        req = Request(url, method="GET")
+        with urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def resolve_profile(task: str, profile_override: str | None, model_override: str | None,
+                    profiles_data: dict | None = None, tasks_data: dict | None = None) -> tuple[str, str, str]:
     """Returns (profile_name, model_name, risk_level)."""
-    tasks_data = load_json(TASKS_PATH)
-    profiles_data = load_json(PROFILES_PATH)
+    if tasks_data is None:
+        tasks_data = load_json(TASKS_PATH)
+    if profiles_data is None:
+        profiles_data = load_json(PROFILES_PATH)
 
     task_conf = tasks_data.get("tasks", {}).get(task, {})
     profile_name = profile_override or task_conf.get("default_profile", "fast_summary")
@@ -68,6 +84,7 @@ def _try_audit_start(task: str, profile: str, model: str,
                      args: list[str], has_stdin: bool):
     """Record invocation start to MCP audit logger. Never raises."""
     try:
+        sys.path.insert(0, str(SCRIPT_DIR))
         from mcp_audit_logger import write_audit_event
         input_summary = "stdin" if has_stdin else (
             args[0] if args else "no args"
@@ -90,6 +107,7 @@ def _try_audit_result(task: str, profile: str, model: str,
                       returncode: int, elapsed_ms: int):
     """Record invocation result to MCP audit logger. Never raises."""
     try:
+        sys.path.insert(0, str(SCRIPT_DIR))
         from mcp_audit_logger import write_audit_event, write_failure_event
         if returncode == 0:
             write_audit_event(None, {
@@ -161,35 +179,102 @@ def main():
             filtered_args.append(arg)
             i += 1
 
-    profile_name, model, risk = resolve_profile(task, profile_override, model_override)
-
-    available_models = get_ollama_models()
+    tasks_data = load_json(TASKS_PATH)
     profiles_data = load_json(PROFILES_PATH)
 
-    if model and not check_model_available(model, available_models):
-        print(f"WARNING: Model '{model}' not found in ollama list.", file=sys.stderr)
-        # Try profile candidates in order (v0.9.5: candidates-based fallback only)
-        profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
-        candidates = profile_cfg.get("candidates", [])
-        fallback = None
-        for c in candidates:
-            if check_model_available(c, available_models):
-                fallback = c
-                break
-        if fallback:
-            print(f"Falling back to profile candidate: {fallback}", file=sys.stderr)
-            model = fallback
-        else:
-            print(
-                f"ERROR: Requested model '{model}' not available and no profile "
-                f"candidates are reachable.\n"
-                f"  Profile: {profile_name}\n"
-                f"  Candidates: {candidates or '(none)'}\n"
-                f"  Available models ({len(available_models)}): "
-                f"{', '.join(available_models[:10])}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    profile_name, model, risk = resolve_profile(
+        task, profile_override, model_override,
+        profiles_data=profiles_data, tasks_data=tasks_data)
+    profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
+
+    # Resolve model availability (with cross-backend fallback)
+    if not profile_cfg.get("_env"):
+        available_models = get_ollama_models()
+        if model and not check_model_available(model, available_models):
+            print(f"WARNING: Model '{model}' not found in ollama list.", file=sys.stderr)
+            candidates = profile_cfg.get("candidates", [])
+            fallback = None
+            for c in candidates:
+                if check_model_available(c, available_models):
+                    fallback = c
+                    break
+            if fallback:
+                print(f"Falling back to profile candidate: {fallback}", file=sys.stderr)
+                model = fallback
+            else:
+                # Phase 2.1: cross-backend fallback via _llamacpp_profile
+                task_conf = tasks_data.get("tasks", {}).get(task, {})
+                llmacpp_name = task_conf.get("_llamacpp_profile", "")
+                llmacpp_cfg = profiles_data.get("profiles", {}).get(llmacpp_name, {}) if llmacpp_name else {}
+                if llmacpp_name and llmacpp_cfg:
+                    llmacpp_env = llmacpp_cfg.get("_env", "")
+                    if llmacpp_env:
+                        base_url = ""
+                        for part in llmacpp_env.split(" "):
+                            if part.startswith("LOCAL_LLM_BASE_URL="):
+                                base_url = part.split("=", 1)[1]
+                        if base_url and probe_llamacpp_endpoint(base_url):
+                            print(
+                                f"Cross-backend fallback: {profile_name} → {llmacpp_name} "
+                                f"({base_url})",
+                                file=sys.stderr,
+                            )
+                            profile_name = llmacpp_name
+                            profile_cfg = llmacpp_cfg
+                            model = llmacpp_cfg.get("model", "")
+                            risk = task_conf.get("risk", llmacpp_cfg.get("risk_level", risk))
+                        else:
+                            print(
+                                f"WARNING: llama.cpp backend {base_url or '(unknown)'} not reachable. "
+                                f"Cannot use fallback profile '{llmacpp_name}'.",
+                                file=sys.stderr,
+                            )
+                if not profile_cfg.get("_env"):
+                    print(
+                        f"ERROR: Requested model '{model}' not available and no profile "
+                        f"candidates are reachable.\n"
+                        f"  Profile: {profile_name}\n"
+                        f"  Candidates: {candidates or '(none)'}\n"
+                        f"  Available models ({len(available_models)}): "
+                        f"{', '.join(available_models[:10])}",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+    else:
+        # Phase 2.2: pre-flight health check for _env (llama.cpp) profiles
+        env_override = profile_cfg.get("_env", "")
+        base_url = ""
+        for part in env_override.split(" "):
+            if part.startswith("LOCAL_LLM_BASE_URL="):
+                base_url = part.split("=", 1)[1]
+        if base_url:
+            if probe_llamacpp_endpoint(base_url):
+                print(f"Router: llama.cpp endpoint {base_url} health check OK", file=sys.stderr)
+            else:
+                print(f"WARNING: llama.cpp endpoint {base_url} not reachable.", file=sys.stderr)
+                candidates = profile_cfg.get("candidates", [])
+                fallback = None
+                for c in candidates:
+                    c_profile = profiles_data.get("profiles", {}).get(c, {})
+                    if not c_profile.get("_env") and check_model_available(
+                        c_profile.get("model", ""), get_ollama_models()
+                    ):
+                        fallback = c
+                        break
+                if fallback:
+                    fb_cfg = profiles_data.get("profiles", {}).get(fallback, {})
+                    print(f"Falling back to Ollama profile: {fallback} ({fb_cfg.get('model', '')})", file=sys.stderr)
+                    profile_name = fallback
+                    profile_cfg = fb_cfg
+                    model = fb_cfg.get("model", model)
+                    risk = fb_cfg.get("risk_level", risk)
+                else:
+                    print(
+                        f"ERROR: llama.cpp endpoint {base_url} unreachable and no "
+                        f"Ollama profile candidates available.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
 
     print(f"Router: task={task} profile={profile_name} model={model} risk={risk}", file=sys.stderr)
 
@@ -198,7 +283,6 @@ def main():
 
     # Apply profile-specific env overrides (e.g. llama.cpp endpoint for MTP profiles)
     subprocess_env = os.environ.copy()
-    profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
     env_override = profile_cfg.get("_env", "")
     if env_override:
         for part in env_override.split(" "):
