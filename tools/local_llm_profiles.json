@@ -96,20 +96,6 @@
         "_updated": "2026-05-18"
       }
     },
-    "fast_code": {
-      "model": "qwen3-coder:30b",
-      "temperature": 0.15,
-      "max_chars": 60000,
-      "max_output_chars": 4000,
-      "use_for": [
-        "extract-todos",
-        "find-related-files",
-        "generate-test-plan",
-        "suggest-improvements"
-      ],
-      "risk_level": "medium",
-      "_benchmark": "10s review, 17s test-plan — 6x faster than code_worker (zero12)"
-    },
     "diff_reviewer": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
       "temperature": 0.1,
@@ -136,7 +122,8 @@
       "max_chars": 160000,
       "max_output_chars": 6000,
       "use_for": [
-        "deep-code-review"
+        "deep-code-review",
+        "architecture-review"
       ],
       "candidates": [
         "qwen3.6:35b-q8-ud",
@@ -243,17 +230,6 @@
       "_community_reputation": "Mistral Medium 3.5 128B MoE. Widely regarded for accuracy in deep review tasks. Top of local benchmarks.",
       "_constraints": "Release audit only. Must never enter commit gate or default review path."
     },
-    "architecture_reviewer": {
-      "model": "qwen3.6:35b-q8-ud",
-      "temperature": 0.1,
-      "max_chars": 160000,
-      "max_output_chars": 6000,
-      "use_for": [
-        "architecture-review"
-      ],
-      "risk_level": "high",
-      "_benchmark": "68s review, 98s test-plan — 0 timeouts, most reliable (zero12)"
-    },
     "gemma4_26b_llamacpp": {
       "model": "gemma-4-26b",
       "temperature": 0.2,
@@ -266,9 +242,15 @@
         "rewrite-text",
         "deep-code-review"
       ],
+      "candidates": [
+        "gemma4_26b",
+        "gemma4_26b_mtp",
+        "smart_summary"
+      ],
       "risk_level": "medium",
       "_backend": "llama.cpp ROCm HIP on port 8080",
       "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
+      "_variant_of": "gemma4_26b",
       "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
       "_status": "available — port 8080, -ngl 30",
       "_health": {
@@ -303,6 +285,7 @@
         "suggest-improvements"
       ],
       "risk_level": "medium",
+      "_variant_of": "gemma4_26b",
       "_acceleration": "mtp",
       "_drafter": "gemma-4-26B-A4B-it-assistant-F16.gguf (815MB, on laptop)",
       "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup."
@@ -328,6 +311,67 @@
       "risk_level": "medium",
       "_benchmark": "Gemma 4 31B — Google's 31B flagship. Opus-distilled variant available. 32-35GB.",
       "_drafter": "gemma-4-31B-it-assistant-F16.gguf (911MB, on zero12) — MTP ready when llama.cpp supports Gemma 4 MTP",
+      "_status": "available — Ollama"
+    },
+    "deepseek_r1_70b": {
+      "model": "deepseek-r1-distill-llama:70b-q8-k-xl",
+      "temperature": 0.1,
+      "max_chars": 120000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "risk-analysis",
+        "logic-check",
+        "failure-mode-analysis",
+        "deep-code-review",
+        "architecture-review"
+      ],
+      "candidates": [
+        "deep_reasoning",
+        "reasoning_checker"
+      ],
+      "risk_level": "high",
+      "_benchmark": "DeepSeek R1 distill 70B — stronger reasoning than 32B variant. Sits between deep_reasoning (32B) and release_auditor (128B).",
+      "_constraints": "Not for commit gate. 70B model — deep reasoning and architecture only.",
+      "_status": "available — Ollama, CLI-only"
+    },
+    "nemotron_super": {
+      "model": "nemotron-3-super:latest",
+      "temperature": 0.1,
+      "max_chars": 140000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "deep-code-review",
+        "architecture-review",
+        "release-risk-review",
+        "risk-analysis"
+      ],
+      "candidates": [
+        "release_auditor",
+        "deepseek_r1_70b"
+      ],
+      "risk_level": "high",
+      "_benchmark": "Nemotron-3 Super — NVIDIA large reasoning model. Release-audit tier.",
+      "_constraints": "Not for commit gate. Heavy model.",
+      "_status": "available — Ollama, CLI-only"
+    },
+    "command_r": {
+      "model": "command-r:35b",
+      "temperature": 0.15,
+      "max_chars": 100000,
+      "max_output_chars": 5000,
+      "use_for": [
+        "summarize-file",
+        "summarize-tree",
+        "suggest-improvements",
+        "rewrite-text"
+      ],
+      "candidates": [
+        "gemma4_26b",
+        "qwen3.6_27b_mtp"
+      ],
+      "risk_level": "medium",
+      "_benchmark": "Command-R 35B — Cohere mid-size generalist, good instruct following",
+      "_constraints": "Mid-size generalist. Good alternative to Qwen3.6 for summarization/suggestions.",
       "_status": "available — Ollama"
     },
     "mistral_119b_llamacpp": {

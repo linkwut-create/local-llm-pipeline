@@ -34,26 +34,43 @@ _call_lock = threading.Lock()
 # When confidence=low or uncertain_points>3, the server auto-escalates to the next tier.
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
-    "summarize-file": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp"],
-    "review-diff": ["commit_reviewer", "diff_reviewer", "deep_reviewer"],
-    "generate-test-plan": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    # Summarization: fast/e4b → smart/9b → gemma4-26b llama.cpp (0.4s!) → qwen3.6-27b
+    "summarize-file": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
+                       "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
+    "summarize-tree": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
+                       "qwen3.6_27b_mtp"],
+    # Diff review: commit reviewer (30b) → nemotron reasoning → 27b → 35b deep
+    "review-diff": ["commit_reviewer", "diff_reviewer", "qwen3.6_27b_mtp",
+                    "deep_reviewer"],
+    # Code generation: coder → gemma4 fast path → 27b → 35b
+    "generate-test-plan": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
+                           "deep_reviewer"],
     "generate-test-draft": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-fix": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-feature": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
-    "suggest-improvements": ["qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
-    "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
-    "architecture-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
-    "release-risk-review": ["release_auditor", "deep_reviewer", "qwen3.6_35b_moe_mtp"],
-    "risk-analysis": ["reasoning_checker", "deep_reasoning", "release_auditor"],
-    "logic-check": ["reasoning_checker", "deep_reasoning"],
-    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning"],
+    # Suggestions: fast llama.cpp → 27b → coder → 35b
+    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
+                             "code_worker", "deep_reviewer"],
+    # Deep/architecture review: 35b MoE → 35b → 31b Opus → 128b → nemotron super → 120b
+    "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
+                         "release_auditor", "nemotron_super", "heavy_reviewer"],
+    "architecture-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
+                            "release_auditor", "nemotron_super", "heavy_reviewer"],
+    # Release: 128b → nemotron super → 35b
+    "release-risk-review": ["release_auditor", "nemotron_super", "deep_reviewer",
+                            "qwen3.6_35b_moe_mtp"],
+    # Reasoning: nemotron → deepseek-r1-32b → deepseek-r1-70b → 128b
+    "risk-analysis": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b",
+                      "release_auditor"],
+    "logic-check": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b"],
+    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b"],
     "contextual-analyze": ["qwen3.6_27b_mtp", "code_worker", "reasoning_checker"],
     "translate-text": ["translation", "qwen3.6_27b_mtp"],
-    "rewrite-text": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp"],
-    "extract-todos": ["code_worker", "qwen3.6_27b_mtp"],
-    "find-related-files": ["code_worker", "qwen3.6_27b_mtp"],
+    "rewrite-text": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
+                     "qwen3.6_27b_mtp"],
+    "extract-todos": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    "find-related-files": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
 }
 
 # Security-sensitive patterns that auto-trigger reasoning model review.
@@ -224,7 +241,7 @@ def _update_model_health(profile_name: str, ok: bool, elapsed_s: float,
     except Exception:
         pass  # Health tracking is best-effort, never block on failure
 
-_MAX_ESCALATION_DEPTH = 1  # Prevent infinite re-invocation loops
+_MAX_ESCALATION_DEPTH = 2  # Allow up to 2 escalation hops (3 total invocations). Safe with _tried_profiles loop prevention.
 
 # CJK Unicode ranges for language-aware routing (Phase 3A)
 _CJK_RANGES = [
@@ -241,28 +258,43 @@ _CJK_RANGES = [
 # Profiles known to handle CJK/multilingual content well
 _CJK_CAPABLE_PROFILES = {"translation", "qwen3.6_27b_mtp", "qwen3.6_35b_moe_mtp",
                          "smart_summary", "code_worker", "deep_reviewer",
-                         "reasoning_checker"}
+                         "reasoning_checker", "gemma4_31b", "gemma4_26b",
+                         "gemma4_26b_llamacpp", "deepseek_r1_70b",
+                         "nemotron_super", "command_r"}
 
 
 def _check_quality_escalation(payload: dict, current_profile: str, task: str,
-                               cjk_ratio: float = 0.0) -> str | None:
+                               cjk_ratio: float = 0.0,
+                               _tried_profiles: set[str] | None = None) -> str | None:
     """Determine if quality signals warrant escalating to a more capable profile.
 
     Returns the next profile name, or None if no escalation is needed.
+    Skips profiles already in _tried_profiles to prevent loops.
     """
     chain = _ESCALATION_CHAIN.get(task, [])
     if current_profile not in chain or len(chain) < 2:
         return None
     idx = chain.index(current_profile)
+    tried = _tried_profiles or set()
     error_type = (payload.get("error_type") or "").lower()
     confidence = (payload.get("confidence") or "medium").lower()
     uncertain_count = len(payload.get("uncertain_points") or [])
 
-    # Timeout → step down to a lighter/faster model
+    def _next_untried(start_idx: int, direction: int = 1) -> str | None:
+        """Find the next untried profile in the given direction."""
+        i = start_idx + direction
+        while 0 <= i < len(chain):
+            if chain[i] not in tried:
+                return chain[i]
+            i += direction
+        return None
+
+    # Timeout → step down to a lighter/faster model (skip tried)
     if error_type == "timeout":
-        if idx > 0:
-            print(f"MCP: quality escalation — timeout, downgrading {current_profile} → {chain[0]}", file=sys.stderr)
-            return chain[0]
+        target = _next_untried(idx, -1)
+        if target:
+            print(f"MCP: quality escalation — timeout, downgrading {current_profile} → {target}", file=sys.stderr)
+            return target
         return None
 
     # Low confidence → escalate to next tier (prefer CJK-capable if CJK detected)
@@ -270,8 +302,10 @@ def _check_quality_escalation(payload: dict, current_profile: str, task: str,
         target = None
         if cjk_ratio > 0.1 and current_profile not in _CJK_CAPABLE_PROFILES:
             target = _prefer_cjk_profile(current_profile, task)
-        if target is None and idx + 1 < len(chain):
-            target = chain[idx + 1]
+            if target is not None and target in tried:
+                target = None
+        if target is None:
+            target = _next_untried(idx, 1)
         if target:
             print(f"MCP: quality escalation — confidence=low, upgrading {current_profile} → {target}", file=sys.stderr)
             return target
@@ -279,12 +313,12 @@ def _check_quality_escalation(payload: dict, current_profile: str, task: str,
 
     # Many uncertain points → escalate
     if uncertain_count > 3:
-        if idx + 1 < len(chain):
-            target = chain[idx + 1]
-            # If CJK detected and target is not CJK-capable, skip to first CJK-capable
+        target = _next_untried(idx, 1)
+        if target:
+            # If CJK detected and target is not CJK-capable, look further
             if cjk_ratio > 0.1 and target not in _CJK_CAPABLE_PROFILES:
                 cjk_target = _prefer_cjk_profile(current_profile, task)
-                if cjk_target:
+                if cjk_target and cjk_target not in tried:
                     target = cjk_target
             print(f"MCP: quality escalation — {uncertain_count} uncertain_points, upgrading {current_profile} → {target}", file=sys.stderr)
             return target
@@ -1096,7 +1130,8 @@ def truncate_output(data: dict, max_chars: int = 50_000) -> dict:
 def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                       timeout: int = DEFAULT_TIMEOUT, task: str | None = None,
                       auto_escalate: bool = True, _depth: int = 0,
-                      cjk_ratio: float = 0.0) -> dict:
+                      cjk_ratio: float = 0.0,
+                      _tried_profiles: set[str] | None = None) -> dict:
     """Run the worker subprocess and translate its output into a uniform MCP
     response. Always loads the JSON file the worker pointed to via its
     `JSON: <path>` marker — never falls back to "latest file in
@@ -1154,9 +1189,16 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
             )
 
         # Layer 4 quality-based auto-escalation (v0.9.6)
+        # Phase 3.0: multi-hop escalation with loop prevention
+        if _tried_profiles is None:
+            _tried_profiles = set()
         if auto_escalate and task and _depth < _MAX_ESCALATION_DEPTH:
             current_profile = payload.get("profile", "")
-            escalated = _check_quality_escalation(payload, current_profile, task, cjk_ratio=cjk_ratio)
+            _tried_profiles.add(current_profile)
+            escalated = _check_quality_escalation(
+                payload, current_profile, task,
+                cjk_ratio=cjk_ratio, _tried_profiles=_tried_profiles,
+            )
             if escalated:
                 # Build a new command with the escalated profile
                 escalated_cmd = list(cmd)
@@ -1168,12 +1210,14 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                         break
                 if not profile_found:
                     escalated_cmd.extend(["--profile", escalated])
-                # Add escalated profile as a marker to skip further escalation for this profile
-                print(f"MCP: re-running {task} with escalated profile: {escalated}", file=sys.stderr)
+                _tried_profiles.add(escalated)
+                print(f"MCP: re-running {task} with escalated profile: {escalated} "
+                      f"(depth={_depth + 1}, tried={sorted(_tried_profiles)})", file=sys.stderr)
                 return _wrap_worker_call(
                     tool, escalated_cmd, stdin_data=stdin_data,
                     timeout=timeout, task=task, auto_escalate=auto_escalate,
-                    _depth=_depth + 1,
+                    _depth=_depth + 1, cjk_ratio=cjk_ratio,
+                    _tried_profiles=_tried_profiles,
                 )
 
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
@@ -1381,6 +1425,31 @@ def call_review_diff(params: dict) -> dict:
     if not commit_gate:
         return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
                                  task="review-diff", cjk_ratio=cjk_ratio)
+
+    # Commit gate: pre-invocation constraint check — reject large/reasoning models
+    if commit_gate:
+        resolved_profile = params.get("profile", "commit_reviewer")
+        try:
+            profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+            pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+            p = pd.get("profiles", {}).get(resolved_profile, {})
+            constraints = (p.get("_constraints") or "").lower()
+            model_name = p.get("model", "")
+            risk = p.get("risk_level", "")
+            if ("commit gate" in constraints or ">30b" in constraints
+                    or risk == "high"):
+                return build_error_response(
+                    tool="local_review_diff",
+                    error_type="constraint_violation",
+                    error=(
+                        f"Profile '{resolved_profile}' ({model_name}) cannot be "
+                        f"used in commit gate. Risk={risk}, constraints={p.get('_constraints', '')}"
+                    ),
+                    suggestion="Use commit_reviewer profile for commit gate reviews.",
+                    profile=resolved_profile, model=model_name,
+                )
+        except Exception:
+            pass  # Best-effort check
 
     # Commit gate: fast direct path with 60s timeout
     request_id = _make_request_id()
