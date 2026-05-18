@@ -163,15 +163,16 @@
       "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup."
     },
     "mistral_119b_llamacpp": {
-      "model": "mistral-small-119b:q6",
+      "model": "mistral-small-119b:q5",
       "temperature": 0.1,
       "max_chars": 160000,
       "max_output_chars": 6000,
       "use_for": ["deep-code-review", "architecture-review", "release-risk-review"],
       "risk_level": "high",
-      "_backend": "llama.cpp only (89GB too large for Ollama)",
-      "_launch": "llama-server -m /mnt/data/llamacpp-models/mistral-small-119b-q6.gguf --port 8080 -ngl 99",
-      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1"
+      "_backend": "Ollama (from GGUF via ollama create). BLOCKED: mistral4 arch not supported by Ollama's llama.cpp.",
+      "_launch": "ollama create mistral-small-119b:q5 -f Modelfile (model loads but chat returns 500)",
+      "candidates": ["mistral-medium-3.5-128b-q5_k_xl:latest", "qwen3.6:35b-q8-ud"],
+      "_status": "unavailable — requires ollama llama.cpp update for mistral4 architecture"
     },
     "qwen3.6_27b_mtp": {
       "model": "qwen3.6:27b-q8-ud",
