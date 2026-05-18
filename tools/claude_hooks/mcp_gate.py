@@ -537,13 +537,29 @@ def save_state(config_dir: str, state: dict):
         pass
 
 
-def log_event(config_dir: str, payload: dict):
+MAX_LOG_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _rotate_log(log_path: Path):
+    """Archive oversized log file to .mcp_audit/archive/ with timestamp."""
     try:
-        with open(_log_file_path(config_dir), "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+        archive_dir = log_path.parent / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_name = f"hook-events-{ts}.jsonl"
+        log_path.rename(archive_dir / archive_name)
     except Exception:
         pass
 
+def log_event(config_dir: str, payload: dict):
+    try:
+        log_path = _log_file_path(config_dir)
+        if log_path.exists() and log_path.stat().st_size > MAX_LOG_SIZE:
+            _rotate_log(log_path)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # MCP-GATE-1B: per-repo state isolation
@@ -745,7 +761,7 @@ def handle_post_tooluse(config_dir: str, payload: dict):
     # --- Dirty tools (Edit/Write/MultiEdit) ---
     if name in _DIRTY_TOOLS:
         target = str(payload.get("tool_input", {}).get("file_path", ""))
-        if "mcp-gate" not in target and ".claude/hooks" not in target:
+        if "mcp-gate" not in target and ".claude/hooks" not in target and ".local_llm_out" not in target:
             state = load_state(config_dir)
             cwd = payload.get("cwd", "")
             repo_root = get_repo_root(cwd) if cwd else None
@@ -1198,6 +1214,53 @@ def main(config_dir: str):
             summary = "=== MCP Session Summary ===\n" + "\n".join(f"  {r}" for r in reminders)
             try:
                 sys.stderr.write(summary + "\n")
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+        # Build structured action_items for machine-readable MCP recommendations
+        state = load_state(config_dir)
+        mcp_calls = state.get("mcp_calls", {})
+        cwd = payload.get("cwd", "")
+        action_items = []
+
+        if state.get("session_needs_local_check") and not mcp_calls.get("mcp__local-llm__local_check"):
+            action_items.append({"tool": "local_check", "reason": "not yet called this session"})
+
+        if state.get("needs_review") and not state.get("diff_reviewed"):
+            action_items.append({"tool": "local_review_diff", "reason": "files edited, diff not reviewed"})
+
+        if state.get("needs_debate") and not mcp_calls.get("mcp__local-llm__local_debate_review_diff"):
+            action_items.append({"tool": "local_debate_review_diff", "reason": "high-risk files touched"})
+
+        if state.get("needs_test_plan") and not mcp_calls.get("mcp__local-llm__local_generate_test_plan"):
+            action_items.append({"tool": "local_generate_test_plan", "reason": "test files modified"})
+
+        needs_summ = state.get("needs_summarize", [])
+        if needs_summ and not mcp_calls.get("mcp__local-llm__local_summarize_file"):
+            action_items.append({
+                "tool": "local_summarize_file",
+                "reason": f"{len(needs_summ)} large file(s) read without summarization",
+                "files": needs_summ[:5],
+            })
+
+        if cwd:
+            diff_text = run_git(["diff"], cwd=cwd) or ""
+            touched = state.get("touched_files", [])
+            if touched or diff_text:
+                risk = classify_diff_risk(diff_text, touched)
+                if risk == "high":
+                    action_items.append({
+                        "tool": "local_debate_review_diff",
+                        "reason": f"diff classified as HIGH risk",
+                        "risk": risk,
+                    })
+
+        if action_items:
+            try:
+                sys.stderr.write(
+                    "\n" + json.dumps({"action_items": action_items}, ensure_ascii=False) + "\n"
+                )
                 sys.stderr.flush()
             except Exception:
                 pass

@@ -530,7 +530,15 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
             env=env,
         )
 
-        stdout_data, stderr_data = "", ""
+        stderr_chunks: list[str] = []
+
+        def _drain_stderr():
+            for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
         json_path = None
 
         try:
@@ -545,7 +553,6 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
                     if token:
                         accumulated.append(token)
                         token_count += 1
-                        # Send progress every 10 tokens to avoid flooding
                         if token_count % 10 == 0:
                             write_progress_notification(
                                 progress_token, token_count,
@@ -553,15 +560,12 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
                             )
                 elif line.startswith("JSON:"):
                     json_path = line.split(":", 1)[1].strip()
-                    # Don't break — keep reading stderr until process exits
 
             proc.wait(timeout=timeout)
             elapsed = round(time.time() - start, 2)
 
-            if stderr_data is None:
-                stderr_data = ""
-            stderr_str = proc.stderr.read() if proc.stderr else ""
-            stderr_data = (stderr_data + stderr_str)[:10000]
+            stderr_thread.join(timeout=5)
+            stderr_data = "".join(stderr_chunks)[:10000]
 
         except subprocess.TimeoutExpired:
             proc.kill()

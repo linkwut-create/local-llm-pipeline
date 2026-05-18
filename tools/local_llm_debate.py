@@ -212,24 +212,17 @@ def run_round(round_num: int, task: str, original_input: str,
 
 
 def classify_findings(rounds: list[dict]) -> dict:
-    """Extract structured findings from round 3 output, or best available."""
+    """Extract structured findings from the best available round output.
+
+    In 3-round mode, the last round (synthesis) produces structured findings.
+    In 2-round (fast) mode, the second round is a critic — attempt to parse it
+    for structured headers; if none found, fall back to round 1 and extract
+    substantive lines as candidate findings."""
     synthesis_round = None
     for r in reversed(rounds):
         if r.get("ok") and r.get("raw_output"):
             synthesis_round = r
             break
-
-    if not synthesis_round:
-        return {
-            "high_confidence_findings": [],
-            "candidate_findings": [],
-            "disputed_findings": [],
-            "controller_must_verify": [],
-            "test_gaps": [],
-        }
-
-    raw = synthesis_round["raw_output"]
-    lines = raw.split("\n")
 
     result = {
         "high_confidence_findings": [],
@@ -238,6 +231,12 @@ def classify_findings(rounds: list[dict]) -> dict:
         "controller_must_verify": [],
         "test_gaps": [],
     }
+
+    if not synthesis_round:
+        return result
+
+    raw = synthesis_round["raw_output"]
+    lines = raw.split("\n")
 
     current_section = None
     section_map = {
@@ -262,6 +261,23 @@ def classify_findings(rounds: list[dict]) -> dict:
                 clean = line.strip().lstrip("-*• ").strip()
                 if clean and len(clean) > 5:
                     result[current_section].append(clean)
+
+    # Fallback: if no structured findings were extracted and we only have 2 rounds
+    # (fast mode), try round 1's output or extract substantive lines as
+    # low-confidence candidate findings.
+    has_any = any(result[k] for k in result)
+    if not has_any and len(rounds) > 0:
+        # Try the first successful round (coder output) — more likely to have
+        # findings than the critic.
+        for r in rounds:
+            if r.get("ok") and r.get("raw_output"):
+                fallback_raw = r["raw_output"]
+                for line in fallback_raw.split("\n"):
+                    clean = line.strip().lstrip("-*•# ").strip()
+                    if clean and len(clean) > 10 and not clean.lower().startswith("debate"):
+                        result["candidate_findings"].append(clean)
+                if result["candidate_findings"]:
+                    break
 
     for key, limit in MAX_FINDINGS.items():
         if key in result:

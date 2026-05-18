@@ -26,7 +26,7 @@ def test_fast_mode_uses_two_profiles():
 
 def test_default_profiles_order():
     assert debate.DEFAULT_ROUND_PROFILES == [
-        "code_worker", "reasoning_checker", "deep_reviewer"
+        "qwen3.6_27b_mtp", "reasoning_checker", "qwen3.6_35b_moe_mtp"
     ]
 
 

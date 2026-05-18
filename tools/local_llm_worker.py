@@ -816,7 +816,7 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     config.style = args.style or "concise"
     config.json_only = args.json_only
     config.no_markdown = args.no_markdown
-    config.stream = args.stream
+    config.stream = getattr(args, "stream", False)
     return config
 
 

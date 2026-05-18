@@ -23,6 +23,8 @@ PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 WORKER_PATH = SCRIPT_DIR / "local_llm_worker.py"
 
+ALLOWED_ENV_VARS = {"LOCAL_LLM_BASE_URL"}
+
 
 def load_json(path: Path) -> dict:
     if not path.exists():
@@ -175,6 +177,9 @@ def main():
             model_override = passthrough_args[i + 1]
             i += 2
             continue
+        elif arg == "--confirm-high-risk":
+            i += 1
+            continue
         else:
             filtered_args.append(arg)
             i += 1
@@ -279,7 +284,14 @@ def main():
     print(f"Router: task={task} profile={profile_name} model={model} risk={risk}", file=sys.stderr)
 
     if risk in ("high",):
-        print(f"NOTE: High-risk task. Controller MUST verify output.", file=sys.stderr)
+        if "--confirm-high-risk" not in sys.argv:
+            print(
+                f"ERROR: task={task} is risk=high. Pass --confirm-high-risk to proceed. "
+                f"Controller MUST verify output.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"NOTE: High-risk task confirmed. Controller MUST verify output.", file=sys.stderr)
 
     # Apply profile-specific env overrides (e.g. llama.cpp endpoint for MTP profiles)
     subprocess_env = os.environ.copy()
@@ -288,8 +300,14 @@ def main():
         for part in env_override.split(" "):
             if "=" in part:
                 k, v = part.split("=", 1)
-                subprocess_env[k] = v
-                print(f"Router: {profile_name} → env {k}={v}", file=sys.stderr)
+                if k in ALLOWED_ENV_VARS:
+                    subprocess_env[k] = v
+                    print(f"Router: {profile_name} → env {k}={v}", file=sys.stderr)
+                else:
+                    print(
+                        f"WARNING: {profile_name} _env key '{k}' not in ALLOWED_ENV_VARS — skipped",
+                        file=sys.stderr,
+                    )
 
     cmd = [
         sys.executable, str(WORKER_PATH),
