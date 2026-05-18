@@ -412,10 +412,12 @@ def test_draft_code_task_enum():
     assert "suggest-improvements" in schema["enum"]
 
 
-def test_draft_code_prompt_required():
+def test_draft_code_schema():
     required = mcp.TOOLS["local_draft_code"]["inputSchema"]["required"]
     assert "task" in required
-    assert "prompt" in required
+    # prompt is no longer required — call_draft_code auto-generates it
+    # for suggest-improvements when context_file is provided
+    assert "prompt" not in required
 
 
 def test_draft_code_rejects_blocked_path():

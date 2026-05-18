@@ -555,7 +555,7 @@ TOOLS = {
                 "profile": {"type": "string", "description": "Optional profile override."},
                 "model": {"type": "string", "description": "Optional model override."},
             },
-            "required": ["task", "prompt"],
+            "required": ["task"],
         },
     },
 }
@@ -1558,11 +1558,15 @@ def call_draft_code(params: dict) -> dict:
     prompt = params.get("prompt", "")
     context_file = params.get("context_file", "")
 
+    # Auto-generate prompt for suggest-improvements when only context_file is given
+    if not prompt.strip() and task == "suggest-improvements" and context_file:
+        prompt = f"Review the code in {context_file} and suggest improvements for quality, safety, and efficiency."
+
     if not prompt.strip():
         return build_error_response(
             tool="local_draft_code", error_type="empty_input",
             error="prompt is empty",
-            suggestion="describe the fix/feature/refactor in the prompt",
+            suggestion="describe the fix/feature/refactor in the prompt, or provide context_file for suggest-improvements",
             profile=params.get("profile"), model=params.get("model"), task=task,
         )
 
