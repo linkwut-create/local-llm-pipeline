@@ -47,10 +47,10 @@ This project includes a local multi-model LLM worker system.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 7 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 8 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
-`local_draft_code`.
+`local_draft_code`, `local_contextual_analyze`.
 
 MCP tools are source-non-mutating:
 - They never modify source files directly.
