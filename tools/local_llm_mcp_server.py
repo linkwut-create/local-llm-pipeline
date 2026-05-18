@@ -157,6 +157,90 @@ def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
     }
 
 
+def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = None,
+                               is_commit_gate: bool = False) -> str:
+    """Pick the right starting profile based on input complexity.
+
+    Maps complexity_tier to escalation chain index:
+      "light"  → chain[0] (smallest/fastest)
+      "normal" → chain[1] (mid-tier, CJK-capable if needed)
+      "heavy"  → chain[2] (skip small models, jump to mid/deep)
+
+    Special cases:
+    - user_profile always wins (respect explicit choice)
+    - commit_gate always returns commit_reviewer (safety)
+    - has_security patterns → reasoning tier (skip code review models)
+    - Falls back through chain if resolved profile is unhealthy
+    """
+    # 1. User override wins
+    if user_profile:
+        return user_profile
+
+    # 2. Commit gate: always commit_reviewer
+    if is_commit_gate:
+        return "commit_reviewer"
+
+    chain = _ESCALATION_CHAIN.get(task, [])
+    if not chain:
+        return "fast_summary"
+
+    tier = info.get("complexity_tier", "light")
+    has_security = info.get("has_security", False)
+    cjk_ratio = info.get("cjk_ratio", 0.0)
+
+    # 3. Security-sensitive → skip straight to reasoning (even if not in task chain)
+    if has_security and task != "rewrite-text":
+        security_targets = ["reasoning_checker", "deep_reasoning",
+                            "deepseek_r1_70b"]
+        for p in security_targets:
+            if _profile_is_healthy(p):
+                print(f"MCP: security patterns detected -> routing to {p}", file=sys.stderr)
+                return p
+        # Fallback: if no reasoning profile is healthy, use highest in chain
+        if chain:
+            print(f"MCP: security patterns detected but no healthy reasoning profile, using {chain[-1]}", file=sys.stderr)
+            return chain[-1]
+
+    # 4. Map complexity tier to chain index
+    tier_index = {"light": 0, "normal": 1, "heavy": 2}.get(tier, 0)
+    index = min(tier_index, len(chain) - 1)
+    profile = chain[index]
+
+    # 5. CJK-aware: if normal/heavy with CJK, prefer CJK-capable
+    if tier in ("normal", "heavy") and cjk_ratio > 0.1:
+        if profile not in _CJK_CAPABLE_PROFILES:
+            cjk_target = _prefer_cjk_profile(chain[0], task)
+            if cjk_target and _profile_is_healthy(cjk_target):
+                profile = cjk_target
+
+    # 6. Health fallback: if resolved profile is unhealthy, try next
+    if not _profile_is_healthy(profile):
+        for i in range(index + 1, len(chain)):
+            if _profile_is_healthy(chain[i]):
+                profile = chain[i]
+                print(f"MCP: {chain[index]} unhealthy → fell back to {profile}", file=sys.stderr)
+                break
+
+    print(f"MCP: complexity-based routing — tier={tier} profile={profile}", file=sys.stderr)
+    return profile
+
+
+def _profile_is_healthy(profile_name: str) -> bool:
+    """Check if a profile is healthy (best-effort, always True on failure)."""
+    try:
+        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+        pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+        p = pd.get("profiles", {}).get(profile_name, {})
+        health = p.get("_health", {})
+        if health.get("consecutive_failures", 0) >= 2:
+            return False
+        if health.get("success_rate", 1.0) < 0.5:
+            return False
+        return True
+    except Exception:
+        return True  # Best-effort
+
+
 def _detect_cjk_ratio(text: str) -> float:
     """Return the fraction of CJK characters in text (0.0 - 1.0).
 
@@ -1261,14 +1345,13 @@ def call_summarize_file(params: dict) -> dict:
     if max_chars is not None:
         max_chars = min(int(max_chars), MAX_PATH_MAX_CHARS)
 
-    # Proactive routing: sample the file to detect CJK, code density, and size
+    # Proactive routing: sample file, classify complexity, pick starting profile
     user_profile = params.get("profile", "")
     proactive_profile = None
     cjk_ratio = 0.0
     try:
         fpath = Path(path_str).resolve()
         fsize = fpath.stat().st_size
-        # Estimate lines (crude: ~60 chars/line avg for code, ~80 for prose)
         est_lines = fsize // 60
         sample = fpath.read_text(encoding="utf-8", errors="replace")[:8192]
         info = _classify_input_complexity(sample, is_diff=False)
@@ -1280,25 +1363,13 @@ def call_summarize_file(params: dict) -> dict:
             "light"
         )
         cjk_ratio = info["cjk_ratio"]
-        if not user_profile:
-            chain = _ESCALATION_CHAIN.get("summarize-file", [])
-            if info["complexity_tier"] == "heavy" and len(chain) >= 3:
-                proactive_profile = chain[2]  # qwen3.6_27b_mtp
-            elif info["complexity_tier"] == "normal" and len(chain) >= 2:
-                # CJK-aware: prefer CJK-capable profile if CJK detected
-                if info["cjk_ratio"] > 0.1:
-                    proactive_profile = _prefer_cjk_profile(chain[0], "summarize-file") or chain[1]
-                else:
-                    proactive_profile = chain[1]  # smart_summary
-            if proactive_profile:
-                print(f"MCP: proactive routing — {info['complexity_tier']} file "
-                      f"({fsize:,}B, ~{est_lines}L, {info['cjk_ratio']:.0%}CJK) → {proactive_profile}",
-                      file=sys.stderr)
+        proactive_profile = _resolve_starting_profile(
+            "summarize-file", info, user_profile or None)
     except (OSError, UnicodeError):
         pass
 
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
-                           user_profile or proactive_profile, params.get("model"))
+                           proactive_profile or user_profile, params.get("model"))
     return _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
                              cjk_ratio=cjk_ratio)
 
@@ -1318,9 +1389,41 @@ def call_summarize_tree(params: dict) -> dict:
     if max_chars is not None:
         max_chars = min(int(max_chars), MAX_PATH_MAX_CHARS)
 
+    # Proactive routing: sample directory to detect complexity
+    user_profile = params.get("profile", "")
+    proactive_profile = None
+    cjk_ratio = 0.0
+    try:
+        dir_path = Path(path_str).resolve()
+        entries = sorted(dir_path.iterdir())[:50]
+        file_count = sum(1 for e in entries if e.is_file())
+        # Sample first few files to detect CJK and code density
+        sample = ""
+        sampled = 0
+        for entry in entries:
+            if entry.is_file() and sampled < 3:
+                try:
+                    sample += entry.read_text(encoding="utf-8", errors="replace")[:4096]
+                    sampled += 1
+                except OSError:
+                    pass
+        info = _classify_input_complexity(sample, is_diff=False)
+        info["file_count"] = max(info.get("file_count", 0), file_count)
+        # Boost tier for large directories
+        if file_count > 30:
+            info["complexity_tier"] = "heavy"
+        elif file_count > 15 and info["complexity_tier"] == "light":
+            info["complexity_tier"] = "normal"
+        cjk_ratio = info["cjk_ratio"]
+        proactive_profile = _resolve_starting_profile(
+            "summarize-tree", info, user_profile or None)
+    except (OSError, UnicodeError):
+        pass
+
     cmd = build_router_cmd("summarize-tree", path_str, max_files, max_chars,
-                           params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_summarize_tree", cmd, task="summarize-tree")
+                           proactive_profile or user_profile, params.get("model"))
+    return _wrap_worker_call("local_summarize_tree", cmd, task="summarize-tree",
+                             cjk_ratio=cjk_ratio)
 
 
 def call_generate_test_plan(params: dict) -> dict:
@@ -1342,26 +1445,22 @@ def call_generate_test_plan(params: dict) -> dict:
         content = fpath.read_text(encoding="utf-8", errors="replace")[:16_384]
         info = _classify_input_complexity(content, is_diff=False)
         cjk_ratio = info["cjk_ratio"]
-        # Count function/class/method definitions for complexity estimate
+        # Boost complexity tier based on definition count
         def_count = len(re.findall(
             r'^\s*(?:async\s+)?def\s+\w+|^\s*class\s+\w+',
             content, re.MULTILINE,
         ))
-        if not user_profile:
-            if info["complexity_tier"] == "heavy" or def_count > 20:
-                proactive_profile = "deep_reviewer"
-            elif (info["complexity_tier"] == "normal" or def_count > 10
-                  or info["cjk_ratio"] > 0.1):
-                proactive_profile = "qwen3.6_27b_mtp"
-            if proactive_profile:
-                print(f"MCP: proactive routing — {info['complexity_tier']} file "
-                      f"({info['char_count']:,}B, {info['line_count']}L, {def_count} defs) → {proactive_profile}",
-                      file=sys.stderr)
+        if def_count > 20:
+            info["complexity_tier"] = "heavy"
+        elif def_count > 10 and info["complexity_tier"] == "light":
+            info["complexity_tier"] = "normal"
+        proactive_profile = _resolve_starting_profile(
+            "generate-test-plan", info, user_profile or None)
     except (OSError, UnicodeError):
         pass
 
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
-                           user_profile or proactive_profile, params.get("model"))
+                           proactive_profile or user_profile, params.get("model"))
     return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan",
                              cjk_ratio=cjk_ratio)
 
@@ -1392,32 +1491,25 @@ def call_review_diff(params: dict) -> dict:
             r'^[+-]\s*(def |class |async |await |return |if __|import |from \w+ import)',
             diff_text, re.MULTILINE,
         ))
-        if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
+        is_heavy = line_count > 500 or file_count > 5
+        if (line_count > 100 or file_count >= 3
+                or (has_logic and file_count >= 2)
+                or (is_heavy and has_logic)):
+            if is_heavy and has_logic:
+                print(f"MCP: heavy diff ({line_count}L, {file_count} files, has_logic) → auto-debate",
+                      file=sys.stderr)
             return call_debate_review_diff(params)
 
-    # C2: Security-sensitive patterns auto-trigger reasoning_checker (v0.9.6)
-    reasoning_override = None
-    if not commit_gate and _has_security_sensitive_patterns(diff_text):
-        reasoning_override = "reasoning_checker"
-        print("MCP: security-sensitive patterns detected — escalating to reasoning_checker", file=sys.stderr)
-
-    # Phase 3A: CJK-aware routing — detect CJK content, prefer CJK-capable profiles
+    # Unified complexity-based routing: security → reasoning, CJK → CJK-capable,
+    # heavy → deep_reviewer, normal → diff_reviewer, light → commit_reviewer
     cjk_ratio = _detect_cjk_ratio(diff_text)
-    cjk_override = None
-    if cjk_ratio > 0.1 and not commit_gate:
-        user_profile = params.get("profile", "")
-        if user_profile not in _CJK_CAPABLE_PROFILES:
-            cjk_override = "qwen3.6_27b_mtp"  # Strong CJK capability, good for diff review
-            print(f"MCP: CJK content detected ({cjk_ratio:.1%} CJK chars) — using CJK-capable profile", file=sys.stderr)
+    route_info = _classify_input_complexity(diff_text, is_diff=True)
+    route_info["cjk_ratio"] = cjk_ratio
+    resolved = _resolve_starting_profile(
+        "review-diff", route_info, params.get("profile") or None, commit_gate)
 
-    # Use the caller's profile if provided, otherwise router picks commit_reviewer default
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), "review-diff", "--stdin"]
-    if reasoning_override:
-        cmd.extend(["--profile", reasoning_override])
-    elif cjk_override:
-        cmd.extend(["--profile", cjk_override])
-    elif params.get("profile"):
-        cmd.extend(["--profile", params["profile"]])
+    cmd.extend(["--profile", resolved])
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
@@ -1616,10 +1708,29 @@ def call_contextual_analyze(params: dict) -> dict:
         f"Please answer the question above based on the file content."
     )
 
-    # Use the router for model resolution, then worker for actual analysis
-    cmd = build_router_cmd("suggest-improvements", path_str, None, max_chars,
-                           params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data, task="contextual-analyze")
+    # Proactive routing: analyze file + question complexity
+    user_profile = params.get("profile", "")
+    proactive_profile = None
+    cjk_ratio = 0.0
+    try:
+        # Analyze combined content for complexity classification
+        analyze_text = question + "\n" + file_content[:16_384]
+        info = _classify_input_complexity(analyze_text, is_diff=False)
+        cjk_ratio = info["cjk_ratio"]
+        # Boost tier for long files or complex questions
+        if len(file_content) > 80_000:
+            info["complexity_tier"] = "heavy"
+        elif len(file_content) > 20_000:
+            info["complexity_tier"] = "normal"
+        proactive_profile = _resolve_starting_profile(
+            "contextual-analyze", info, user_profile or None)
+    except Exception:
+        pass
+
+    cmd = build_router_cmd("contextual-analyze", path_str, None, max_chars,
+                           proactive_profile or user_profile, params.get("model"))
+    return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data,
+                             task="contextual-analyze", cjk_ratio=cjk_ratio)
 
 
 def call_draft_code(params: dict) -> dict:
@@ -1639,6 +1750,24 @@ def call_draft_code(params: dict) -> dict:
             profile=params.get("profile"), model=params.get("model"), task=task,
         )
 
+    user_profile = params.get("profile", "")
+    proactive_profile = None
+
+    # Proactive routing: analyze prompt + context file complexity
+    if not user_profile:
+        try:
+            analyze_text = prompt
+            if context_file:
+                cf_path = Path(context_file)
+                if cf_path.is_file():
+                    analyze_text += "\n" + cf_path.read_text(
+                        encoding="utf-8", errors="replace")[:8192]
+            info = _classify_input_complexity(analyze_text, is_diff=False)
+            proactive_profile = _resolve_starting_profile(
+                task, info, None)
+        except Exception:
+            pass
+
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), task]
 
     if context_file:
@@ -1651,8 +1780,9 @@ def call_draft_code(params: dict) -> dict:
             )
         cmd.append(context_file)
 
-    if params.get("profile"):
-        cmd.extend(["--profile", params["profile"]])
+    resolved = proactive_profile or user_profile
+    if resolved:
+        cmd.extend(["--profile", resolved])
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
