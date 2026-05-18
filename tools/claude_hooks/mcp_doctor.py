@@ -127,6 +127,20 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
         fail("wrapper_exists", f"Wrapper not found: {wrapper}",
              "Create ~/.claude/hooks/mcp_gate.py that imports from tools.claude_hooks.mcp_gate")
 
+    # Wrapper content validation
+    if wrapper.is_file():
+        wrapper_text = wrapper.read_text(encoding="utf-8", errors="replace")
+        try:
+            compile(wrapper_text, str(wrapper), "exec")
+            ok("wrapper_syntax", "Hook wrapper has valid Python syntax")
+        except SyntaxError as e:
+            fail("wrapper_syntax", f"Hook wrapper has syntax error: {e}",
+                 f"Fix the wrapper file at {wrapper}")
+        if "sys.path.insert" not in wrapper_text:
+            warn("wrapper_path_config",
+                 "Wrapper lacks sys.path.insert — may not find repo module",
+                 "Ensure wrapper imports from tools.claude_hooks.mcp_gate")
+
     if settings_file.is_file():
         try:
             settings = json.loads(settings_file.read_text(encoding="utf-8"))
@@ -154,6 +168,46 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
         else:
             fail(f"hook_{hook_name}", f"{hook_name} not registered",
                  f"Add hooks.{hook_name} to settings.json with the wrapper command.")
+
+    # settings.json structure validation
+    if isinstance(settings, dict):
+        hooks_config = settings.get("hooks", {})
+        struct_issues = []
+        for hook_name in expected_hooks:
+            entries = hooks_config.get(hook_name, [])
+            if isinstance(entries, list):
+                for i, entry in enumerate(entries):
+                    if isinstance(entry, str):
+                        pass  # string format is valid
+                    elif isinstance(entry, dict):
+                        # Support both flat {command: ...} and nested
+                        # {hooks: [{command: ...}]} formats
+                        if "command" in entry:
+                            pass  # flat format
+                        elif "hooks" in entry:
+                            nested = entry["hooks"]
+                            if isinstance(nested, list):
+                                for j, nh in enumerate(nested):
+                                    if isinstance(nh, dict) and "command" not in nh:
+                                        struct_issues.append(
+                                            f"hooks.{hook_name}[{i}].hooks[{j}] "
+                                            f"missing 'command'")
+                            else:
+                                struct_issues.append(
+                                    f"hooks.{hook_name}[{i}].hooks is not a list")
+                        else:
+                            struct_issues.append(
+                                f"hooks.{hook_name}[{i}] missing 'command'")
+                    else:
+                        struct_issues.append(
+                            f"hooks.{hook_name}[{i}] is "
+                            f"{type(entry).__name__}, expected dict or str")
+        if struct_issues:
+            warn("settings_structure",
+                 f"settings.json has {len(struct_issues)} structure issue(s)",
+                 "; ".join(struct_issues[:3]))
+        else:
+            ok("settings_structure", "settings.json hook entries well-formed")
 
     # =================================================================
     # 4. State health
@@ -185,6 +239,35 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
                  "Old state file? It will be auto-healed on next hook run.")
         else:
             ok("state_keys", f"All {len(expected_keys)} expected keys present")
+
+    # State field type validation (schema check)
+    if isinstance(state, dict):
+        _FIELD_TYPES = {
+            "diff_reviewed": bool, "dirty_since_review": bool,
+            "needs_summarize": list, "needs_review": bool,
+            "needs_debate": bool, "needs_test_plan": bool,
+            "session_recommendations": list,
+            "session_large_reads": list,
+            "mcp_calls": dict,
+            "session_id": (str, type(None)),
+            "reviewed_at": (str, type(None)),
+            "_auto_worker_count": (int, type(None)),
+            "_auto_spawned": (dict, type(None)),
+        }
+        type_mismatches = []
+        for key, expected_type in _FIELD_TYPES.items():
+            val = state.get(key)
+            if val is not None and not isinstance(val, expected_type):
+                type_mismatches.append(
+                    f"{key}: got {type(val).__name__}, "
+                    f"expected {getattr(expected_type, '__name__', str(expected_type))}"
+                )
+        if type_mismatches:
+            warn("state_field_types",
+                 f"State field type mismatches: {len(type_mismatches)} issues",
+                 "; ".join(type_mismatches[:5]))
+        else:
+            ok("state_field_types", "All tracked state fields have valid types")
 
     try:
         diff_hash = mg.get_diff_hash()
@@ -231,6 +314,50 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
              "The log is very large but this is a maintenance issue, not a hook failure. "
              f"Archive or delete it: {log_file}")
 
+    # hook-events.jsonl content integrity
+    if log_file.is_file() and log_file.stat().st_size > 0:
+        line_count = 0
+        bad_lines = 0
+        sample = ""
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line_count += 1
+                    if line.strip():
+                        try:
+                            json.loads(line.strip())
+                        except json.JSONDecodeError:
+                            bad_lines += 1
+                            if bad_lines <= 3:
+                                sample = line[:200]
+            if bad_lines == 0:
+                ok("log_content_integrity",
+                   f"hook-events.jsonl: {line_count} valid JSON lines")
+            else:
+                warn("log_content_integrity",
+                     f"hook-events.jsonl: {bad_lines}/{line_count} lines are "
+                     f"invalid JSON",
+                     f"Sample corrupted line: {sample}")
+        except Exception as e:
+            fail("log_content_integrity",
+                 f"Cannot scan hook-events.jsonl: {e}")
+
+    # Disk space check
+    try:
+        check_path = config if config.exists() else Path.home()
+        usage = shutil.disk_usage(str(check_path))
+        free_gb = usage.free / (1024 ** 3)
+        if free_gb < 0.5:
+            fail("disk_space", f"Only {free_gb:.1f} GB free — dangerously low",
+                 "Free up disk space immediately. Hook state/log writes may fail.")
+        elif free_gb < 2:
+            warn("disk_space", f"Only {free_gb:.1f} GB free — consider cleanup",
+                 "Free up disk space to prevent hook failures.")
+        else:
+            ok("disk_space", f"{free_gb:.1f} GB free disk space")
+    except Exception as e:
+        warn("disk_space", f"Could not check disk space: {e}")
+
     # =================================================================
     # 6. Session health
     # =================================================================
@@ -271,6 +398,31 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
     else:
         fail("mcp_json", f".mcp.json not found: {mcp_json}",
              "Create .mcp.json with local-llm MCP server configuration")
+
+    # .mcp.json content validation
+    if mcp_json.is_file():
+        try:
+            mcp_config = json.loads(mcp_json.read_text(encoding="utf-8"))
+            servers = mcp_config.get("mcpServers", {})
+            schema_issues = []
+            for srv_name, cfg in servers.items():
+                if not isinstance(cfg, dict):
+                    schema_issues.append(
+                        f"Server '{srv_name}' config is not a dict")
+                    continue
+                if "command" not in cfg:
+                    schema_issues.append(
+                        f"Server '{srv_name}' missing 'command' field")
+            if schema_issues:
+                warn("mcp_json_schema",
+                     f".mcp.json has {len(schema_issues)} schema issue(s)",
+                     "; ".join(schema_issues[:3]))
+            else:
+                ok("mcp_json_schema",
+                   ".mcp.json has valid server configurations")
+        except Exception as e:
+            fail("mcp_json_schema",
+                 f".mcp.json content validation failed: {e}")
 
     try:
         import tools.local_llm_mcp_server as _  # noqa: F401
@@ -442,8 +594,37 @@ def run_fixes(results: list[dict], repo_root: str, config_dir: str) -> list[str]
         }
         snippet_str = json.dumps(hook_snippet, indent=2, ensure_ascii=False)
         fixes_applied.append(
-            f"hook registration: Add the following to ~/.claude/settings.json under 'hooks':\n{snippet_str}"
+            f"hook registration: Add the following to ~/.claude/settings.json "
+            f"under 'hooks':\n{snippet_str}"
         )
+
+    # --- Fix 6: stale session state → reset ---
+    if status.get("session_id") == "WARN":
+        sf = config / "state.json"
+        if sf.exists():
+            try:
+                state = json.loads(sf.read_text(encoding="utf-8"))
+                if isinstance(state, dict) and state.get("session_started_at"):
+                    import uuid
+                    state["session_id"] = uuid.uuid4().hex[:12]
+                    state["session_started_at"] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                    state["mcp_calls"] = {"_last_mcp_failed": False}
+                    state["_auto_spawned"] = {}
+                    state["_auto_worker_count"] = 0
+                    sf.write_text(
+                        json.dumps(state, ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    fixes_applied.append(
+                        "Stale session state reset (cleared session, "
+                        "preserved persistent fields)"
+                    )
+            except Exception as e:
+                fixes_applied.append(
+                    f"Stale session repair FAILED: {e}"
+                )
 
     return fixes_applied
 

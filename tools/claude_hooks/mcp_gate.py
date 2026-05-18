@@ -43,6 +43,29 @@ _MCP_TOOLS = {
     "mcp__local-llm__local_contextual_analyze",
 }
 
+try:
+    from tools.claude_hooks.mcp_auto_worker import (
+        spawn_local_check,
+        spawn_summarize_file,
+        spawn_review_diff,
+        collect_auto_results,
+        cleanup_auto_results,
+        needs_auto_summarize,
+        needs_auto_review,
+        mark_auto_summarize,
+        mark_auto_review,
+    )
+except ImportError:
+    def spawn_local_check(*a, **kw): pass
+    def spawn_summarize_file(*a, **kw): pass
+    def spawn_review_diff(*a, **kw): pass
+    def collect_auto_results(*a, **kw): return []
+    def cleanup_auto_results(*a, **kw): pass
+    def needs_auto_summarize(*a, **kw): return False
+    def needs_auto_review(*a, **kw): return False
+    def mark_auto_summarize(*a, **kw): pass
+    def mark_auto_review(*a, **kw): pass
+
 _REDACT_RE = re.compile(
     r'(sk-[a-zA-Z0-9_-]{20,})'
     r'|(Bearer\s+[a-zA-Z0-9_\-\.]+)'
@@ -148,6 +171,10 @@ _STATE_DEFAULTS = {
     "session_large_reads": [],
     "session_touched_files": [],
     "diff_line_count": 0,
+    # Phase 2.0: auto-worker tracking
+    "_auto_spawned": {},
+    "_auto_worker_count": 0,
+    "_doctor_lite_last_run": "",
 }
 
 
@@ -729,6 +756,8 @@ def _clear_session(config_dir: str):
     state["session_large_reads"] = []
     state["session_touched_files"] = []
     state["diff_line_count"] = 0
+    state["_auto_spawned"] = {}
+    state["_auto_worker_count"] = 0
     save_state(config_dir, state)
 
 
@@ -848,7 +877,26 @@ def handle_post_tooluse(config_dir: str, payload: dict):
                     _add_recommendation(state, "local_debate_review_diff")
             except Exception:
                 pass
-            save_state(config_dir, state)
+
+            # Phase 2.0: fire-and-forget background review when diff > 50 lines
+            if (state.get("diff_line_count", 0) > 50
+                    and not state.get("diff_reviewed")
+                    and needs_auto_review(state)):
+                cwd = payload.get("cwd", "")
+                repo_root = get_repo_root(cwd) if cwd else None
+                diff_text = run_git(["diff"], cwd=cwd) or ""
+                if diff_text:
+                    mark_auto_review(state)
+                    save_state(config_dir, state)
+                    spawn_review_diff(config_dir, diff_text, repo_root)
+                    sys.stderr.write(
+                        f"[auto] review-diff spawned "
+                        f"({state['diff_line_count']} lines)\n"
+                    )
+                else:
+                    save_state(config_dir, state)
+            else:
+                save_state(config_dir, state)
 
     # --- Read tool: large-file detection (Phase 3E.1: fixed parsing) ---
     if name == "Read":
@@ -864,7 +912,17 @@ def handle_post_tooluse(config_dir: str, payload: dict):
                 lr.append(file_path)
                 state["session_large_reads"] = lr
             _add_recommendation(state, "local_summarize_file")
-            save_state(config_dir, state)
+
+            # Phase 2.0: fire-and-forget background summarization
+            if needs_auto_summarize(state, file_path):
+                cwd = payload.get("cwd", "")
+                repo_root = get_repo_root(cwd) if cwd else None
+                mark_auto_summarize(state, file_path)
+                save_state(config_dir, state)
+                spawn_summarize_file(config_dir, file_path, repo_root)
+                sys.stderr.write(f"[auto] summarize-file spawned for {file_path}\n")
+            else:
+                save_state(config_dir, state)
 
     # --- MCP tools: track calls and clear recommendations on success ---
     if name in _MCP_TOOLS:
@@ -893,6 +951,21 @@ def handle_post_tooluse(config_dir: str, payload: dict):
 def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
     """Check dangerous commands and commit gate. Returns {"allow": bool, "reason": str}."""
     _ensure_session(config_dir)
+
+    # Phase 2.0: advisory for edits to un-summarized large files
+    name = payload.get("tool_name", "")
+    if name in _DIRTY_TOOLS:
+        target = str(payload.get("tool_input", {}).get("file_path", ""))
+        if target and "mcp-gate" not in target and ".local_llm_out" not in target:
+            state = load_state(config_dir)
+            needs_summ = state.get("needs_summarize", [])
+            if target in needs_summ:
+                sys.stderr.write(
+                    f"\n[advisory] {target} was read as a large file but not yet "
+                    f"summarized.\nConsider running mcp__local-llm__local_summarize_file "
+                    f"first.\n(A background summarizer may have been spawned — "
+                    f"check .local_llm_out/auto/ for results.)\n\n"
+                )
 
     # Phase 2B: dangerous command guard (runs before all other checks)
     is_dangerous, danger_desc = is_dangerous_command(payload)
@@ -1221,6 +1294,25 @@ def handle_stop(config_dir: str, payload: dict) -> list:
     if recs:
         reminders.append(f"Session recommendations: {', '.join(recs)}")
 
+    # Phase 2.0: auto-worker results
+    if cwd:
+        repo_root = get_repo_root(cwd) if cwd else None
+        auto_results = collect_auto_results(repo_root)
+        if auto_results:
+            reminders.append(
+                f"Auto-worker results ({len(auto_results)} file(s)):"
+            )
+            for ar in auto_results[-5:]:
+                data = ar.get("data", {})
+                task = data.get("task", "?")
+                ok = data.get("ok", False)
+                summary = str(data.get("summary", ""))[:200]
+                reminders.append(
+                    f"  [{task}] {'OK' if ok else 'FAIL'}: {summary}"
+                )
+        # Cleanup old auto results (>24h)
+        cleanup_auto_results(repo_root)
+
     return reminders
 
 
@@ -1233,13 +1325,35 @@ def handle_session_start(config_dir: str, payload: dict):
     _clear_session(config_dir)
     _run_doctor_lite(config_dir)
 
+    # Phase 2.0: fire-and-forget local_check at session start
+    try:
+        cwd = payload.get("cwd", "")
+        repo_root = get_repo_root(cwd) if cwd else None
+        spawn_local_check(config_dir, repo_root)
+        sys.stderr.write("[auto] local_check spawned in background\n")
+    except Exception:
+        pass
+
 
 def _run_doctor_lite(config_dir: str):
     """Quick self-diagnostic at session start. Reports issues to stderr.
 
     Checks: state file health, hook log size, state file corruption.
     Never blocks — all failures are reported as warnings only.
+
+    Rate-limited: runs at most once per hour to avoid overhead on
+    every SessionStart.
     """
+    state = load_state(config_dir)
+    last_run = state.get("_doctor_lite_last_run", "")
+    if last_run:
+        try:
+            last_dt = datetime.fromisoformat(last_run)
+            if (datetime.now(timezone.utc) - last_dt).total_seconds() < 3600:
+                return
+        except (ValueError, TypeError):
+            pass
+
     issues = []
 
     # 1. Check state file is valid JSON
@@ -1283,6 +1397,10 @@ def _run_doctor_lite(config_dir: str):
         for i, issue in enumerate(issues, 1):
             sys.stderr.write(f"  [{i}] {issue}\n")
         sys.stderr.write("======================================\n\n")
+
+    # Record the run time for rate limiting
+    state["_doctor_lite_last_run"] = datetime.now(timezone.utc).isoformat()
+    save_state(config_dir, state)
 
 
 # ---------------------------------------------------------------------------
