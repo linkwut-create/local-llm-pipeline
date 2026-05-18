@@ -18,6 +18,8 @@ import threading
 import time
 import traceback
 import uuid
+
+import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,11 +62,11 @@ _ESCALATION_CHAIN = {
     # Release: 128b → nemotron super → 35b
     "release-risk-review": ["release_auditor", "nemotron_super", "deep_reviewer",
                             "qwen3.6_35b_moe_mtp"],
-    # Reasoning: nemotron → deepseek-r1-32b → deepseek-r1-70b → 128b
-    "risk-analysis": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b",
-                      "release_auditor"],
-    "logic-check": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b"],
-    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning", "deepseek_r1_70b"],
+    # Reasoning: nemotron → deepseek-r1-32b → 128b (70b unavailable, API timeout)
+    "risk-analysis": ["reasoning_checker", "deep_reasoning", "release_auditor"],
+    "logic-check": ["reasoning_checker", "deep_reasoning", "release_auditor"],
+    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning",
+                               "release_auditor"],
     "contextual-analyze": ["qwen3.6_27b_mtp", "code_worker", "reasoning_checker"],
     "translate-text": ["translation", "qwen3.6_27b_mtp"],
     "rewrite-text": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
@@ -96,6 +98,61 @@ def _has_security_sensitive_patterns(text: str) -> bool:
     return bool(_SECURITY_CODE_RE.search(text) or _SECURITY_SHELL_RE.search(text))
 
 
+# Content-type detection patterns (first 2KB of input is usually enough)
+_SHELL_RE = re.compile(
+    r'^#!(?:/usr)?/bin/(?:ba)?sh|^#!\s*/usr/bin/env\s+(?:ba)?sh'
+    r'|\$\{|export\s+\w+=|\b(?:chmod|chown|sudo|apt|brew|pip|npm|docker)\b',
+    re.MULTILINE,
+)
+_CONFIG_RE = re.compile(
+    r'^[{[]\s*$|^\s*"[^"]+"\s*:\s*|^\s*\w+\s*:\s*'
+    r'|^\s*\[[^\]]+\]\s*$|^[^=]*=\s*(?:true|false|yes|no|"[^"]*"|\d+)',
+    re.MULTILINE,
+)
+_DOCS_RE = re.compile(
+    r'^#{1,6}\s+\w+|^\*\*[^*]+\*\*|^[-*]\s+\w+|\[.+\]\(.+\)'
+    r'|^>\s+|^\|.+\|',
+    re.MULTILINE,
+)
+
+
+def _detect_content_type(text: str) -> str:
+    """Detect the type of content for routing decisions.
+
+    Returns one of: "shell", "code", "config", "docs", "unknown".
+    Uses first 4KB for detection — enough to catch shebangs and structure.
+    """
+    sample = text[:4096] if len(text) > 4096 else text
+    if not sample.strip():
+        return "unknown"
+
+    # Shebangs or shell patterns → shell
+    if _SHELL_RE.search(sample):
+        return "shell"
+
+    # Strong config indicators first (before code, since configs can look like code)
+    config_lines = len(_CONFIG_RE.findall(sample))
+    total_lines = max(sample.count('\n'), 1)
+    if config_lines > total_lines * 0.4:
+        return "config"
+
+    # Code detection: high density of code keywords
+    code_lines = len(_CODE_LINE_RE.findall(sample))
+    if code_lines > total_lines * 0.15:
+        return "code"
+
+    # Docs: markdown patterns, high prose density
+    docs_lines = len(_DOCS_RE.findall(sample))
+    if docs_lines > 0:
+        return "docs"
+
+    # Fallback: high prose-to-code ratio → docs
+    if code_lines == 0 and total_lines > 5:
+        return "docs"
+
+    return "unknown"
+
+
 # Logic-indicator patterns for proactive routing (reused from call_review_diff).
 _LOGIC_RE = re.compile(
     r'^(?:[+-]\s*)?(?:def |class |async |await |return |if __|import |from \w+ import'
@@ -122,6 +179,7 @@ def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
     line_count = text.count('\n') + 1 if text else 0
     cjk_ratio = _detect_cjk_ratio(text)
     has_security = _has_security_sensitive_patterns(text)
+    content_type = _detect_content_type(text)
 
     # File count (diff mode) or code-line density (file mode)
     file_count = 0
@@ -156,6 +214,7 @@ def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
         "has_logic": has_logic,
         "code_density": code_density,
         "complexity_tier": tier,
+        "content_type": content_type,
         "_input_text": text[:32_768],  # for arch-pattern detection in routing
     }
 
@@ -190,11 +249,24 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
     tier = info.get("complexity_tier", "light")
     has_security = info.get("has_security", False)
     cjk_ratio = info.get("cjk_ratio", 0.0)
+    content_type = info.get("content_type", "unknown")
+
+    # 3a. Content-type adjustments: shell/config/docs get special treatment
+    if content_type == "shell":
+        # Shell scripts → always use security-aware model
+        tier = "heavy" if tier == "light" else tier
+    elif content_type == "config" and tier != "massive":
+        # Config files are simple structure → step down
+        tier = "light"
+    elif content_type == "docs" and tier != "massive":
+        # Documentation doesn't need deep review → keep light/normal
+        if tier == "heavy":
+            tier = "normal"
 
     # 3. Security-sensitive → skip straight to reasoning (even if not in task chain)
     if has_security and task != "rewrite-text":
         security_targets = ["reasoning_checker", "deep_reasoning",
-                            "deepseek_r1_70b"]
+                            "release_auditor"]
         for p in security_targets:
             if _profile_is_healthy(p):
                 print(f"MCP: security patterns detected -> routing to {p}", file=sys.stderr)
@@ -258,6 +330,64 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
             if cjk_target and _profile_is_healthy(cjk_target):
                 profile = cjk_target
 
+    # 6a. Strength-aware: at heavy+ tier, prefer profile with matching strengths
+    if tier in ("heavy", "massive") and len(chain) >= 3:
+        try:
+            profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+            pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+            task_strength_map = {
+                "review-diff": ["code-review", "diff-analysis", "coding"],
+                "deep-code-review": ["deep-review", "coding"],
+                "architecture-review": ["architecture", "deep-review"],
+                "risk-analysis": ["risk-analysis", "reasoning", "logic"],
+                "logic-check": ["logic", "reasoning"],
+                "failure-mode-analysis": ["reasoning", "deep-analysis"],
+                "generate-test-plan": ["test-generation", "coding"],
+                "suggest-improvements": ["coding", "refactoring"],
+                "summarize-file": ["summarization", "speed"],
+                "summarize-tree": ["summarization", "speed"],
+                "translate-text": ["translation", "multilingual"],
+                "release-risk-review": ["release-audit", "deep-review"],
+            }
+            wanted = task_strength_map.get(task, [])
+            if wanted:
+                # Score profiles in chain starting from current index
+                best_score = -1
+                best_p = profile
+                for i in range(index, len(chain)):
+                    p_cfg = pd.get("profiles", {}).get(chain[i], {})
+                    p_strengths = p_cfg.get("_strengths", [])
+                    score = sum(1 for s in wanted if s in p_strengths)
+                    if score > best_score and _profile_is_healthy(chain[i]):
+                        best_score = score
+                        best_p = chain[i]
+                if best_p != profile and best_score > 0:
+                    print(f"MCP: strength match — {best_p} ({best_score}/{len(wanted)} strengths)", file=sys.stderr)
+                    profile = best_p
+        except Exception:
+            pass
+
+    # 6b. GPU-aware: prefer loaded model over cold one at same tier
+    try:
+        loaded = _get_loaded_models()
+        if loaded:
+            p_cfg = pd.get("profiles", {}).get(profile, {})
+            p_model = p_cfg.get("model", "")
+            # If current profile's model is NOT loaded, check neighbors
+            if p_model and p_model not in loaded:
+                for i in range(index - 1, index + 2):
+                    if 0 <= i < len(chain) and i != index:
+                        nb_cfg = pd.get("profiles", {}).get(chain[i], {})
+                        nb_model = nb_cfg.get("model", "")
+                        if nb_model in loaded and _profile_is_healthy(chain[i]):
+                            # Only switch if they're at similar capability (same or adjacent index)
+                            print(f"MCP: GPU-aware — {profile} not loaded, using loaded {chain[i]} instead", file=sys.stderr)
+                            profile = chain[i]
+                            index = i
+                            break
+    except Exception:
+        pass
+
     # 7. Health fallback: if resolved profile is unhealthy, try next
     if not _profile_is_healthy(profile):
         for i in range(index + 1, len(chain)):
@@ -284,6 +414,37 @@ def _profile_is_healthy(profile_name: str) -> bool:
         return True
     except Exception:
         return True  # Best-effort
+
+
+_LOADED_MODELS_CACHE: tuple[float, set[str]] = (0.0, set())
+
+
+def _get_loaded_models() -> set[str]:
+    """Query Ollama /api/ps for currently loaded models. Cached for 30s.
+
+    Returns set of model names currently in GPU memory.
+    """
+    global _LOADED_MODELS_CACHE
+    now = time.time()
+    if now - _LOADED_MODELS_CACHE[0] < 30:
+        return _LOADED_MODELS_CACHE[1]
+    try:
+        ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+        resp = requests.get(f"{ollama_host}/api/ps", timeout=5)
+        if resp.status_code == 200:
+            models = set()
+            for entry in resp.json().get("models", []):
+                name = entry.get("name", "")
+                if name:
+                    models.add(name)
+                    # Also add without :latest suffix for matching
+                    if name.endswith(":latest"):
+                        models.add(name.rsplit(":", 1)[0])
+            _LOADED_MODELS_CACHE = (now, models)
+            return models
+    except Exception:
+        pass
+    return _LOADED_MODELS_CACHE[1]
 
 
 def _detect_cjk_ratio(text: str) -> float:
@@ -388,7 +549,7 @@ _CJK_RANGES = [
 _CJK_CAPABLE_PROFILES = {"translation", "qwen3.6_27b_mtp", "qwen3.6_35b_moe_mtp",
                          "smart_summary", "code_worker", "deep_reviewer",
                          "reasoning_checker", "gemma4_31b", "gemma4_26b",
-                         "gemma4_26b_llamacpp", "deepseek_r1_70b",
+                         "gemma4_26b_llamacpp",
                          "nemotron_super", "command_r"}
 
 
@@ -1342,8 +1503,22 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                 _tried_profiles.add(escalated)
                 print(f"MCP: re-running {task} with escalated profile: {escalated} "
                       f"(depth={_depth + 1}, tried={sorted(_tried_profiles)})", file=sys.stderr)
+
+                # Pass previous (poor-quality) output as context for comparison
+                escalated_stdin = stdin_data
+                prev_summary = payload.get("summary", "")
+                prev_uncertain = payload.get("uncertain_points", [])
+                if prev_summary or prev_uncertain:
+                    context = ("## Previous attempt (lower-quality — re-analyze more thoroughly):\n"
+                               f"Summary: {str(prev_summary)[:500]}\n"
+                               f"Uncertain: {str(prev_uncertain)[:500]}\n\n")
+                    if escalated_stdin:
+                        escalated_stdin = context + escalated_stdin
+                    else:
+                        escalated_stdin = context
+
                 return _wrap_worker_call(
-                    tool, escalated_cmd, stdin_data=stdin_data,
+                    tool, escalated_cmd, stdin_data=escalated_stdin,
                     timeout=timeout, task=task, auto_escalate=auto_escalate,
                     _depth=_depth + 1, cjk_ratio=cjk_ratio,
                     _tried_profiles=_tried_profiles,
@@ -1352,6 +1527,118 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
 
     return coerce_failure_response(tool, payload, result["stderr"], result["elapsed_seconds"], request_id)
+
+
+def call_parallel_review(params: dict) -> dict:
+    """Run multiple models in parallel for independent cross-verification.
+
+    Used for release-risk-review and high-stakes architecture review.
+    Runs 2-3 models simultaneously via Popen, collects results, and
+    synthesizes findings. Non-blocking path alongside sequential debate.
+    """
+    request_id = _make_request_id()
+    diff_text = params.get("diff_text", "")
+    if not diff_text.strip():
+        return build_error_response(
+            tool="local_parallel_review", error_type="empty_input",
+            error="diff_text is empty", request_id=request_id,
+        )
+
+    # Select 2-3 models from different families for independent review
+    profiles = []
+    try:
+        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+        pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+        # Pick one from each model family: Qwen, Nemotron, Mistral/GPT
+        families = {
+            "qwen": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "qwen3.6_27b_mtp"],
+            "nemotron": ["nemotron_super", "reasoning_checker", "diff_reviewer"],
+            "mistral_gpt": ["release_auditor", "heavy_reviewer"],
+        }
+        for family, candidates in families.items():
+            for c in candidates:
+                if _profile_is_healthy(c):
+                    profiles.append(c)
+                    break
+    except Exception:
+        profiles = ["deep_reviewer", "reasoning_checker"]
+
+    if len(profiles) < 2:
+        return call_review_diff(params)  # Fall back to single review
+
+    print(f"MCP: parallel review — {len(profiles)} models: {profiles}", file=sys.stderr)
+
+    # Spawn all models in parallel
+    processes = {}
+    started = time.time()
+    for p in profiles:
+        pw_cfg = pd.get("profiles", {}).get(p, {})
+        model = pw_cfg.get("model", "")
+        cmd = [
+            sys.executable, str(SCRIPT_DIR / "local_llm_router.py"),
+            "review-diff", "--stdin", "--profile", p,
+        ]
+        if model:
+            cmd.extend(["--model", model])
+        try:
+            stdin_path = SCRIPT_DIR / ".local_llm_out" / f"parallel_{request_id}_{p}.stdin"
+            stdin_path.parent.mkdir(parents=True, exist_ok=True)
+            stdin_path.write_text(diff_text, encoding="utf-8")
+            with open(stdin_path, "r", encoding="utf-8") as f:
+                proc = subprocess.Popen(
+                    cmd, stdin=f,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, encoding="utf-8", errors="replace",
+                )
+            processes[p] = proc
+        except Exception as e:
+            print(f"MCP: parallel review — failed to spawn {p}: {e}", file=sys.stderr)
+
+    # Collect results (wait up to 300s per model)
+    results = {}
+    for p, proc in processes.items():
+        try:
+            stdout, stderr = proc.communicate(timeout=300)
+            payload, _ = load_worker_output(stdout)
+            results[p] = {
+                "ok": proc.returncode == 0,
+                "payload": payload,
+                "stderr": stderr[:500],
+            }
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            results[p] = {"ok": False, "payload": None,
+                          "stderr": "timeout after 300s"}
+
+    elapsed = time.time() - started
+
+    # Synthesize: collect findings from all models
+    all_findings = []
+    all_uncertain = []
+    for p, r in results.items():
+        if r["payload"]:
+            all_findings.extend(
+                r["payload"].get("high_confidence_findings", []))
+            all_findings.extend(
+                r["payload"].get("candidate_findings", []))
+            all_uncertain.extend(
+                r["payload"].get("uncertain_points", []))
+
+    ok_count = sum(1 for r in results.values() if r["ok"])
+    print(f"MCP: parallel review done — {ok_count}/{len(results)} models OK in {elapsed:.0f}s", file=sys.stderr)
+
+    return build_success_response("local_parallel_review", {
+        "task": "parallel-review",
+        "mode": "parallel",
+        "profiles": profiles,
+        "models_ok": ok_count,
+        "total_models": len(results),
+        "high_confidence_findings": all_findings[:10],
+        "candidate_findings": all_findings[:20],
+        "uncertain_points": all_uncertain[:10],
+        "elapsed_seconds": elapsed,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }, elapsed, request_id)
 
 
 def call_local_check(params: dict) -> dict:
@@ -1842,6 +2129,7 @@ TOOL_HANDLERS = {
     "local_contextual_analyze": call_contextual_analyze,
     "local_review_diff": call_review_diff,
     "local_debate_review_diff": call_debate_review_diff,
+    "local_parallel_review": call_parallel_review,
     "local_draft_code": call_draft_code,
 }
 
