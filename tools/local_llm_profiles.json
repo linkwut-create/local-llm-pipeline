@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 5.3,
+        "avg_latency_s": 4.8,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -124,7 +124,7 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 16.4,
+        "avg_latency_s": 14.9,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -364,16 +364,19 @@
       ],
       "risk_level": "high",
       "_benchmark": "TBD — Qwen3.6 35B MoE UD with native MTP heads (~1.5-2x speedup via speculative decoding)",
-      "_community_reputation": "Qwen3.6 35B MoE UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama. Native MTP for fast inference.",
-      "_constraints": "Ollama backend. Q8_K_XL GGUF on disk pending llama.cpp HIP SSM bug fix (gh#22230). Not for commit gate (>30B).",
-      "_last_tested": "2026-05-16",
+      "_community_reputation": "Qwen3.6 35B MoE UD. Gated Delta Net (SSM) hybrid. Native MTP for fast inference.",
+      "_constraints": "Not for commit gate (>30B). llama.cpp MTP on port 8083 (native MTP heads, no drafter needed, -fit off -ngl 60). Ollama fallback: qwen3.6:35b-q8-ud.",
+      "_last_tested": "2026-05-19",
       "_health": {
         "success_rate": 1.0,
         "avg_latency_s": 68,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
-      }
+      },
+      "_backend": "llama.cpp ROCm on port 8083",
+      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8083/v1",
+      "_acceleration": "mtp"
     },
     "embedding": {
       "model": "nomic-embed-text-v2-moe:latest",
