@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 4.3,
+        "avg_latency_s": 3.9,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -124,7 +124,7 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 13.5,
+        "avg_latency_s": 12.2,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -269,8 +269,8 @@
       "risk_level": "medium",
       "_backend": "llama.cpp ROCm HIP on port 8080",
       "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
-      "_note": "Gemma 4 GGUF incompatible with current llama.cpp build (v340). Assistant drafter downloaded: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB). Requires llama.cpp rebuild with Gemma 4 + MTP support.",
-      "_status": "unavailable — needs llama.cpp rebuild"
+      "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
+      "_status": "available — port 8080, -ngl 30"
     },
     "gemma4_26b": {
       "model": "gemma4-26b-it:q8_0",
