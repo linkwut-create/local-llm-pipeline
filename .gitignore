@@ -1,5 +1,6 @@
 # Local LLM worker output (generated, not committed)
 .local_llm_out/
+.mcp_audit/
 
 # Python
 __pycache__/
