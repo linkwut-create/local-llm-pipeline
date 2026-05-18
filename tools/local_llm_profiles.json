@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 5.9,
+        "avg_latency_s": 5.3,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -124,7 +124,7 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 18.1,
+        "avg_latency_s": 16.4,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -338,9 +338,12 @@
       ],
       "risk_level": "medium",
       "_benchmark": "TBD",
-      "_community_reputation": "Qwen3.6 27B UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama.",
-      "_constraints": "Ollama backend. Q8_K_XL GGUF on disk pending llama.cpp HIP SSM bug fix (gh#22230). Not for commit gate.",
-      "_last_tested": "2026-05-16"
+      "_community_reputation": "Qwen3.6 27B UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama. Native MTP heads.",
+      "_constraints": "Not for commit gate. llama.cpp MTP on port 8082 (native MTP heads, no drafter needed). Ollama fallback: qwen3.6:27b-q8-ud.",
+      "_last_tested": "2026-05-19",
+      "_backend": "llama.cpp ROCm on port 8082",
+      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8082/v1",
+      "_acceleration": "mtp"
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b-q8-ud",
