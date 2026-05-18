@@ -9,8 +9,11 @@ the doctor diagnoses what's wrong and suggests fixes.
 ## Quick Start
 
 ```bash
-# Default: uses current directory as repo root, auto-detects config dir
+# Default: diagnose only
 python tools/claude_hooks/mcp_doctor.py
+
+# Diagnose + auto-repair
+python tools/claude_hooks/mcp_doctor.py --fix
 
 # Machine-readable output
 python tools/claude_hooks/mcp_doctor.py --json
@@ -18,6 +21,10 @@ python tools/claude_hooks/mcp_doctor.py --json
 # Custom paths
 python tools/claude_hooks/mcp_doctor.py --repo-root /path/to/repo --config-dir /path/to/config
 ```
+
+30 checks across 8 categories. 6 auto-fixes: corrupt state archive,
+large log rotation, .mcp.json template generation, hook wrapper creation,
+hook registration snippet, stale session reset.
 
 ## Check Categories
 
@@ -77,17 +84,19 @@ If the hook system stops working:
 4. Restart Claude Code to pick up hook changes
 5. Run a test tool call (e.g., `local_check`) to verify hooks fire
 
-## Why No Auto-Fix
+## Auto-Fix (`--fix`)
 
-The doctor is deliberately read-only. It cannot:
+The doctor can repair 6 common issues automatically:
 
-- Modify `~/.claude/settings.json` (user preferences)
-- Delete or recreate state files (could lose review state)
-- Change the hook wrapper (could break other hooks)
-- Install or update packages
+1. **Corrupt state.json** — archives to `state.json.corrupt.<timestamp>`, hook recreates fresh
+2. **Oversized hook-events.jsonl (>5MB)** — archives with timestamp
+3. **Missing .mcp.json** — generates template with local-llm server entry
+4. **Missing hook wrapper** — creates `~/.claude/hooks/mcp_gate.py`
+5. **Missing hook registration** — prints JSON snippet for settings.json
+6. **Stale session state** — resets session_id, clears mcp_calls and auto-worker tracking
 
-This is intentional. Hook configuration is part of the user's trusted
-environment. The doctor diagnoses; the user decides what to fix.
+The doctor does NOT auto-edit `~/.claude/settings.json` (Fix 5 prints a snippet).
+This is intentional: hook configuration is part of the user's trusted environment.
 
 ## Related Docs
 

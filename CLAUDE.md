@@ -53,13 +53,35 @@ Claude Code is the controller. The local worker is advisory only.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 7 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 8 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
-`local_draft_code`.
+`local_draft_code`, `local_contextual_analyze`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
 Verify with `/mcp` — should show `local-llm connected 8 tools`.
+
+### Auto-Invocation (Phase 2.0)
+
+Hooks automatically spawn background workers for common MCP participation points.
+No user action needed — the system detects and responds:
+
+| Trigger | Event | Background Action |
+|---------|-------|-------------------|
+| Session start | SessionStart | `local_check` (environment health) |
+| Read file >300 lines | PostToolUse | `local_summarize_file` via router |
+| Edit file, diff >50 lines | PostToolUse | `local_review_diff` via router |
+| Session end | Stop | Collects & reports auto results |
+
+Workers use `subprocess.Popen` (fire-and-forget, never blocks the session).
+Results land in `.local_llm_out/auto/`. Dedup prevents duplicate spawns
+(60s window for summarize, 120s for review; max 10 per session).
+
+The existing manual MCP invocation path still works and is required for:
+- `local_debate_review_diff` (high-risk changes)
+- `local_generate_test_plan` (new API/schema)
+- `local_draft_code` (code generation)
+- Commit gate review (explicit `commit_gate=true`)
 
 ### Task-Level MCP Usage Policy (MCP 2.1 — Hardened)
 

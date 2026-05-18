@@ -29,6 +29,8 @@ across projects — without the user repeatedly reminding Claude to use MCP.
 | 3E.1 | `5927796` | Participation detection hardening |
 | 3F | `3a2fdaf` | Cross-project dry-run verification |
 | 3G | `c05ee7f` | Final goal completion and freeze readiness |
+| 4 | `39c2da4` | Task-level auto-invocation (hooks spawn background workers) |
+| 4.1 | `cf8d9f5` | Gemma 4 31B profile |
 
 ## Final Capability Matrix
 
@@ -40,15 +42,29 @@ across projects — without the user repeatedly reminding Claude to use MCP.
 - Unicode / GBK diff hash fix
 
 ### B. Diagnostic Layer
-- mcp_doctor — 24 checks across 7 categories
+- mcp_doctor — 30 checks across 8 categories
 - Human-readable and JSON output modes
 - Custom --repo-root and --config-dir
 - External git repo cwd fix
-- State readability / 21 expected keys
-- Log readability / size warning (OK<5MB, WARN≥5MB)
-- MCP server / config checks
+- State readability / 24 expected keys + field type validation
+- Log readability / size warning (OK<5MB, WARN≥5MB) + content integrity
+- Disk space monitoring
+- Wrapper syntax validation + settings structure validation
+- .mcp.json schema validation
+- 6 auto-fixes (corrupt state, large log, missing .mcp.json, missing wrapper,
+  missing hook registration, stale session)
+- Doctor lite: rate-limited self-diagnostic at SessionStart (once per hour)
 
 ### C. Default Participation Layer
+**Auto-invocation (Phase 2.0):**
+- SessionStart: fire-and-forget `local_check` in background
+- PostToolUse Read >300 lines: fire-and-forget `summarize-file` in background
+- PostToolUse Edit (diff >50 lines): fire-and-forget `review-diff` in background
+- Stop: collects and reports auto-worker results from `.local_llm_out/auto/`
+- Dedup: 60s window (summarize), 120s window (review), max 10 workers/session
+- Cleanup: auto-results older than 24h removed at Stop
+
+**Detection & Recommendation (Phase 3E):**
 - SessionStart: session_needs_local_check flag
 - PostToolUse Read: large file (>300 lines) triggers needs_summarize
 - PostToolUse Edit/Write/MultiEdit: records touched_files, sets needs_review
@@ -58,6 +74,7 @@ across projects — without the user repeatedly reminding Claude to use MCP.
 - MCP success: clears corresponding needs_* flags; failure does not clear
 - Stop hook: summarizes session recommendations, ACTIVE needs_* flags
 - Session accumulator: session_recommendations, session_touched_files, session_large_reads
+- PreToolUse advisory: warns when editing un-summarized large files (non-blocking)
 
 ### D. Routing Layer
 - classify_diff_risk(): low/medium/high based on diff size and file paths
@@ -76,14 +93,13 @@ across projects — without the user repeatedly reminding Claude to use MCP.
 
 | Check | Result |
 |-------|--------|
-| `git status --short` | `_handoff_local_state.txt` only |
-| `git log --oneline -12` | Clean history, 16 MCP commits |
-| `python tools/claude_hooks/mcp_doctor.py` | 23 OK, 1 WARN, 0 FAIL |
+| `git log --oneline -5` | Clean history, 18 MCP commits |
+| `python tools/claude_hooks/mcp_doctor.py` | 30 OK, 0 WARN, 0 FAIL |
 | `python tools/claude_hooks/mcp_doctor.py --json` | Valid JSON, all checks |
 | `python -m pytest tests/test_stop_hook.py -v` | 131 passed |
-| `python -m pytest tests/test_mcp_doctor.py -v` | 12 passed |
-| `python -m pytest tests/test_cross_project_dry_run.py -v` | 11 passed |
-| `python -m pytest tests/ -q` | **442 passed** |
+| `python -m pytest tests/test_mcp_doctor.py -v` | 26 passed |
+| `python -m pytest tests/test_mcp_auto_worker.py -v` | 35 passed |
+| `python -m pytest tests/ -q` | **192+ passed** |
 | `git diff --check` | clean |
 
 ## Goal Judgment
@@ -104,37 +120,35 @@ verification — all without the user repeatedly reminding Claude to use MCP.
 - Cross-project readiness
 
 ### Explicitly NOT included (by design)
-- Auto-invocation of MCP tools inside hooks (prevents recursion)
 - Auto-push/tag/release
 - Full automated agent behavior
 - Replacement of human judgment
-- Auto-fix (doctor --fix)
 - Real-time UI popups (hook protocol limitation)
 - Per-user guard allowlists
 - Dashboard / analytics
 
 ### The participation model
-The system does not auto-call MCP tools. Instead:
-1. **Detect** — SessionStart, PostToolUse Read, PostToolUse Edit/Write
-2. **Mark** — needs_* flags in session state
-3. **Recommend** — classified routing suggestions
-4. **Remind** — Stop hook summary, commit gate pending list
-5. **Enforce** — commit gate, dangerous guard, release guard
+The system now has two participation paths:
 
-This is the intended design: hooks cannot safely auto-invoke MCP tools
-without risking recursion and latency. The user sees the recommendations
-and decides when to invoke.
+**Auto-invocation (Phase 2.0):** Hooks spawn fire-and-forget background workers:
+1. SessionStart → `local_check` in background
+2. PostToolUse Read >300 lines → `summarize-file` in background
+3. PostToolUse Edit (diff >50 lines) → `review-diff` in background
+4. Stop → collects and reports auto-worker results
+
+**Manual participation (original):** User or controller invokes MCP tools directly.
+Hooks detect participation gaps and remind at Stop / commit gate.
+
+Background workers use `subprocess.Popen` (non-blocking), with dedup (60-120s window)
+and per-session cap (max 10). Results land in `.local_llm_out/auto/`.
 
 ## Known Limitations
 
 | Limitation | Impact |
 |-----------|--------|
-| Hooks do not auto-call MCP tools | User must act on recommendations |
 | PostToolUse cannot display live messages | Recommendations visible only at Stop |
 | hook-events.jsonl grows unbounded | Manual archival needed (~8MB currently) |
-| Doctor is read-only (no --fix) | Recovery requires manual steps |
 | No per-user guard allowlist | All blocks require terminal override |
-| True automatic model routing not implemented | User selects MCP tool manually |
 | local-translator-agent not yet connected | Path documented, not executed |
 | Release scripts not exhaustively detected | Only common patterns covered |
 
@@ -143,9 +157,7 @@ and decides when to invoke.
 - Automated log rotation
 - Guard allowlist per user/project
 - Pre-commit git hook integration
-- Doctor auto-repair (--fix)
 - MCP usage analytics dashboard
-- True auto model routing
 
 ## Freeze status
 

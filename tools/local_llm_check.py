@@ -227,13 +227,51 @@ def recommend_profiles(models: list[str]) -> dict[str, dict]:
     base_models = deduplicate_models(models)
     recommendations = {}
 
+    # Load authoritative model assignments from profiles.json
+    profiles_json_models = {}
+    profiles_path = Path(__file__).parent / "local_llm_profiles.json"
+    try:
+        with open(profiles_path, encoding="utf-8") as f:
+            profiles_data = json.loads(f.read())
+        for name, cfg in profiles_data.get("profiles", {}).items():
+            model = cfg.get("model", "")
+            candidates = cfg.get("candidates", [])
+            if model:
+                profiles_json_models[name] = {
+                    "model": model,
+                    "candidates": candidates,
+                }
+    except Exception:
+        pass
+
     for profile_name, hints in MODEL_HINTS.items():
+        # Prefer the model from profiles.json if available
+        pj = profiles_json_models.get(profile_name, {})
+        pj_model = pj.get("model", "")
+        pj_candidates = pj.get("candidates", [])
+
+        # Build candidate list: profiles.json model first if available,
+        # then profiles.json candidates, then keyword-matched models
         candidates = []
+        seen = set()
+
+        if pj_model and pj_model in base_models:
+            candidates.append(pj_model)
+            seen.add(pj_model)
+
+        for c in pj_candidates:
+            if c in base_models and c not in seen:
+                candidates.append(c)
+                seen.add(c)
+
         for model in base_models:
+            if model in seen:
+                continue
             model_lower = model.lower()
             for kw in hints["keywords"]:
                 if kw.lower() in model_lower:
                     candidates.append(model)
+                    seen.add(model)
                     break
 
         if not candidates:

@@ -1,6 +1,7 @@
 # Task-Level MCP Usage Policy
 
-MCP 2.0 Phase 1 — enforceable task-level discipline for local model participation.
+MCP 2.0 — enforceable task-level discipline for local model participation.
+MCP 2.1 — auto-invocation via hooks for common participation points.
 
 Refer to [model-routing-policy.md](model-routing-policy.md) for model selection rationale and benchmark data.
 
@@ -8,21 +9,32 @@ Refer to [model-routing-policy.md](model-routing-policy.md) for model selection 
 
 **Every development task must have a local model participation point.** Not every keystroke — every task.
 
+## Auto-Invocation (MCP 2.1)
+
+The hook system now auto-spawns background workers for common cases:
+- **SessionStart** → `local_check` (automatic)
+- **Read >300 lines** → `local_summarize_file` (automatic, background)
+- **Edit with diff >50 lines** → `local_review_diff` (automatic, background)
+
+These fire-and-forget workers never block. Results are collected at Stop.
+Manual invocation is still required for debate review, test plans, draft code,
+and explicit commit gate review.
+
 ## Task → MCP Tool Mapping
 
 ### State Check (always first in a session)
 
 | When | Tool | Profile |
 |------|------|---------|
-| Starting work in any project | `local_check` | (fast, no LLM call) |
-| After restarting Claude Code | `local_check` | verify MCP is connected |
-| Diagnosing model/backend issues | `local_check` | |
+| Starting work in any project | `local_check` | (auto-invoked at SessionStart) |
+| After restarting Claude Code | `local_check` | (auto-invoked) |
+| Diagnosing model/backend issues | `local_check` | manual if needed |
 
 ### File Understanding (before editing)
 
 | When | Tool | Default Profile | Upgrade Trigger |
 |------|------|-----------------|-----------------|
-| Reading a file > 200 lines for the first time | `local_summarize_file` | `fast_summary` | confidence=low → `smart_summary` |
+| Reading a file > 200 lines for the first time | `local_summarize_file` | `fast_summary` | (auto-invoked for >300 lines) |
 | Understanding a new directory | `local_summarize_tree` | `fast_summary` | complex structure → `smart_summary` |
 | Files in `tools/`, `tests/`, or config | `local_summarize_file` | `smart_summary` | infrastructure code deserves better model |
 
@@ -31,6 +43,7 @@ Refer to [model-routing-policy.md](model-routing-policy.md) for model selection 
 | When | Tool | Profile | Required Param |
 |------|------|---------|----------------|
 | Any code change before commit | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
+| Auto-review when diff >50 lines | `local_review_diff` | (auto-invoked via router) | background, advisory |
 | Changes to `tools/` (MCP server, router, worker) | `local_review_diff` | `diff_reviewer` | non-gate explicit review |
 | Changes to `.mcp.json`, profiles, tasks config | `local_review_diff` | `diff_reviewer` | |
 | Staged diff before commit | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
