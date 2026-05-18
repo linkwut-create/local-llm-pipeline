@@ -912,23 +912,41 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
     if is_release:
         cmd = str(payload.get("tool_input", {}).get("command", ""))
         cwd = payload.get("cwd", "")
-        release_ok, release_reason = _check_release_prerequisites(config_dir, cwd)
-        if not release_ok:
-            return {
-                "allow": False,
-                "reason": (
-                    f"BLOCKED: release/publish command detected ({release_desc}).\n"
-                    f"Command: {cmd[:200]}\n"
-                    f"Missing prerequisite: {release_reason}\n"
-                    "Required before release:\n"
-                    "  1. local_debate_review_diff (full 3-round) on current HEAD\n"
-                    "  2. release_auditor review passed\n"
-                    "  3. No dirty files since debate review\n"
-                    "If you have met all prerequisites, re-run the command."
-                ),
-            }
-        # Prerequisites met — allow the release
-        print(f"\nRelease guard: prerequisites met ({release_reason}). Allowing {release_desc}.", file=sys.stderr)
+
+        # Emergency bypass: --emergency-release flag skips prerequisites for hotfixes.
+        # Allowed but logged as high-severity audit event.
+        if "--emergency-release" in cmd:
+            print(f"\n!!! EMERGENCY RELEASE BYPASS — skipping debate review prerequisites !!!", file=sys.stderr)
+            print(f"Command: {cmd[:200]}", file=sys.stderr)
+            _try_audit_event({
+                "event_type": "release_guard_emergency_bypass",
+                "task_type": "gate_boundary_audit",
+                "tool_name": "commit_gate",
+                "command": cmd[:500],
+                "release_desc": release_desc,
+                "cwd": cwd,
+                "result_status": "allowed_emergency",
+                "blocking": False,
+                "severity": "critical",
+            })
+        else:
+            release_ok, release_reason = _check_release_prerequisites(config_dir, cwd)
+            if not release_ok:
+                return {
+                    "allow": False,
+                    "reason": (
+                        f"BLOCKED: release/publish command detected ({release_desc}).\n"
+                        f"Command: {cmd[:200]}\n"
+                        f"Missing prerequisite: {release_reason}\n"
+                        "Required before release:\n"
+                        "  1. local_debate_review_diff (full 3-round) on current HEAD\n"
+                        "  2. release_auditor review passed\n"
+                        "  3. No dirty files since debate review\n"
+                        "Pass --emergency-release to bypass (hotfix only — audited)."
+                    ),
+                }
+            # Prerequisites met — allow the release
+            print(f"\nRelease guard: prerequisites met ({release_reason}). Allowing {release_desc}.", file=sys.stderr)
 
     # --- MCP-GATE-1B: bypass risk detection (runs before normal commit gate) ---
     is_bypass, bypass_desc, bypass_lang = is_git_commit_bypass_risk(payload)
