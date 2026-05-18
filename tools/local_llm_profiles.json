@@ -142,7 +142,17 @@
       "risk_level": "high",
       "_benchmark": "68s review, 98s test-plan — 0 timeouts, most reliable (zero12)"
     },
-    "gemma4_26b": {
+    "gemma4_26b_llamacpp": {
+      "model": "gemma-4-26b",
+      "temperature": 0.2,
+      "max_chars": 90000,
+      "max_output_chars": 5000,
+      "use_for": ["summarize-file", "summarize-tree", "suggest-improvements", "rewrite-text", "deep-code-review"],
+      "risk_level": "medium",
+      "_backend": "llama.cpp ROCm HIP on port 8080",
+      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
+      "_note": "Direct llama.cpp server. Start: llama-server -m gemma-4-26B...gguf --port 8080 -ngl 99 -fit off"
+    },
       "model": "gemma4-26b-it:q8_0",
       "temperature": 0.2,
       "max_chars": 90000,
