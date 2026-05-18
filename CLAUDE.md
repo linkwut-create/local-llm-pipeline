@@ -53,13 +53,13 @@ Claude Code is the controller. The local worker is advisory only.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 8 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 9 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
-`local_draft_code`, `local_contextual_analyze`.
+`local_parallel_review`, `local_draft_code`, `local_contextual_analyze`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
-Verify with `/mcp` — should show `local-llm connected 8 tools`.
+Verify with `/mcp` — should show `local-llm connected 9 tools`.
 
 ### Auto-Invocation (Phase 2.0)
 
@@ -78,7 +78,8 @@ Results land in `.local_llm_out/auto/`. Dedup prevents duplicate spawns
 (60s window for summarize, 120s for review; max 10 per session).
 
 The existing manual MCP invocation path still works and is required for:
-- `local_debate_review_diff` (high-risk changes)
+- `local_debate_review_diff` (high-risk changes, sequential 2-3 round)
+- `local_parallel_review` (release audit, multi-model parallel ~150s)
 - `local_generate_test_plan` (new API/schema)
 - `local_draft_code` (code generation)
 - Commit gate review (explicit `commit_gate=true`)
@@ -164,7 +165,7 @@ MCP Usage Matrix
 | Feature/bug/release test plan | `local_generate_test_plan` | `code_worker` | Before implementing |
 | Draft code (fix/feature/refactor) | `local_draft_code` | `code_worker` | Output → `.local_llm_out/` only |
 | DB schema, CLI, import/export, parser | `local_generate_test_plan` | `code_worker` | Before implementing |
-| Phase freeze, release audit | `local_debate_review_diff` | full 3-round | Must use full debate |
+| Phase freeze, release audit | `local_parallel_review` | parallel multi-family | Must use parallel |
 
 #### Escalation Rules
 

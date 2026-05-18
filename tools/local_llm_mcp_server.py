@@ -9,6 +9,7 @@ Usage:
     python tools/local_llm_mcp_server.py
 """
 
+import hashlib
 import json
 import os
 import re
@@ -825,6 +826,19 @@ TOOLS = {
             "required": ["diff_text"],
         },
     },
+    "local_parallel_review": {
+        "description": "Run multiple local models in parallel for independent cross-verification of a git diff. Uses 2-3 models from different families (Qwen/Nemotron/Mistral) simultaneously, synthesizes findings. Best for release reviews, architecture changes, and high-stakes diffs. Parallel execution is ~150s vs ~500s sequential debate.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "diff_text": {
+                    "type": "string",
+                    "description": "The diff text to review (max 100000 chars).",
+                },
+            },
+            "required": ["diff_text"],
+        },
+    },
     "local_contextual_analyze": {
         "description": "Analyze a file with a specific question or focus area using a local LLM. Unlike summarize-file (broad overview), this tool does targeted analysis: 'does this code handle errors correctly?', 'what are the thread-safety issues here?', 'how does this module couple to others?'. Accepts previous analysis result as optional context for progressive deepening.",
         "inputSchema": {
@@ -1508,6 +1522,7 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                 escalated_stdin = stdin_data
                 prev_summary = payload.get("summary", "")
                 prev_uncertain = payload.get("uncertain_points", [])
+                prev_confidence = payload.get("confidence", "?")
                 if prev_summary or prev_uncertain:
                     context = ("## Previous attempt (lower-quality — re-analyze more thoroughly):\n"
                                f"Summary: {str(prev_summary)[:500]}\n"
@@ -1516,6 +1531,26 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                         escalated_stdin = context + escalated_stdin
                     else:
                         escalated_stdin = context
+
+                # Log quality delta for future routing optimization
+                try:
+                    delta_log = SCRIPT_DIR / ".local_llm_out" / "quality_delta.jsonl"
+                    delta_log.parent.mkdir(parents=True, exist_ok=True)
+                    with open(delta_log, "a", encoding="utf-8") as df:
+                        json.dump({
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "task": task,
+                            "from_profile": current_profile,
+                            "to_profile": escalated,
+                            "from_confidence": prev_confidence,
+                            "from_uncertain_count": len(prev_uncertain) if isinstance(prev_uncertain, list) else 0,
+                            "reason": ("low_confidence" if prev_confidence == "low"
+                                       else "uncertain_points" if len(prev_uncertain) > 3
+                                       else "timeout"),
+                        }, df, ensure_ascii=False)
+                        df.write("\n")
+                except Exception:
+                    pass
 
                 return _wrap_worker_call(
                     tool, escalated_cmd, stdin_data=escalated_stdin,
@@ -1700,10 +1735,41 @@ def call_summarize_file(params: dict) -> dict:
     except (OSError, UnicodeError):
         pass
 
+    # Output cache: skip re-analysis if file unchanged and cached result < 1h old
+    try:
+        cache_dir = SCRIPT_DIR / ".local_llm_out" / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cfpath = Path(path_str).resolve()
+        mtime = cfpath.stat().st_mtime
+        cache_key = hashlib.sha256(
+            f"{cfpath}:{mtime}:{proactive_profile or 'default'}".encode()
+        ).hexdigest()[:16]
+        cache_file = cache_dir / f"summarize_{cache_key}.json"
+        if cache_file.exists():
+            age = time.time() - cache_file.stat().st_mtime
+            if age < 3600:  # 1 hour TTL
+                cached = json.loads(cache_file.read_text(encoding="utf-8"))
+                cached["cache_hit"] = True
+                print(f"MCP: cache hit — summarize {path_str} ({age:.0f}s old)", file=sys.stderr)
+                return build_success_response("local_summarize_file", cached, 0, _make_request_id())
+    except Exception:
+        pass
+
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
                            proactive_profile or user_profile, params.get("model"))
-    return _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
-                             cjk_ratio=cjk_ratio)
+    result = _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
+                               cjk_ratio=cjk_ratio)
+
+    # Write to cache on success
+    if result.get("ok"):
+        try:
+            text = result.get("result", {}).get("content", [{}])[0].get("text", "{}")
+            content = json.loads(text)
+            cache_file.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    return result
 
 
 def call_summarize_tree(params: dict) -> dict:

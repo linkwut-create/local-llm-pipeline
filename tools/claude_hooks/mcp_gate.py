@@ -41,6 +41,7 @@ _MCP_TOOLS = {
     "mcp__local-llm__local_generate_test_plan",
     "mcp__local-llm__local_draft_code",
     "mcp__local-llm__local_contextual_analyze",
+    "mcp__local-llm__local_parallel_review",
 }
 
 try:
