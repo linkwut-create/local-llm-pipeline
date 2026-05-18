@@ -82,6 +82,23 @@ def check_model_available(model: str, available: list[str]) -> bool:
     return False
 
 
+def is_profile_healthy(profile_name: str, profiles_data: dict) -> bool:
+    """Check if a profile is healthy enough to use.
+
+    Returns False if consecutive_failures >= 2 or success_rate < 0.5.
+    This causes the router to skip unhealthy profiles and use candidates instead.
+    """
+    profile = profiles_data.get("profiles", {}).get(profile_name, {})
+    h = profile.get("_health", {})
+    if not h:
+        return True  # No health data — assume healthy
+    if h.get("consecutive_failures", 0) >= 2:
+        return False
+    if h.get("success_rate", 1.0) < 0.5:
+        return False
+    return True
+
+
 def _try_audit_start(task: str, profile: str, model: str,
                      args: list[str], has_stdin: bool):
     """Record invocation start to MCP audit logger. Never raises."""
@@ -148,6 +165,35 @@ def _try_audit_result(task: str, profile: str, model: str,
         pass
 
 
+def cmd_health_report():
+    """Print model health report from profiles.json _health fields."""
+    profiles_data = load_json(PROFILES_PATH)
+    profiles = profiles_data.get("profiles", {})
+    print(f"{'Profile':30s} {'Model':40s} {'Success':>8s} {'Avg Lat':>8s} {'Timeouts':>8s} {'ConsecFail':>10s}")
+    print("-" * 110)
+    healthy = 0
+    unhealthy = 0
+    no_data = 0
+    for name, cfg in sorted(profiles.items()):
+        h = cfg.get("_health", {})
+        if not h:
+            no_data += 1
+            continue
+        rate = h.get("success_rate", 0)
+        avg = h.get("avg_latency_s", 0)
+        timeouts = h.get("last_timeout") or "-"
+        cf = h.get("consecutive_failures", 0)
+        model = cfg.get("model", "?")[:38]
+        status = "OK" if rate >= 0.9 and cf == 0 else "WARN" if rate >= 0.7 else "DEGRADED"
+        print(f"{name:30s} {model:40s} {rate:7.1%}  {avg:5.0f}s    {str(timeouts):>8s} {cf:>10}  {status}")
+        if rate >= 0.9 and cf == 0:
+            healthy += 1
+        else:
+            unhealthy += 1
+    print(f"\nHealthy: {healthy}  Unhealthy: {unhealthy}  No health data: {no_data}")
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python tools/local_llm_router.py <task> [target] [options]", file=sys.stderr)
@@ -160,6 +206,9 @@ def main():
         sys.exit(1)
 
     task = sys.argv[1]
+
+    if task == "health-report":
+        sys.exit(cmd_health_report())
 
     passthrough_args = sys.argv[2:]
 
@@ -195,6 +244,11 @@ def main():
     # Resolve model availability (with cross-backend fallback)
     if not profile_cfg.get("_env"):
         available_models = get_ollama_models()
+
+        # Phase 3B: health-aware routing — check primary profile health
+        if not is_profile_healthy(profile_name, profiles_data):
+            print(f"WARNING: Profile '{profile_name}' is unhealthy — skipping.", file=sys.stderr)
+
         if model and not check_model_available(model, available_models):
             print(f"WARNING: Model '{model}' not found in ollama list.", file=sys.stderr)
             candidates = profile_cfg.get("candidates", [])
@@ -212,28 +266,34 @@ def main():
                 llmacpp_name = task_conf.get("_llamacpp_profile", "")
                 llmacpp_cfg = profiles_data.get("profiles", {}).get(llmacpp_name, {}) if llmacpp_name else {}
                 if llmacpp_name and llmacpp_cfg:
-                    llmacpp_env = llmacpp_cfg.get("_env", "")
-                    if llmacpp_env:
-                        base_url = ""
-                        for part in llmacpp_env.split(" "):
-                            if part.startswith("LOCAL_LLM_BASE_URL="):
-                                base_url = part.split("=", 1)[1]
-                        if base_url and probe_llamacpp_endpoint(base_url):
-                            print(
-                                f"Cross-backend fallback: {profile_name} → {llmacpp_name} "
-                                f"({base_url})",
-                                file=sys.stderr,
-                            )
-                            profile_name = llmacpp_name
-                            profile_cfg = llmacpp_cfg
-                            model = llmacpp_cfg.get("model", "")
-                            risk = task_conf.get("risk", llmacpp_cfg.get("risk_level", risk))
-                        else:
-                            print(
-                                f"WARNING: llama.cpp backend {base_url or '(unknown)'} not reachable. "
-                                f"Cannot use fallback profile '{llmacpp_name}'.",
-                                file=sys.stderr,
-                            )
+                    if not is_profile_healthy(llmacpp_name, profiles_data):
+                        print(
+                            f"WARNING: Cross-backend profile '{llmacpp_name}' is unhealthy — skipped.",
+                            file=sys.stderr,
+                        )
+                    else:
+                        llmacpp_env = llmacpp_cfg.get("_env", "")
+                        if llmacpp_env:
+                            base_url = ""
+                            for part in llmacpp_env.split(" "):
+                                if part.startswith("LOCAL_LLM_BASE_URL="):
+                                    base_url = part.split("=", 1)[1]
+                            if base_url and probe_llamacpp_endpoint(base_url):
+                                print(
+                                    f"Cross-backend fallback: {profile_name} → {llmacpp_name} "
+                                    f"({base_url})",
+                                    file=sys.stderr,
+                                )
+                                profile_name = llmacpp_name
+                                profile_cfg = llmacpp_cfg
+                                model = llmacpp_cfg.get("model", "")
+                                risk = task_conf.get("risk", llmacpp_cfg.get("risk_level", risk))
+                            else:
+                                print(
+                                    f"WARNING: llama.cpp backend {base_url or '(unknown)'} not reachable. "
+                                    f"Cannot use fallback profile '{llmacpp_name}'.",
+                                    file=sys.stderr,
+                                )
                 if not profile_cfg.get("_env"):
                     print(
                         f"ERROR: Requested model '{model}' not available and no profile "

@@ -60,7 +60,7 @@ def test_profile_use_for_covers_all_tasks():
         all_use_for.update(conf.get("use_for", []))
 
     for task_name in tasks:
-        if task_name.startswith("debate-"):
+        if task_name.startswith("debate-") or task_name in ("health-report",):
             continue
         assert task_name in all_use_for, (
             f"Task '{task_name}' not in any profile's use_for"
@@ -166,6 +166,9 @@ def test_env_override_in_mtp_profiles():
         assert "_acceleration" in mtp_profile
     mistral_llamacpp = profiles.get("mistral_119b_llamacpp")
     if mistral_llamacpp:
+        status = mistral_llamacpp.get("_status", "")
+        if status.startswith("unavailable"):
+            return  # Profile known unavailable — _env not required
         env = mistral_llamacpp.get("_env", "")
         assert "LOCAL_LLM_BASE_URL" in env, "llama.cpp profile should set LOCAL_LLM_BASE_URL in _env"
 

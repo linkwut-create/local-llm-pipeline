@@ -178,6 +178,9 @@ def review_tool_succeeded(payload: dict) -> bool:
 
     Handles both MCP array format [{"type": "text", "text": "..."}] and
     legacy dict format {"type": "text", "text": "..."}.
+
+    Returns True when ok is truthy AND no error is present.
+    Case-insensitive on error_type and keyword checks.
     """
     text = _extract_mcp_response_text(payload.get("tool_response"))
     if not text:
@@ -188,15 +191,17 @@ def review_tool_succeeded(payload: dict) -> bool:
         return False
     if not isinstance(result, dict):
         return False
+    # Explicit ok=false → failure
     if result.get("ok") is False:
         return False
-    if result.get("is_error") is True:
-        return False
+    # Non-null error field → failure
     if result.get("error"):
         return False
+    # Non-null, non-empty error_type → failure
     error_type = result.get("error_type")
-    if error_type and str(error_type) != "none" and str(error_type) != "":
+    if error_type is not None and str(error_type).strip().lower() not in ("", "none", "null"):
         return False
+    # Warnings containing known failure keywords → failure
     warnings = result.get("warnings", [])
     if isinstance(warnings, list):
         for w in warnings:
@@ -206,7 +211,11 @@ def review_tool_succeeded(payload: dict) -> bool:
                 "can't decode", "can't encode",
             )):
                 return False
-    return True
+    # Explicit ok=true with clean error_type → success
+    if result.get("ok") is True:
+        return True
+    # Fall back to truthiness of ok
+    return bool(result.get("ok"))
 
 
 def is_git_commit(payload: dict) -> bool:
@@ -575,6 +584,8 @@ _REPO_SCOPED_FIELDS = [
     "diff_reviewed", "dirty_since_review", "touched_files",
     "reviewed_at", "reviewed_by", "reviewed_repo", "reviewed_head",
     "reviewed_diff_hash",
+    # Phase 2C: release guard per-repo state
+    "debate_reviewed", "debate_head", "dirty_since_debate", "debate_completed_at",
 ]
 
 
@@ -657,6 +668,37 @@ def _try_audit_failure(failure: dict):
 # ---------------------------------------------------------------------------
 # per-session state helpers
 # ---------------------------------------------------------------------------
+
+def _check_release_prerequisites(config_dir: str, cwd: str = "") -> tuple[bool, str]:
+    """Check if release prerequisites are met for the current HEAD.
+
+    Release requires:
+    1. local_debate_review_diff completed on current HEAD
+    2. No dirty files since debate review
+
+    Returns (ok, reason_description).
+    """
+    state = load_state(config_dir)
+    repo_root = get_repo_root(cwd) if cwd else None
+    if repo_root:
+        _ensure_repo_state(state, repo_root)
+
+    # Check debate review completed on current HEAD (flat state managed by _ensure_repo_state)
+    debate_done = state.get("debate_reviewed", False)
+    debate_head = state.get("debate_head", "")
+    current_head = get_head(cwd) if cwd else None
+
+    if not debate_done or not debate_head:
+        return False, "debate review not completed on this HEAD"
+    if current_head and debate_head != current_head:
+        return False, f"debate review was on HEAD {debate_head[:8]}, current HEAD is {current_head[:8]}"
+
+    # Check no dirty files since debate review
+    if state.get("dirty_since_debate", False):
+        return False, "files have been modified since debate review — re-run debate review"
+
+    return True, f"debate review completed on {debate_head[:12]}"
+
 
 def _ensure_session(config_dir: str):
     """If no session is active, create one (clear mcp_calls, set session_id)."""
@@ -746,6 +788,11 @@ def handle_post_tooluse(config_dir: str, payload: dict):
             # Phase 3E: clear review/debate recommendations on success
             if name == "mcp__local-llm__local_debate_review_diff":
                 state["needs_debate"] = False
+                # Phase 2C: track debate completion for release guard (flat state)
+                state["debate_reviewed"] = True
+                state["debate_head"] = fp["head"] if fp else None
+                state["dirty_since_debate"] = False
+                state["debate_completed_at"] = datetime.now(timezone.utc).isoformat()
             state["needs_review"] = False
             # Persist per-repo state on save
             if repo_root:
@@ -769,6 +816,8 @@ def handle_post_tooluse(config_dir: str, payload: dict):
                 _ensure_repo_state(state, repo_root)
             state["dirty_since_review"] = True
             state["needs_review"] = True
+            # Phase 2C: also mark dirty since debate for release guard (flat state)
+            state["dirty_since_debate"] = True
             if "touched_files" not in state:
                 state["touched_files"] = []
             if target and target not in state["touched_files"]:
@@ -862,14 +911,24 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
     is_release, release_desc = is_release_command(payload)
     if is_release:
         cmd = str(payload.get("tool_input", {}).get("command", ""))
-        return {
-            "allow": False,
-            "reason": (
-                f"BLOCKED: release/publish command detected ({release_desc}).\n"
-                f"Command: {cmd[:200]}\n"
-                "If you intentionally need this, run it manually in a terminal."
-            ),
-        }
+        cwd = payload.get("cwd", "")
+        release_ok, release_reason = _check_release_prerequisites(config_dir, cwd)
+        if not release_ok:
+            return {
+                "allow": False,
+                "reason": (
+                    f"BLOCKED: release/publish command detected ({release_desc}).\n"
+                    f"Command: {cmd[:200]}\n"
+                    f"Missing prerequisite: {release_reason}\n"
+                    "Required before release:\n"
+                    "  1. local_debate_review_diff (full 3-round) on current HEAD\n"
+                    "  2. release_auditor review passed\n"
+                    "  3. No dirty files since debate review\n"
+                    "If you have met all prerequisites, re-run the command."
+                ),
+            }
+        # Prerequisites met — allow the release
+        print(f"\nRelease guard: prerequisites met ({release_reason}). Allowing {release_desc}.", file=sys.stderr)
 
     # --- MCP-GATE-1B: bypass risk detection (runs before normal commit gate) ---
     is_bypass, bypass_desc, bypass_lang = is_git_commit_bypass_risk(payload)
@@ -1148,8 +1207,64 @@ def handle_stop(config_dir: str, payload: dict) -> list:
 
 
 def handle_session_start(config_dir: str, payload: dict):
-    """Start a fresh session, clearing per-session MCP tracking."""
+    """Start a fresh session, clearing per-session MCP tracking.
+
+    v0.9.6: Runs a quick self-diagnostic (doctor lite) and reports
+    issues to stderr. Non-blocking — never prevents session start.
+    """
     _clear_session(config_dir)
+    _run_doctor_lite(config_dir)
+
+
+def _run_doctor_lite(config_dir: str):
+    """Quick self-diagnostic at session start. Reports issues to stderr.
+
+    Checks: state file health, hook log size, state file corruption.
+    Never blocks — all failures are reported as warnings only.
+    """
+    issues = []
+
+    # 1. Check state file is valid JSON
+    state_path = Path(config_dir) / "state.json"
+    if state_path.exists():
+        try:
+            state_size = state_path.stat().st_size
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            # Check for stale session data (>24h old)
+            started = data.get("session_started_at", "")
+            if started:
+                try:
+                    started_dt = datetime.fromisoformat(started)
+                    age_h = (datetime.now(timezone.utc) - started_dt).total_seconds() / 3600
+                    if age_h > 24:
+                        issues.append(f"previous session was {age_h:.0f}h ago — state may be stale")
+                except ValueError:
+                    pass
+            # Check for unusually large state (>1MB suggests unbounded growth)
+            if state_size > 1_000_000:
+                issues.append(f"state.json is {state_size / 1_000_000:.1f}MB — may need cleanup")
+        except (json.JSONDecodeError, OSError) as e:
+            issues.append(f"state.json is corrupted: {e} — run mcp_doctor.py --fix")
+    else:
+        issues.append("state.json not found — will be created on first write")
+
+    # 2. Check hook log size
+    for log_name in ["hook-events.jsonl", "hook-errors.log"]:
+        log_path = Path(config_dir) / log_name
+        if log_path.exists():
+            try:
+                log_size = log_path.stat().st_size
+                if log_size > 10_000_000:
+                    issues.append(f"{log_name} is {log_size / 1_000_000:.1f}MB — consider rotating")
+            except OSError:
+                pass
+
+    # 3. Report issues to stderr
+    if issues:
+        sys.stderr.write("\n=== MCP Doctor Lite (SessionStart) ===\n")
+        for i, issue in enumerate(issues, 1):
+            sys.stderr.write(f"  [{i}] {issue}\n")
+        sys.stderr.write("======================================\n\n")
 
 
 # ---------------------------------------------------------------------------

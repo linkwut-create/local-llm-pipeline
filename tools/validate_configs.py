@@ -198,7 +198,8 @@ def validate_task_prompt_coverage(tasks_data: dict) -> list[str]:
 
     # Tasks that don't need their own prompt (internal / composite / CLI-only)
     exempt = {
-        "local_check",  # no LLM call
+        "local_check",      # no LLM call
+        "health-report",    # CLI-only, no LLM call
     }
 
     tasks = tasks_data.get("tasks", {})

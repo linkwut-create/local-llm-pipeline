@@ -30,6 +30,203 @@ from local_llm_worker import is_blocked_path
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
 
+# Quality-based escalation chain (Layer 4): task → ordered profiles by capability.
+# When confidence=low or uncertain_points>3, the server auto-escalates to the next tier.
+# Timeout errors fall back to a faster model instead.
+_ESCALATION_CHAIN = {
+    "summarize-file": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp", "code_worker"],
+    "summarize-tree": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp"],
+    "review-diff": ["commit_reviewer", "diff_reviewer", "deep_reviewer"],
+    "generate-test-plan": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "generate-test-draft": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-fix": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-feature": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
+    "suggest-improvements": ["qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
+    "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
+    "architecture-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
+    "risk-analysis": ["reasoning_checker", "deep_reasoning", "release_auditor"],
+    "logic-check": ["reasoning_checker", "deep_reasoning"],
+    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning"],
+    "contextual-analyze": ["qwen3.6_27b_mtp", "code_worker", "reasoning_checker"],
+}
+
+# Security-sensitive patterns that auto-trigger reasoning model review.
+# These patterns imply eval/exec/subprocess/file-op risk that needs deeper analysis.
+# Word-boundary patterns (simple identifiers/keywords).
+_SECURITY_CODE_RE = re.compile(
+    r'\b(eval|exec|compile|__import__|subprocess|os\.system|os\.popen'
+    r'|pickle\.loads?|pickle\.dumps?|marshal\.loads?'
+    r'|shell\s*=\s*True)\b',
+    re.IGNORECASE,
+)
+# Shell-command patterns (spaces, slashes, flags — no \b boundary).
+_SECURITY_SHELL_RE = re.compile(
+    r'(rm\s+-rf?\s+/|del\s+/[sfq]\s+/\S'
+    r'|chmod\s+[+]?777|chmod\s+[+-]?[rwx]*s'
+    r'|Remove-Item\s+-Recurse\s+-Force)',
+    re.IGNORECASE,
+)
+
+
+def _has_security_sensitive_patterns(text: str) -> bool:
+    """Check if text contains patterns that warrant reasoning-model review."""
+    return bool(_SECURITY_CODE_RE.search(text) or _SECURITY_SHELL_RE.search(text))
+
+
+def _detect_cjk_ratio(text: str) -> float:
+    """Return the fraction of CJK characters in text (0.0 - 1.0).
+
+    Used for language-aware routing: when ratio > 0.1, prefer CJK-capable profiles.
+    """
+    if not text:
+        return 0.0
+    cjk_count = 0
+    total = 0
+    for ch in text:
+        total += 1
+        cp = ord(ch)
+        for lo, hi in _CJK_RANGES:
+            if lo <= cp <= hi:
+                cjk_count += 1
+                break
+    return cjk_count / total if total > 0 else 0.0
+
+
+def _prefer_cjk_profile(current_profile: str, task: str) -> str | None:
+    """If the current profile is not CJK-capable but CJK is detected,
+    return a CJK-capable replacement from the escalation chain."""
+    chain = _ESCALATION_CHAIN.get(task, [])
+    # Find the first CJK-capable profile in the chain at or above current level
+    for p in chain:
+        if p in _CJK_CAPABLE_PROFILES:
+            if p == current_profile:
+                return None  # Already on a CJK-capable profile
+            return p
+    # Fallback: any CJK-capable profile in the chain
+    for p in chain:
+        if p in _CJK_CAPABLE_PROFILES:
+            return p
+    return None
+
+
+def _update_model_health(profile_name: str, ok: bool, elapsed_s: float,
+                          error_type: str = ""):
+    """Update _health fields in profiles.json after each invocation.
+
+    Uses weighted averages (90% old, 10% new) to smooth over outliers.
+    Never raises — failures are silent.
+    """
+    if not profile_name:
+        return
+    try:
+        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+        profiles = json.loads(profiles_path.read_text(encoding="utf-8"))
+        profile = profiles.get("profiles", {}).get(profile_name, {})
+        if not profile:
+            return
+        h = profile.get("_health", {})
+        now = datetime.now(timezone.utc).isoformat()[:10]
+
+        # Weighted success rate (90% old + 10% new)
+        old_rate = h.get("success_rate", 1.0)
+        new_point = 1.0 if ok else 0.0
+        h["success_rate"] = round(old_rate * 0.9 + new_point * 0.1, 3)
+
+        # Weighted avg latency
+        old_lat = h.get("avg_latency_s", elapsed_s)
+        h["avg_latency_s"] = round(old_lat * 0.9 + elapsed_s * 0.1, 1)
+
+        # Timeout tracking
+        if error_type == "timeout":
+            h["last_timeout"] = now
+
+        # Consecutive failures
+        if ok:
+            h["consecutive_failures"] = 0
+        else:
+            h["consecutive_failures"] = h.get("consecutive_failures", 0) + 1
+
+        h["_updated"] = now
+        profile["_health"] = h
+
+        # Write back atomically
+        tmp = str(profiles_path) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(profiles, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, profiles_path)
+    except Exception:
+        pass  # Health tracking is best-effort, never block on failure
+
+_MAX_ESCALATION_DEPTH = 1  # Prevent infinite re-invocation loops
+
+# CJK Unicode ranges for language-aware routing (Phase 3A)
+_CJK_RANGES = [
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3400, 0x4DBF),   # CJK Extension A
+    (0x3040, 0x309F),   # Hiragana
+    (0x30A0, 0x30FF),   # Katakana
+    (0xAC00, 0xD7AF),   # Hangul Syllables
+    (0x3000, 0x303F),   # CJK Symbols/Punctuation
+    (0xFF00, 0xFFEF),   # Fullwidth Forms
+    (0x2E80, 0x2EFF),   # CJK Radicals Supplement
+]
+
+# Profiles known to handle CJK/multilingual content well
+_CJK_CAPABLE_PROFILES = {"translation", "qwen3.6_27b_mtp", "qwen3.6_35b_moe_mtp",
+                         "smart_summary", "code_worker", "deep_reviewer",
+                         "reasoning_checker"}
+
+
+def _check_quality_escalation(payload: dict, current_profile: str, task: str,
+                               cjk_ratio: float = 0.0) -> str | None:
+    """Determine if quality signals warrant escalating to a more capable profile.
+
+    Returns the next profile name, or None if no escalation is needed.
+    """
+    chain = _ESCALATION_CHAIN.get(task, [])
+    if current_profile not in chain or len(chain) < 2:
+        return None
+    idx = chain.index(current_profile)
+    error_type = (payload.get("error_type") or "").lower()
+    confidence = (payload.get("confidence") or "medium").lower()
+    uncertain_count = len(payload.get("uncertain_points") or [])
+
+    # Timeout → step down to a lighter/faster model
+    if error_type == "timeout":
+        if idx > 0:
+            print(f"MCP: quality escalation — timeout, downgrading {current_profile} → {chain[0]}", file=sys.stderr)
+            return chain[0]
+        return None
+
+    # Low confidence → escalate to next tier (prefer CJK-capable if CJK detected)
+    if confidence == "low":
+        target = None
+        if cjk_ratio > 0.1 and current_profile not in _CJK_CAPABLE_PROFILES:
+            target = _prefer_cjk_profile(current_profile, task)
+        if target is None and idx + 1 < len(chain):
+            target = chain[idx + 1]
+        if target:
+            print(f"MCP: quality escalation — confidence=low, upgrading {current_profile} → {target}", file=sys.stderr)
+            return target
+        return None
+
+    # Many uncertain points → escalate
+    if uncertain_count > 3:
+        if idx + 1 < len(chain):
+            target = chain[idx + 1]
+            # If CJK detected and target is not CJK-capable, skip to first CJK-capable
+            if cjk_ratio > 0.1 and target not in _CJK_CAPABLE_PROFILES:
+                cjk_target = _prefer_cjk_profile(current_profile, task)
+                if cjk_target:
+                    target = cjk_target
+            print(f"MCP: quality escalation — {uncertain_count} uncertain_points, upgrading {current_profile} → {target}", file=sys.stderr)
+            return target
+        return None
+
+    return None
+
+
 # Per-request streaming context — set by handle_tools_call, consumed by _wrap_worker_call
 _stream_ctx = threading.local()
 
@@ -779,7 +976,9 @@ def truncate_output(data: dict, max_keys: int = 500) -> dict:
 
 
 def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
-                      timeout: int = DEFAULT_TIMEOUT) -> dict:
+                      timeout: int = DEFAULT_TIMEOUT, task: str | None = None,
+                      auto_escalate: bool = True, _depth: int = 0,
+                      cjk_ratio: float = 0.0) -> dict:
     """Run the worker subprocess and translate its output into a uniform MCP
     response. Always loads the JSON file the worker pointed to via its
     `JSON: <path>` marker — never falls back to "latest file in
@@ -817,6 +1016,14 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
     result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout)
     payload, parse_err = load_worker_output(result["stdout"])
 
+    # Phase 3B: auto-update model health (best-effort, never blocks)
+    if payload:
+        elapsed = result.get("elapsed_seconds", 0)
+        _update_model_health(
+            payload.get("profile", ""), result["ok"], elapsed,
+            error_type=(payload.get("error_type") or "").lower(),
+        )
+
     if result["ok"]:
         if payload is None:
             return build_error_response(
@@ -827,6 +1034,30 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                 elapsed=result["elapsed_seconds"],
                 request_id=request_id,
             )
+
+        # Layer 4 quality-based auto-escalation (v0.9.6)
+        if auto_escalate and task and _depth < _MAX_ESCALATION_DEPTH:
+            current_profile = payload.get("profile", "")
+            escalated = _check_quality_escalation(payload, current_profile, task, cjk_ratio=cjk_ratio)
+            if escalated:
+                # Build a new command with the escalated profile
+                escalated_cmd = list(cmd)
+                profile_found = False
+                for i, arg in enumerate(escalated_cmd):
+                    if arg == "--profile" and i + 1 < len(escalated_cmd):
+                        escalated_cmd[i + 1] = escalated
+                        profile_found = True
+                        break
+                if not profile_found:
+                    escalated_cmd.extend(["--profile", escalated])
+                # Add escalated profile as a marker to skip further escalation for this profile
+                print(f"MCP: re-running {task} with escalated profile: {escalated}", file=sys.stderr)
+                return _wrap_worker_call(
+                    tool, escalated_cmd, stdin_data=stdin_data,
+                    timeout=timeout, task=task, auto_escalate=auto_escalate,
+                    _depth=_depth + 1,
+                )
+
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
 
     return coerce_failure_response(tool, payload, result["stderr"], result["elapsed_seconds"], request_id)
@@ -870,7 +1101,7 @@ def call_summarize_file(params: dict) -> dict:
 
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
                            params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_summarize_file", cmd)
+    return _wrap_worker_call("local_summarize_file", cmd, task="summarize-file")
 
 
 def call_summarize_tree(params: dict) -> dict:
@@ -890,7 +1121,7 @@ def call_summarize_tree(params: dict) -> dict:
 
     cmd = build_router_cmd("summarize-tree", path_str, max_files, max_chars,
                            params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_summarize_tree", cmd)
+    return _wrap_worker_call("local_summarize_tree", cmd, task="summarize-tree")
 
 
 def call_generate_test_plan(params: dict) -> dict:
@@ -905,7 +1136,7 @@ def call_generate_test_plan(params: dict) -> dict:
 
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
                            params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_generate_test_plan", cmd)
+    return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan")
 
 
 REVIEW_TIMEOUT = 60
@@ -937,9 +1168,28 @@ def call_review_diff(params: dict) -> dict:
         if line_count > 100 or file_count >= 3 or (has_logic and file_count >= 2):
             return call_debate_review_diff(params)
 
+    # C2: Security-sensitive patterns auto-trigger reasoning_checker (v0.9.6)
+    reasoning_override = None
+    if not commit_gate and _has_security_sensitive_patterns(diff_text):
+        reasoning_override = "reasoning_checker"
+        print("MCP: security-sensitive patterns detected — escalating to reasoning_checker", file=sys.stderr)
+
+    # Phase 3A: CJK-aware routing — detect CJK content, prefer CJK-capable profiles
+    cjk_ratio = _detect_cjk_ratio(diff_text)
+    cjk_override = None
+    if cjk_ratio > 0.1 and not commit_gate:
+        user_profile = params.get("profile", "")
+        if user_profile not in _CJK_CAPABLE_PROFILES:
+            cjk_override = "qwen3.6_27b_mtp"  # Strong CJK capability, good for diff review
+            print(f"MCP: CJK content detected ({cjk_ratio:.1%} CJK chars) — using CJK-capable profile", file=sys.stderr)
+
     # Use the caller's profile if provided, otherwise router picks commit_reviewer default
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"), "review-diff", "--stdin"]
-    if params.get("profile"):
+    if reasoning_override:
+        cmd.extend(["--profile", reasoning_override])
+    elif cjk_override:
+        cmd.extend(["--profile", cjk_override])
+    elif params.get("profile"):
         cmd.extend(["--profile", params["profile"]])
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
@@ -1099,7 +1349,7 @@ def call_contextual_analyze(params: dict) -> dict:
     # Use the router for model resolution, then worker for actual analysis
     cmd = build_router_cmd("suggest-improvements", path_str, None, max_chars,
                            params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data)
+    return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data, task="contextual-analyze")
 
 
 def call_draft_code(params: dict) -> dict:
@@ -1132,7 +1382,7 @@ def call_draft_code(params: dict) -> dict:
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
-    return _wrap_worker_call("local_draft_code", cmd, stdin_data=prompt)
+    return _wrap_worker_call("local_draft_code", cmd, stdin_data=prompt, task=task)
 
 
 TOOL_HANDLERS = {
