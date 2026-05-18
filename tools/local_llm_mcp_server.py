@@ -79,6 +79,67 @@ def _has_security_sensitive_patterns(text: str) -> bool:
     return bool(_SECURITY_CODE_RE.search(text) or _SECURITY_SHELL_RE.search(text))
 
 
+# Logic-indicator patterns for proactive routing (reused from call_review_diff).
+_LOGIC_RE = re.compile(
+    r'^(?:[+-]\s*)?(?:def |class |async |await |return |if __|import |from \w+ import'
+    r'|@\w+|raise |yield |with |try:|except |finally:|while |for )',
+    re.MULTILINE,
+)
+
+# Code-density patterns: lines that look like source code vs prose.
+_CODE_LINE_RE = re.compile(
+    r'^\s*(def |class |import |from |#|//|/\*|package |use |require |fn |pub |let |var |const )',
+    re.MULTILINE,
+)
+
+
+def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
+    """Analyze input text and return routing-relevant characteristics.
+
+    Used by tool handlers to make proactive profile selections before the
+    first worker invocation.  Cheap — regex-only, no model calls.
+
+    Returns a dict with keys used by callers for routing decisions.
+    """
+    char_count = len(text)
+    line_count = text.count('\n') + 1 if text else 0
+    cjk_ratio = _detect_cjk_ratio(text)
+    has_security = _has_security_sensitive_patterns(text)
+
+    # File count (diff mode) or code-line density (file mode)
+    file_count = 0
+    has_logic = False
+    code_density = 0.0
+
+    if is_diff:
+        file_count = len(re.findall(r'^diff --git ', text, re.MULTILINE))
+        has_logic = bool(_LOGIC_RE.search(text))
+    else:
+        if text:
+            code_lines = len(_CODE_LINE_RE.findall(text))
+            total_lines = max(line_count, 1)
+            code_density = code_lines / total_lines
+
+    # Complexity tier for routing decisions
+    if char_count > 80_000 or line_count > 2_000 or file_count > 5 or has_security:
+        tier = "heavy"
+    elif char_count > 20_000 or line_count > 500 or file_count >= 3 or cjk_ratio > 0.1:
+        tier = "normal"
+    else:
+        tier = "light"
+
+    return {
+        "char_count": char_count,
+        "line_count": line_count,
+        "file_count": file_count,
+        "cjk_ratio": cjk_ratio,
+        "has_security": has_security,
+        "has_logic": has_logic,
+        "code_density": code_density,
+        "complexity_tier": tier,
+    }
+
+
 def _detect_cjk_ratio(text: str) -> float:
     """Return the fraction of CJK characters in text (0.0 - 1.0).
 
@@ -1104,9 +1165,46 @@ def call_summarize_file(params: dict) -> dict:
     if max_chars is not None:
         max_chars = min(int(max_chars), MAX_PATH_MAX_CHARS)
 
+    # Proactive routing: sample the file to detect CJK, code density, and size
+    user_profile = params.get("profile", "")
+    proactive_profile = None
+    cjk_ratio = 0.0
+    try:
+        fpath = Path(path_str).resolve()
+        fsize = fpath.stat().st_size
+        # Estimate lines (crude: ~60 chars/line avg for code, ~80 for prose)
+        est_lines = fsize // 60
+        sample = fpath.read_text(encoding="utf-8", errors="replace")[:8192]
+        info = _classify_input_complexity(sample, is_diff=False)
+        info["char_count"] = max(info["char_count"], fsize)
+        info["line_count"] = max(info["line_count"], est_lines)
+        info["complexity_tier"] = (
+            "heavy" if fsize > 80_000 or est_lines > 2_000 else
+            "normal" if fsize > 20_000 or info["cjk_ratio"] > 0.1 else
+            "light"
+        )
+        cjk_ratio = info["cjk_ratio"]
+        if not user_profile:
+            chain = _ESCALATION_CHAIN.get("summarize-file", [])
+            if info["complexity_tier"] == "heavy" and len(chain) >= 3:
+                proactive_profile = chain[2]  # qwen3.6_27b_mtp
+            elif info["complexity_tier"] == "normal" and len(chain) >= 2:
+                # CJK-aware: prefer CJK-capable profile if CJK detected
+                if info["cjk_ratio"] > 0.1:
+                    proactive_profile = _prefer_cjk_profile(chain[0], "summarize-file") or chain[1]
+                else:
+                    proactive_profile = chain[1]  # smart_summary
+            if proactive_profile:
+                print(f"MCP: proactive routing — {info['complexity_tier']} file "
+                      f"({fsize:,}B, ~{est_lines}L, {info['cjk_ratio']:.0%}CJK) → {proactive_profile}",
+                      file=sys.stderr)
+    except (OSError, UnicodeError):
+        pass
+
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
-                           params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_summarize_file", cmd, task="summarize-file")
+                           user_profile or proactive_profile, params.get("model"))
+    return _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
+                             cjk_ratio=cjk_ratio)
 
 
 def call_summarize_tree(params: dict) -> dict:
@@ -1139,9 +1237,37 @@ def call_generate_test_plan(params: dict) -> dict:
             profile=params.get("profile"), model=params.get("model"),
         )
 
+    # Proactive routing: read the file to count definitions and estimate complexity
+    user_profile = params.get("profile", "")
+    proactive_profile = None
+    cjk_ratio = 0.0
+    try:
+        fpath = Path(path_str).resolve()
+        content = fpath.read_text(encoding="utf-8", errors="replace")[:16_384]
+        info = _classify_input_complexity(content, is_diff=False)
+        cjk_ratio = info["cjk_ratio"]
+        # Count function/class/method definitions for complexity estimate
+        def_count = len(re.findall(
+            r'^\s*(?:async\s+)?def\s+\w+|^\s*class\s+\w+',
+            content, re.MULTILINE,
+        ))
+        if not user_profile:
+            if info["complexity_tier"] == "heavy" or def_count > 20:
+                proactive_profile = "deep_reviewer"
+            elif (info["complexity_tier"] == "normal" or def_count > 10
+                  or info["cjk_ratio"] > 0.1):
+                proactive_profile = "qwen3.6_27b_mtp"
+            if proactive_profile:
+                print(f"MCP: proactive routing — {info['complexity_tier']} file "
+                      f"({info['char_count']:,}B, {info['line_count']}L, {def_count} defs) → {proactive_profile}",
+                      file=sys.stderr)
+    except (OSError, UnicodeError):
+        pass
+
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
-                           params.get("profile"), params.get("model"))
-    return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan")
+                           user_profile or proactive_profile, params.get("model"))
+    return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan",
+                             cjk_ratio=cjk_ratio)
 
 
 REVIEW_TIMEOUT = 60
@@ -1199,6 +1325,12 @@ def call_review_diff(params: dict) -> dict:
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
+    # Non-commit-gate: route through _wrap_worker_call for quality escalation (v0.9.6)
+    if not commit_gate:
+        return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
+                                 task="review-diff", cjk_ratio=cjk_ratio)
+
+    # Commit gate: fast direct path with 60s timeout
     request_id = _make_request_id()
     result = run_subprocess(cmd, stdin_data=diff_text, timeout=REVIEW_TIMEOUT)
 
@@ -1249,6 +1381,18 @@ def call_debate_review_diff(params: dict) -> dict:
     use_summary_only = params.get("summary_only", True)
     profiles_override = params.get("profiles")
     rounds_override = params.get("rounds")
+
+    # Auto round-count: analyze diff to decide fast (2) vs full (3) rounds
+    # Only applies when the caller hasn't pinned a specific configuration.
+    if not profiles_override and not rounds_override and params.get("fast") is None:
+        line_count = diff_text.count('\n')
+        file_count = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
+        has_security = _has_security_sensitive_patterns(diff_text)
+        if line_count > 300 or file_count > 5 or has_security:
+            use_fast = False
+            print(f"MCP: debate auto full-mode ({line_count}L, {file_count} files"
+                  + (", security" if has_security else "") + ") → 3 rounds",
+                  file=sys.stderr)
 
     cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_debate.py"), "review-diff", "--stdin"]
     if profiles_override:

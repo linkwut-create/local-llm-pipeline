@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 12.2,
+        "avg_latency_s": 8.9,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -90,7 +90,7 @@
       "_last_tested": "2026-05-12",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 15,
+        "avg_latency_s": 13.7,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -124,7 +124,7 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 27,
+        "avg_latency_s": 20.0,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"

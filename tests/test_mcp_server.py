@@ -726,7 +726,7 @@ def test_mcp_server_stdin_reconfigure(monkeypatch):
 
 
 def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
-    """call_review_diff must pass timeout=REVIEW_TIMEOUT (60) to run_subprocess."""
+    """call_review_diff with commit_gate=True must pass timeout=REVIEW_TIMEOUT (60)."""
     captured = {}
 
     def _capture_run(cmd, **kwargs):
@@ -745,8 +745,26 @@ def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
                                          "result": {"summary": "ok"}}, None))
     # Single-file diff: no auto-debate trigger (< 100 lines, 1 file, no logic)
     small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
-    result = mcp.call_review_diff({"diff_text": small})
+    result = mcp.call_review_diff({"diff_text": small, "commit_gate": True})
     assert result["ok"] is True
     assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 60, (
         f"Expected timeout={mcp.REVIEW_TIMEOUT}, got {captured['kwargs'].get('timeout')}"
     )
+
+
+def test_review_diff_non_gate_uses_wrap_worker_call(monkeypatch):
+    """call_review_diff without commit_gate routes through _wrap_worker_call for quality escalation."""
+    captured = {}
+
+    def _capture_wrap(tool, cmd, **kwargs):
+        captured["tool"] = tool
+        captured["cmd"] = cmd
+        captured["kwargs"] = dict(kwargs)
+        return {"ok": True, "tool": tool, "result": {"summary": "ok"}}
+
+    monkeypatch.setattr(mcp, "_wrap_worker_call", _capture_wrap)
+    small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
+    result = mcp.call_review_diff({"diff_text": small})
+    assert result["ok"] is True
+    assert captured["tool"] == "local_review_diff"
+    assert "review-diff" in captured["cmd"]

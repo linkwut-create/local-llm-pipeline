@@ -176,10 +176,69 @@ def match_model(profile_name: str, spec: dict, base_models: list[str]) -> str | 
     return candidates[0]
 
 
+def auto_tune_recommendations(existing_profiles: dict, all_models: list[str],
+                               base_models: list[str]) -> list[dict]:
+    """Compare _health data between current profile models and available candidates.
+
+    Returns a list of recommendation dicts with keys:
+        profile, current_model, current_latency, candidate, candidate_latency, improvement_pct
+    """
+    recs = []
+    for profile_name, spec in PROFILE_SPECS.items():
+        current = existing_profiles.get(profile_name, {})
+        current_model = current.get("model", "")
+        h = current.get("_health", {})
+        current_latency = h.get("avg_latency_s")
+        if current_latency is None:
+            continue
+
+        # Find candidate models for this profile among available base models
+        candidates = []
+        for model in base_models:
+            model_lower = model.lower()
+            for kw in spec["keywords"]:
+                if kw.lower() in model_lower and model != current_model:
+                    candidates.append(model)
+                    break
+
+        # Check each candidate's health data in existing profiles
+        for cand_model in candidates:
+            # Look for health data across ALL profiles (a candidate might be the
+            # primary model of a different profile)
+            cand_health = None
+            for ep_name, ep_data in existing_profiles.items():
+                if ep_data.get("model") == cand_model:
+                    cand_health = ep_data.get("_health", {})
+                    break
+            cand_latency = cand_health.get("avg_latency_s") if cand_health else None
+            if cand_latency is None:
+                continue
+            if cand_health.get("success_rate", 0) < 0.8:
+                continue  # Unreliable candidate
+
+            if cand_latency < current_latency:
+                pct = (current_latency - cand_latency) / current_latency * 100
+                recs.append({
+                    "profile": profile_name,
+                    "current_model": current_model,
+                    "current_latency": current_latency,
+                    "current_success": h.get("success_rate", 1.0),
+                    "candidate": cand_model,
+                    "candidate_latency": cand_latency,
+                    "candidate_success": cand_health.get("success_rate", 1.0),
+                    "improvement_pct": round(pct, 1),
+                })
+                break  # Only report the first better candidate per profile
+    recs.sort(key=lambda r: r["improvement_pct"], reverse=True)
+    return recs
+
+
 def main():
     parser = argparse.ArgumentParser(description="Update profiles.json from Ollama models")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing")
     parser.add_argument("--reset", action="store_true", help="Ignore existing profiles, regenerate from scratch")
+    parser.add_argument("--auto-tune", action="store_true",
+                        help="Use _health data to recommend model swaps when candidates have better latency")
     args = parser.parse_args()
 
     all_models = get_ollama_models()
@@ -236,6 +295,24 @@ def main():
     missing = sum(1 for _, s, _, _ in changes if s == "NO MATCH")
 
     print(f"\n{updates} updated, {keeps} kept, {missing} unmatched")
+
+    # Auto-tune: health-aware model swap recommendations
+    if args.auto_tune:
+        existing_full = {}
+        if PROFILES_PATH.exists():
+            data = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
+            existing_full = data.get("profiles", {})
+        recs = auto_tune_recommendations(existing_full, all_models, base_models)
+        if recs:
+            print(f"\n--- Auto-Tune Recommendations ({len(recs)}) ---")
+            print(f"{'Profile':<22s} {'Current':<30s} {'Lat':>6s} → {'Candidate':<30s} {'Lat':>6s} {'Better':>7s}")
+            print("-" * 115)
+            for r in recs:
+                print(f"  {r['profile']:<20s} {r['current_model']:<30s} {r['current_latency']:>5.1f}s → "
+                      f"{r['candidate']:<30s} {r['candidate_latency']:>5.1f}s {r['improvement_pct']:>6.1f}%")
+            print("\nTo apply: re-run with the recommended models in profiles.json, or use --reset.")
+        else:
+            print("\n--- Auto-Tune: No improvements found. All profiles use optimal models. ---")
 
     if args.dry_run:
         print("\nDRY RUN — no files written.")
