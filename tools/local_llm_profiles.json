@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 3.9,
+        "avg_latency_s": 3.5,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -42,7 +42,7 @@
       "_last_tested": "2026-05-12"
     },
     "code_worker": {
-      "model": "qwen3-coder-next-q8:latest",
+      "model": "qwen3-coder:30b",
       "temperature": 0.15,
       "max_chars": 90000,
       "max_output_chars": 4000,
@@ -124,7 +124,7 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 12.2,
+        "avg_latency_s": 11.1,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"
@@ -170,7 +170,7 @@
       "_constraints": "Backup only. Prefer mistral-medium for release audit. Never in commit gate."
     },
     "reasoning_checker": {
-      "model": "qwen3.5-27b-reasoning:latest",
+      "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
       "temperature": 0.1,
       "max_chars": 100000,
       "max_output_chars": 5000,
@@ -226,7 +226,7 @@
     "release_auditor": {
       "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
       "temperature": 0.1,
-      "max_chars": 160000,
+      "max_chars": 140000,
       "max_output_chars": 6000,
       "use_for": [
         "architecture-review",

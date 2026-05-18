@@ -771,10 +771,16 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     profile = load_profile(profile_name)
 
     config = WorkerConfig()
+    # Auto-detect provider: when LOCAL_LLM_BASE_URL points to a non-Ollama
+    # endpoint (e.g. llama.cpp on ports 8080-8083), switch to openai-compatible.
+    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    auto_provider = "ollama"
+    if env_base and ":11434" not in env_base:
+        auto_provider = "openai-compatible"
     config.provider = (
         args.provider
         or os.environ.get("LOCAL_LLM_PROVIDER")
-        or "ollama"
+        or auto_provider
     )
     config.model = (
         args.model
@@ -783,7 +789,6 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     )
     config.profile = profile_name
 
-    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
     if config.provider == "ollama":
         ollama_host = os.environ.get("OLLAMA_HOST", "")
         if ollama_host and not ollama_host.startswith("http"):

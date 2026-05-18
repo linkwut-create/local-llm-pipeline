@@ -240,7 +240,7 @@ def main():
     parser.add_argument("--auto-tune", action="store_true",
                         help="Use _health data to recommend model swaps when candidates have better latency")
     parser.add_argument("--apply", action="store_true",
-                        help="Apply auto-tune recommendations with >20% improvement (requires --auto-tune)")
+                        help="Apply auto-tune recommendations with >20%% improvement (requires --auto-tune)")
     args = parser.parse_args()
 
     if args.apply and not args.auto_tune:
@@ -260,7 +260,9 @@ def main():
         data = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
         existing = data.get("profiles", {})
 
-    new_profiles = {}
+    # Start from existing profiles (preserving all manual entries like smart_summary,
+    # qwen3.6_27b_mtp, gemma4_26b, etc.) and only update the PROFILE_SPECS entries.
+    new_profiles = dict(existing) if not args.reset else {}
     changes = []
 
     for profile_name, spec in PROFILE_SPECS.items():
@@ -277,14 +279,19 @@ def main():
             chosen = old_model or ""
             status = "NO MATCH"
 
-        new_profiles[profile_name] = {
-            "model": chosen,
-            "temperature": spec["temperature"],
-            "max_chars": spec["max_chars"],
-            "max_output_chars": spec["max_output_chars"],
-            "use_for": spec["use_for"],
-            "risk_level": spec["risk_level"],
-        }
+        # Update only the spec-managed fields; preserve everything else (_health, _env, etc.)
+        entry = new_profiles.get(profile_name, {})
+        entry["model"] = chosen
+        entry["temperature"] = spec["temperature"]
+        entry["max_chars"] = spec["max_chars"]
+        entry["max_output_chars"] = spec["max_output_chars"]
+        # Preserve existing use_for if profile already exists, otherwise use spec
+        if profile_name not in existing:
+            entry["use_for"] = spec["use_for"]
+        elif "use_for" not in entry:
+            entry["use_for"] = spec["use_for"]
+        entry["risk_level"] = spec["risk_level"]
+        new_profiles[profile_name] = entry
 
         icon = {"KEEP": "  ", "UPDATE": "->", "NEW": " +", "NO MATCH": " !"}[status]
         old_str = f" (was: {old_model})" if old_model and status == "UPDATE" else ""
@@ -293,8 +300,14 @@ def main():
 
     output = {
         "profiles": new_profiles,
-        "default_profile": "fast_summary",
+        "default_profile": data.get("default_profile", "fast_summary") if not args.reset else "fast_summary",
     }
+    # Preserve _backends and _notes metadata when not resetting
+    if not args.reset:
+        if "_backends" in data:
+            output["_backends"] = data["_backends"]
+        if "_notes" in data:
+            output["_notes"] = data["_notes"]
 
     updates = sum(1 for _, s, _, _ in changes if s in ("UPDATE", "NEW"))
     keeps = sum(1 for _, s, _, _ in changes if s == "KEEP")
