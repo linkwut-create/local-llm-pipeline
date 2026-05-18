@@ -307,6 +307,29 @@
       "_drafter": "gemma-4-26B-A4B-it-assistant-F16.gguf (815MB, on laptop)",
       "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup."
     },
+    "gemma4_31b": {
+      "model": "gemma4-31b-opus:latest",
+      "temperature": 0.15,
+      "max_chars": 120000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "deep-code-review",
+        "architecture-review",
+        "risk-analysis",
+        "suggest-improvements",
+        "summarize-file",
+        "summarize-tree"
+      ],
+      "candidates": [
+        "gemma-4-31b-q8:latest",
+        "gemma4-31b-opus:latest",
+        "gemma4-26b-it:q8_0"
+      ],
+      "risk_level": "medium",
+      "_benchmark": "Gemma 4 31B — Google's 31B flagship. Opus-distilled variant available. 32-35GB.",
+      "_drafter": "gemma-4-31B-it-assistant-F16.gguf (911MB, on zero12) — MTP ready when llama.cpp supports Gemma 4 MTP",
+      "_status": "available — Ollama"
+    },
     "mistral_119b_llamacpp": {
       "model": "mistral-small-119b:q5",
       "temperature": 0.1,
