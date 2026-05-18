@@ -370,10 +370,12 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
 
     # 6b. Backend-aware + GPU-aware: prefer llama.cpp for speed, Ollama for stability
     try:
+        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+        pd6 = json.loads(profiles_path.read_text(encoding="utf-8"))
         loaded = _get_loaded_models()
         all_loaded = loaded.get("ollama", set()) | loaded.get("llamacpp", set())
         if all_loaded:
-            p_cfg = pd.get("profiles", {}).get(profile, {})
+            p_cfg = pd6.get("profiles", {}).get(profile, {})
             p_model = p_cfg.get("model", "")
             p_has_env = bool(p_cfg.get("_env", ""))
             p_variant = p_cfg.get("_variant_of", "")
@@ -381,26 +383,23 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
             # Backend preference: use llama.cpp for fast tasks when available
             is_fast_task = task in ("summarize-file", "summarize-tree",
                                     "suggest-improvements", "rewrite-text",
-                                    "extract-todos")
-            is_deep_task = task in ("deep-code-review", "architecture-review",
-                                    "release-risk-review")
+                                    "extract-todos", "find-related-files")
 
-            # If current profile is Ollama and has a llama.cpp variant,
-            # prefer the variant for fast tasks when it's loaded
-            if is_fast_task and p_variant and not p_has_env:
-                variant_cfg = pd.get("profiles", {}).get("gemma4_26b_llamacpp", {})
-                v_model = variant_cfg.get("model", "")
-                if (v_model in loaded.get("llamacpp", set())
-                        and _profile_is_healthy("gemma4_26b_llamacpp")
-                        and "gemma4_26b_llamacpp" in chain):
-                    print(f"MCP: backend-preference — using llama.cpp variant for fast task", file=sys.stderr)
+            # For fast tasks, jump to llama.cpp variant if healthy (endpoint alive)
+            if is_fast_task and "gemma4_26b_llamacpp" in chain:
+                # Check endpoint health + any model is loaded (name may differ from profile)
+                if (loaded.get("llamacpp")  # at least 1 model loaded
+                        and _profile_is_healthy("gemma4_26b_llamacpp")):
+                    ollama_name = profile
                     profile = "gemma4_26b_llamacpp"
+                    index = chain.index(profile)
+                    print(f"MCP: backend-preference — {ollama_name} -> {profile} (llama.cpp, 0.4s)", file=sys.stderr)
 
             # If current profile's model is NOT loaded, check neighbors
             elif p_model and p_model not in all_loaded:
                 for i in range(index - 1, index + 2):
                     if 0 <= i < len(chain) and i != index:
-                        nb_cfg = pd.get("profiles", {}).get(chain[i], {})
+                        nb_cfg = pd6.get("profiles", {}).get(chain[i], {})
                         nb_model = nb_cfg.get("model", "")
                         # Prefer llama.cpp-loaded models for speed
                         nb_loaded = nb_model in loaded.get("llamacpp", set())
@@ -446,7 +445,8 @@ def _profile_is_healthy(profile_name: str) -> bool:
             if part.startswith("LOCAL_LLM_BASE_URL="):
                 base_url = part.split("=", 1)[1].rstrip("/")
                 try:
-                    resp = requests.get(f"{base_url}/v1/models", timeout=5)
+                    url = f"{base_url}/models" if base_url.endswith("/v1") else f"{base_url}/v1/models"
+                    resp = requests.get(url, timeout=5)
                     if resp.status_code != 200:
                         return False
                 except Exception:
@@ -496,7 +496,8 @@ def _get_loaded_models() -> dict[str, set[str]]:
             for part in env_str.split(" "):
                 if part.startswith("LOCAL_LLM_BASE_URL="):
                     base_url = part.split("=", 1)[1].rstrip("/")
-                    resp = requests.get(f"{base_url}/v1/models", timeout=5)
+                    url = f"{base_url}/models" if base_url.endswith("/v1") else f"{base_url}/v1/models"
+                    resp = requests.get(url, timeout=5)
                     if resp.status_code == 200:
                         for m in resp.json().get("data", []):
                             m_name = m.get("id", "")
