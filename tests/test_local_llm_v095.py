@@ -33,7 +33,7 @@ def test_version_file_is_095():
     vf = PROJECT_ROOT / "VERSION"
     assert vf.exists(), "VERSION file is missing"
     content = vf.read_text(encoding="utf-8").strip()
-    assert content == "0.9.5", f"VERSION should be 0.9.5, got: {content}"
+    assert content == "0.9.6", f"VERSION should be 0.9.6, got: {content}"
 
 
 def test_mcp_server_version_matches_version_file():
@@ -138,7 +138,7 @@ def test_read_version_falls_back_to_project_root(monkeypatch):
 
     version = mcp._read_version()
     assert version != "unknown", "Fallback to PROJECT_ROOT should find VERSION"
-    assert version == "0.9.5"
+    assert version == "0.9.6"
 
 
 def test_read_version_unknown_when_no_version_anywhere(tmp_path, monkeypatch):
@@ -285,6 +285,7 @@ def test_no_hardcoded_094_in_server_source():
     src = (TOOLS_DIR / "local_llm_mcp_server.py").read_text(encoding="utf-8")
     assert 'SERVER_VERSION = "0.9.4"' not in src
     assert 'SERVER_VERSION = "0.9.5"' not in src
+    assert 'SERVER_VERSION = "0.9.6"' not in src
 
 
 # --------------------------------------------------------------------------- #

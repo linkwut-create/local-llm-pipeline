@@ -24,6 +24,13 @@ except ImportError:
 OLLAMA_BASE_DEFAULT = "http://localhost:11434"
 OPENAI_COMPAT_BASE = "http://localhost:8080"
 
+# llama.cpp MTP endpoints to check (remote GPU server + local)
+_MTP_ENDPOINTS = [
+    ("http://193.168.2.2:8080/v1", "zero12 Gemma4-26B-MTP"),
+    ("http://193.168.2.2:8082/v1", "zero12 Qwen3.6-27B-MTP"),
+    ("http://193.168.2.2:8083/v1", "zero12 Qwen3.6-35B-MoE-MTP"),
+]
+
 
 def resolve_ollama_base_url() -> tuple[str, str]:
     """Resolve Ollama base URL from env vars. Returns (base_url, source_description)."""
@@ -152,6 +159,24 @@ def check_openai_compat() -> CheckResult:
         return CheckResult("openai_compat", False, f"not reachable: {e}")
 
 
+def check_mtp_endpoints() -> list[CheckResult]:
+    """Check each llama.cpp MTP endpoint for model availability."""
+    results: list[CheckResult] = []
+    import requests as _requests
+    for url, label in _MTP_ENDPOINTS:
+        try:
+            resp = _requests.get(f"{url}/models" if not url.endswith("/models") else url, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            models = [m.get("id", m.get("name", "?")) for m in data.get("data", [])]
+            results.append(CheckResult(f"mtp_{label.replace(' ', '_').lower()}", True,
+                                      f"{label}: {len(models)} models", data=models))
+        except Exception as e:
+            results.append(CheckResult(f"mtp_{label.replace(' ', '_').lower()}", False,
+                                      f"{label}: not reachable ({e})"))
+    return results
+
+
 def run_ollama_list() -> CheckResult:
     try:
         output = subprocess.check_output(["ollama", "list"], text=True, stderr=subprocess.DEVNULL)
@@ -263,6 +288,11 @@ def main():
     print_section("OpenAI-Compatible Server")
     oai_result = check_openai_compat()
     print(f"  [{('OK' if oai_result.ok else 'FAIL'):4s}] {oai_result.detail}")
+
+    print_section("llama.cpp MTP Endpoints (zero12)")
+    mtp_results = check_mtp_endpoints()
+    for r in mtp_results:
+        print(f"  [{('OK' if r.ok else 'FAIL'):4s}] {r.detail}")
 
     all_models = []
     if cli_result.ok and cli_result.data:

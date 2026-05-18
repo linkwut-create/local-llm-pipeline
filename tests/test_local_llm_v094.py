@@ -32,7 +32,7 @@ def test_version_file_is_094():
     vf = Path(__file__).parent.parent / "VERSION"
     assert vf.exists(), "VERSION file is missing"
     content = vf.read_text(encoding="utf-8").strip()
-    assert content == "0.9.5", f"VERSION should be 0.9.5, got: {content}"
+    assert content == "0.9.6", f"VERSION should be 0.9.6, got: {content}"
 
 
 def test_mcp_server_version_matches_version_file():

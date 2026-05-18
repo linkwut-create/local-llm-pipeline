@@ -1025,20 +1025,72 @@ def coerce_failure_response(tool: str, payload: dict | None,
     )
 
 
-def truncate_output(data: dict, max_keys: int = 500) -> dict:
-    """Truncate large outputs to keep MCP responses manageable."""
+# Fields to prioritize in the result dict when compressing — kept in full,
+# others may be truncated if the response is large.
+_PRIORITY_RESULT_FIELDS = {
+    "summary", "high_confidence_findings", "error", "error_type", "ok",
+}
+
+
+def _strip_nulls(obj):
+    """Recursively remove None values and empty lists/dicts to save space."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items()
+                if v is not None and v != [] and v != {}}
+    if isinstance(obj, list):
+        return [_strip_nulls(v) for v in obj
+                if v is not None and v != [] and v != {}]
+    return obj
+
+
+def truncate_output(data: dict, max_chars: int = 50_000) -> dict:
+    """Truncate large outputs to keep MCP responses agent-consumable.
+
+    When the serialized JSON exceeds max_chars, strips nulls/empties first,
+    then truncates verbose string fields and long lists.
+    """
     raw = json.dumps(data, ensure_ascii=False)
-    if len(raw) <= 50000:
+    if len(raw) <= max_chars:
         return data
-    truncated = {}
-    for k, v in data.items():
-        if isinstance(v, str) and len(v) > 5000:
-            truncated[k] = v[:5000] + "... [truncated]"
-        elif isinstance(v, list) and len(v) > 50:
-            truncated[k] = v[:50] + ["... [truncated]"]
-        else:
-            truncated[k] = v
-    return truncated
+
+    # First pass: strip nulls and empties (often saves 20-40%)
+    stripped = _strip_nulls(data)
+    raw = json.dumps(stripped, ensure_ascii=False)
+    if len(raw) <= max_chars:
+        return stripped
+
+    # Second pass: truncate verbose fields in result
+    result = stripped.get("result", {})
+    if isinstance(result, dict):
+        for k, v in list(result.items()):
+            if k in _PRIORITY_RESULT_FIELDS:
+                continue
+            if isinstance(v, str) and len(v) > 2000:
+                result[k] = v[:2000] + "... [truncated]"
+            elif isinstance(v, list) and len(v) > 20:
+                result[k] = v[:20] + ["... [truncated]"]
+        stripped["result"] = result
+
+    # Third pass: if still too large, truncate all non-priority fields heavily
+    raw = json.dumps(stripped, ensure_ascii=False)
+    if len(raw) > max_chars:
+        for k in list(stripped.keys()):
+            if k in ("tool", "task", "ok", "error", "error_type", "request_id",
+                     "elapsed_seconds", "profile", "model"):
+                continue
+            if isinstance(stripped[k], dict):
+                stripped[k] = _strip_nulls(stripped[k])
+                # Keep only priority sub-fields
+                for sk in list(stripped[k].keys()):
+                    if sk not in _PRIORITY_RESULT_FIELDS:
+                        sv = stripped[k][sk]
+                        if isinstance(sv, str) and len(sv) > 500:
+                            stripped[k][sk] = sv[:500] + "... [truncated]"
+            elif isinstance(stripped[k], str) and len(stripped[k]) > 500:
+                stripped[k] = stripped[k][:500] + "... [truncated]"
+
+    stripped["_compressed"] = True
+    return stripped
 
 
 def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,

@@ -239,7 +239,13 @@ def main():
     parser.add_argument("--reset", action="store_true", help="Ignore existing profiles, regenerate from scratch")
     parser.add_argument("--auto-tune", action="store_true",
                         help="Use _health data to recommend model swaps when candidates have better latency")
+    parser.add_argument("--apply", action="store_true",
+                        help="Apply auto-tune recommendations with >20% improvement (requires --auto-tune)")
     args = parser.parse_args()
+
+    if args.apply and not args.auto_tune:
+        print("Error: --apply requires --auto-tune")
+        sys.exit(2)
 
     all_models = get_ollama_models()
     if not all_models:
@@ -305,12 +311,27 @@ def main():
         recs = auto_tune_recommendations(existing_full, all_models, base_models)
         if recs:
             print(f"\n--- Auto-Tune Recommendations ({len(recs)}) ---")
-            print(f"{'Profile':<22s} {'Current':<30s} {'Lat':>6s} → {'Candidate':<30s} {'Lat':>6s} {'Better':>7s}")
-            print("-" * 115)
+            print(f"{'Profile':<22s} {'Current':<30s} {'Lat':>6s} → {'Candidate':<30s} {'Lat':>6s} {'Better':>7s} {'Action':>10s}")
+            print("-" * 125)
+            applied_count = 0
             for r in recs:
+                action = ""
+                if args.apply and r["improvement_pct"] > 20:
+                    new_profiles[r["profile"]]["model"] = r["candidate"]
+                    action = "APPLIED"
+                    applied_count += 1
+                elif args.apply:
+                    action = "skipped"
+                else:
+                    action = "manual"
                 print(f"  {r['profile']:<20s} {r['current_model']:<30s} {r['current_latency']:>5.1f}s → "
-                      f"{r['candidate']:<30s} {r['candidate_latency']:>5.1f}s {r['improvement_pct']:>6.1f}%")
-            print("\nTo apply: re-run with the recommended models in profiles.json, or use --reset.")
+                      f"{r['candidate']:<30s} {r['candidate_latency']:>5.1f}s {r['improvement_pct']:>6.1f}% {action:>10s}")
+            if args.apply and applied_count:
+                print(f"\n  {applied_count} recommendation(s) auto-applied (improvement >20%).")
+            elif args.apply:
+                print("\n  No recommendations met the >20% threshold for auto-apply.")
+            if not args.apply:
+                print("\nTo apply: re-run with --apply to auto-apply recommendations with >20% improvement.")
         else:
             print("\n--- Auto-Tune: No improvements found. All profiles use optimal models. ---")
 

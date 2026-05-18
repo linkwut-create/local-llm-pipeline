@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.9.6 (2026-05-19)
+
+- Proactive input-based routing: call_summarize_file, call_generate_test_plan,
+  call_review_diff, and call_debate_review_diff now analyze input characteristics
+  (file size, CJK ratio, definition count, security patterns, diff complexity)
+  to select the right profile BEFORE the first model invocation.
+- New _classify_input_complexity() shared function for all tool handlers.
+- Non-commit-gate review_diff routes through _wrap_worker_call for quality escalation.
+- Debate auto-decides 2-round vs 3-round based on line count, file count, security.
+- Health-aware profile auto-tuning: update_profiles_from_ollama.py --auto-tune
+  compares _health data and recommends model swaps. --apply auto-applies >20% improvements.
+- Smarter MCP output compression: _strip_nulls, priority field preservation, multi-pass truncation.
+- llama.cpp MTP startup script for zero12 (tools/start_llamacpp_mtp.sh).
+- local_check.py now probes remote llama.cpp MTP endpoints (ports 8080/8082/8083).
+- Updated .codex/local-llm-worker.md with all 8 MCP tools and proactive routing docs.
+- AGENTS.md corrected to 8 MCP tools, memory files updated.
+
 ## v0.9.5 (2026-05-10)
 
 - Fix version provenance: _read_version() reads from LOCAL_LLM_SOURCE_REPO, not target project.
