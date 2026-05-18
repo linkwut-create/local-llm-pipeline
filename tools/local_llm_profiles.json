@@ -20,7 +20,7 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 12.1,
+        "avg_latency_s": 10.9,
         "last_timeout": null,
         "consecutive_failures": 0,
         "_updated": "2026-05-18"

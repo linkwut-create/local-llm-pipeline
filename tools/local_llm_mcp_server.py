@@ -45,10 +45,15 @@ _ESCALATION_CHAIN = {
     "suggest-improvements": ["qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
     "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
     "architecture-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "release_auditor"],
+    "release-risk-review": ["release_auditor", "deep_reviewer", "qwen3.6_35b_moe_mtp"],
     "risk-analysis": ["reasoning_checker", "deep_reasoning", "release_auditor"],
     "logic-check": ["reasoning_checker", "deep_reasoning"],
     "failure-mode-analysis": ["reasoning_checker", "deep_reasoning"],
     "contextual-analyze": ["qwen3.6_27b_mtp", "code_worker", "reasoning_checker"],
+    "translate-text": ["translation", "qwen3.6_27b_mtp"],
+    "rewrite-text": ["fast_summary", "smart_summary", "qwen3.6_27b_mtp"],
+    "extract-todos": ["code_worker", "qwen3.6_27b_mtp"],
+    "find-related-files": ["code_worker", "qwen3.6_27b_mtp"],
 }
 
 # Security-sensitive patterns that auto-trigger reasoning model review.
