@@ -138,7 +138,9 @@ def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
             code_density = code_lines / total_lines
 
     # Complexity tier for routing decisions
-    if char_count > 80_000 or line_count > 2_000 or file_count > 5 or has_security:
+    if char_count > 200_000 or line_count > 5_000 or file_count > 10:
+        tier = "massive"
+    elif char_count > 80_000 or line_count > 2_000 or file_count > 5 or has_security:
         tier = "heavy"
     elif char_count > 20_000 or line_count > 500 or file_count >= 3 or cjk_ratio > 0.1:
         tier = "normal"
@@ -154,6 +156,7 @@ def _classify_input_complexity(text: str, *, is_diff: bool = False) -> dict:
         "has_logic": has_logic,
         "code_density": code_density,
         "complexity_tier": tier,
+        "_input_text": text[:32_768],  # for arch-pattern detection in routing
     }
 
 
@@ -201,24 +204,66 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
             print(f"MCP: security patterns detected but no healthy reasoning profile, using {chain[-1]}", file=sys.stderr)
             return chain[-1]
 
+    # Architecture-significant patterns for deep/architecture review tasks
+    _ARCH_PATTERNS = re.compile(
+        r'\b(__init__|abstract|interface|protocol|Metaclass|BaseModel'
+        r'|middleware|pipeline|plugin|migration|schema|router|serializer'
+        r'|descriptor|dataclass|dependency_injection|factory)\b',
+        re.IGNORECASE,
+    )
+    has_arch = False
+    if task in ("deep-code-review", "architecture-review", "release-risk-review"):
+        has_arch = bool(_ARCH_PATTERNS.search(
+            info.get("_input_text", "")))
+
     # 4. Map complexity tier to chain index
-    tier_index = {"light": 0, "normal": 1, "heavy": 2}.get(tier, 0)
-    index = min(tier_index, len(chain) - 1)
+    tier_map = {"light": 0, "normal": 1, "heavy": 2, "massive": 4}
+    index = tier_map.get(tier, 0)
+
+    # Architecture keywords at heavy+ → boost by 1 index
+    if has_arch and tier in ("heavy", "massive"):
+        index = min(index + 1, len(chain) - 1)
+
+    index = min(index, len(chain) - 1)
     profile = chain[index]
 
-    # 5. CJK-aware: if normal/heavy with CJK, prefer CJK-capable
-    if tier in ("normal", "heavy") and cjk_ratio > 0.1:
+    # 5. Massive tier: differentiated large model selection
+    if tier == "massive" and len(chain) >= 5:
+        has_security = info.get("has_security", False)
+        has_logic = info.get("has_logic", False)
+        file_count = info.get("file_count", 0)
+        # Security-heavy massive → prefer nemotron_super if in chain
+        if has_security and "nemotron_super" in chain:
+            ns_idx = chain.index("nemotron_super")
+            if ns_idx > index and _profile_is_healthy(chain[ns_idx]):
+                profile = chain[ns_idx]
+                index = ns_idx
+        # Multi-file diff with logic → prefer release_auditor
+        elif has_logic and file_count > 3 and "release_auditor" in chain:
+            ra_idx = chain.index("release_auditor")
+            if ra_idx > index and _profile_is_healthy(chain[ra_idx]):
+                profile = chain[ra_idx]
+                index = ra_idx
+        # Many files → prefer heavy_reviewer for context breadth
+        elif file_count > 8 and "heavy_reviewer" in chain:
+            hr_idx = chain.index("heavy_reviewer")
+            if hr_idx > index and _profile_is_healthy(chain[hr_idx]):
+                profile = chain[hr_idx]
+                index = hr_idx
+
+    # 6. CJK-aware: if normal/heavy/massive with CJK, prefer CJK-capable
+    if tier in ("normal", "heavy", "massive") and cjk_ratio > 0.1:
         if profile not in _CJK_CAPABLE_PROFILES:
             cjk_target = _prefer_cjk_profile(chain[0], task)
             if cjk_target and _profile_is_healthy(cjk_target):
                 profile = cjk_target
 
-    # 6. Health fallback: if resolved profile is unhealthy, try next
+    # 7. Health fallback: if resolved profile is unhealthy, try next
     if not _profile_is_healthy(profile):
         for i in range(index + 1, len(chain)):
             if _profile_is_healthy(chain[i]):
                 profile = chain[i]
-                print(f"MCP: {chain[index]} unhealthy → fell back to {profile}", file=sys.stderr)
+                print(f"MCP: {chain[index]} unhealthy -> fell back to {profile}", file=sys.stderr)
                 break
 
     print(f"MCP: complexity-based routing — tier={tier} profile={profile}", file=sys.stderr)
