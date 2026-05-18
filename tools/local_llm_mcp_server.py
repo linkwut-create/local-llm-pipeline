@@ -368,21 +368,46 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
         except Exception:
             pass
 
-    # 6b. GPU-aware: prefer loaded model over cold one at same tier
+    # 6b. Backend-aware + GPU-aware: prefer llama.cpp for speed, Ollama for stability
     try:
         loaded = _get_loaded_models()
-        if loaded:
+        all_loaded = loaded.get("ollama", set()) | loaded.get("llamacpp", set())
+        if all_loaded:
             p_cfg = pd.get("profiles", {}).get(profile, {})
             p_model = p_cfg.get("model", "")
+            p_has_env = bool(p_cfg.get("_env", ""))
+            p_variant = p_cfg.get("_variant_of", "")
+
+            # Backend preference: use llama.cpp for fast tasks when available
+            is_fast_task = task in ("summarize-file", "summarize-tree",
+                                    "suggest-improvements", "rewrite-text",
+                                    "extract-todos")
+            is_deep_task = task in ("deep-code-review", "architecture-review",
+                                    "release-risk-review")
+
+            # If current profile is Ollama and has a llama.cpp variant,
+            # prefer the variant for fast tasks when it's loaded
+            if is_fast_task and p_variant and not p_has_env:
+                variant_cfg = pd.get("profiles", {}).get("gemma4_26b_llamacpp", {})
+                v_model = variant_cfg.get("model", "")
+                if (v_model in loaded.get("llamacpp", set())
+                        and _profile_is_healthy("gemma4_26b_llamacpp")
+                        and "gemma4_26b_llamacpp" in chain):
+                    print(f"MCP: backend-preference — using llama.cpp variant for fast task", file=sys.stderr)
+                    profile = "gemma4_26b_llamacpp"
+
             # If current profile's model is NOT loaded, check neighbors
-            if p_model and p_model not in loaded:
+            elif p_model and p_model not in all_loaded:
                 for i in range(index - 1, index + 2):
                     if 0 <= i < len(chain) and i != index:
                         nb_cfg = pd.get("profiles", {}).get(chain[i], {})
                         nb_model = nb_cfg.get("model", "")
-                        if nb_model in loaded and _profile_is_healthy(chain[i]):
-                            # Only switch if they're at similar capability (same or adjacent index)
-                            print(f"MCP: GPU-aware — {profile} not loaded, using loaded {chain[i]} instead", file=sys.stderr)
+                        # Prefer llama.cpp-loaded models for speed
+                        nb_loaded = nb_model in loaded.get("llamacpp", set())
+                        nb_ollama = nb_model in loaded.get("ollama", set())
+                        if (nb_loaded or nb_ollama) and _profile_is_healthy(chain[i]):
+                            backend = "llamacpp" if nb_loaded else "ollama"
+                            print(f"MCP: GPU-aware — {profile} not loaded, using {chain[i]} ({backend})", file=sys.stderr)
                             profile = chain[i]
                             index = i
                             break
@@ -402,7 +427,10 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
 
 
 def _profile_is_healthy(profile_name: str) -> bool:
-    """Check if a profile is healthy (best-effort, always True on failure)."""
+    """Check if a profile is healthy (best-effort, always True on failure).
+
+    Checks health stats AND probes backend endpoint for _env profiles.
+    """
     try:
         profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
         pd = json.loads(profiles_path.read_text(encoding="utf-8"))
@@ -412,40 +440,74 @@ def _profile_is_healthy(profile_name: str) -> bool:
             return False
         if health.get("success_rate", 1.0) < 0.5:
             return False
+        # For llama.cpp profiles, probe the endpoint
+        env_str = p.get("_env", "")
+        for part in env_str.split(" "):
+            if part.startswith("LOCAL_LLM_BASE_URL="):
+                base_url = part.split("=", 1)[1].rstrip("/")
+                try:
+                    resp = requests.get(f"{base_url}/v1/models", timeout=5)
+                    if resp.status_code != 200:
+                        return False
+                except Exception:
+                    return False
+                break
         return True
     except Exception:
         return True  # Best-effort
 
 
-_LOADED_MODELS_CACHE: tuple[float, set[str]] = (0.0, set())
+_LOADED_MODELS_CACHE: tuple[float, dict[str, set[str]]] = (0.0, {})
 
 
-def _get_loaded_models() -> set[str]:
-    """Query Ollama /api/ps for currently loaded models. Cached for 30s.
+def _get_loaded_models() -> dict[str, set[str]]:
+    """Query both Ollama /api/ps and llama.cpp /v1/models for loaded models.
 
-    Returns set of model names currently in GPU memory.
+    Returns {"ollama": {model_names}, "llamacpp": {model_names}}.
+    Cached for 30 seconds.
     """
     global _LOADED_MODELS_CACHE
     now = time.time()
     if now - _LOADED_MODELS_CACHE[0] < 30:
         return _LOADED_MODELS_CACHE[1]
+
+    result = {"ollama": set(), "llamacpp": set()}
+
+    # Query Ollama
     try:
         ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
         resp = requests.get(f"{ollama_host}/api/ps", timeout=5)
         if resp.status_code == 200:
-            models = set()
             for entry in resp.json().get("models", []):
                 name = entry.get("name", "")
                 if name:
-                    models.add(name)
-                    # Also add without :latest suffix for matching
+                    result["ollama"].add(name)
                     if name.endswith(":latest"):
-                        models.add(name.rsplit(":", 1)[0])
-            _LOADED_MODELS_CACHE = (now, models)
-            return models
+                        result["ollama"].add(name.rsplit(":", 1)[0])
     except Exception:
         pass
-    return _LOADED_MODELS_CACHE[1]
+
+    # Query llama.cpp endpoints (from _env profiles)
+    try:
+        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+        pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+        for name, cfg in pd.get("profiles", {}).items():
+            env_str = cfg.get("_env", "")
+            for part in env_str.split(" "):
+                if part.startswith("LOCAL_LLM_BASE_URL="):
+                    base_url = part.split("=", 1)[1].rstrip("/")
+                    resp = requests.get(f"{base_url}/v1/models", timeout=5)
+                    if resp.status_code == 200:
+                        for m in resp.json().get("data", []):
+                            m_name = m.get("id", "")
+                            if m_name:
+                                result["llamacpp"].add(m_name)
+                    break
+    except Exception:
+        pass
+
+    _LOADED_MODELS_CACHE = (now, result)
+    return result
 
 
 def _detect_cjk_ratio(text: str) -> float:
@@ -1579,20 +1641,25 @@ def call_parallel_review(params: dict) -> dict:
             error="diff_text is empty", request_id=request_id,
         )
 
-    # Select 2-3 models from different families for independent review
+    # Select 2-3 models from different families AND different backends
     profiles = []
     try:
         profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
         pd = json.loads(profiles_path.read_text(encoding="utf-8"))
-        # Pick one from each model family: Qwen, Nemotron, Mistral/GPT
+        # llama.cpp: always try to include the fast GPU backend
+        if _profile_is_healthy("gemma4_26b_llamacpp"):
+            profiles.append("gemma4_26b_llamacpp")
+        # Ollama families: Qwen, Nemotron, Mistral/GPT — remaining slots
         families = {
             "qwen": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "qwen3.6_27b_mtp"],
             "nemotron": ["nemotron_super", "reasoning_checker", "diff_reviewer"],
             "mistral_gpt": ["release_auditor", "heavy_reviewer"],
         }
         for family, candidates in families.items():
+            if len(profiles) >= 3:
+                break
             for c in candidates:
-                if _profile_is_healthy(c):
+                if c not in profiles and _profile_is_healthy(c):
                     profiles.append(c)
                     break
     except Exception:

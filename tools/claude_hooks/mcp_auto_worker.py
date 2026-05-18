@@ -131,7 +131,11 @@ def spawn_local_check(config_dir: str, repo_root: str | None = None):
 
 def spawn_summarize_file(config_dir: str, file_path: str,
                          repo_root: str | None = None):
-    """Fire-and-forget summarize-file for a single file."""
+    """Fire-and-forget summarize-file for a single file.
+
+    Prefers llama.cpp backend (gemma4_26b_llamacpp) for speed when available.
+    Router handles cross-backend fallback if llama.cpp is down.
+    """
     auto_dir = auto_output_dir(repo_root)
     log_path = auto_dir / "_summarize.log"
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -142,11 +146,13 @@ def spawn_summarize_file(config_dir: str, file_path: str,
     except OSError:
         pass
 
+    # Prefer llama.cpp for fast background tasks — router falls back to Ollama
     cmd = [
         sys.executable,
         str(_ROUTER_PATH),
         "summarize-file",
         file_path,
+        "--profile", "gemma4_26b_llamacpp",
         "--json-only",
         "--output-dir", str(auto_dir),
     ]
