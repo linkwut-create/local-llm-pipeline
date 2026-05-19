@@ -2,7 +2,11 @@
   "profiles": {
     "fast_summary": {
       "model": "gemma4:e4b",
-      "_strengths": ["speed", "summarization", "general"],
+      "_strengths": [
+        "speed",
+        "summarization",
+        "general"
+      ],
       "temperature": 0.2,
       "max_chars": 60000,
       "max_output_chars": 3000,
@@ -21,15 +25,19 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 6.9,
+        "avg_latency_s": 3.3,
         "last_timeout": null,
         "consecutive_failures": 0,
-        "_updated": "2026-05-18"
+        "_updated": "2026-05-19"
       }
     },
     "smart_summary": {
       "model": "qwen3.5-claude-opus-9b-q8_0:latest",
-      "_strengths": ["summarization", "quality", "opus-distilled"],
+      "_strengths": [
+        "summarization",
+        "quality",
+        "opus-distilled"
+      ],
       "temperature": 0.15,
       "max_chars": 60000,
       "max_output_chars": 3000,
@@ -45,7 +53,12 @@
     },
     "code_worker": {
       "model": "qwen3-coder:30b",
-      "_strengths": ["coding", "refactoring", "code-review", "test-generation"],
+      "_strengths": [
+        "coding",
+        "refactoring",
+        "code-review",
+        "test-generation"
+      ],
       "temperature": 0.15,
       "max_chars": 90000,
       "max_output_chars": 4000,
@@ -76,7 +89,11 @@
     },
     "commit_reviewer": {
       "model": "qwen3-coder:30b",
-      "_strengths": ["coding", "fast-review", "commit-gate"],
+      "_strengths": [
+        "coding",
+        "fast-review",
+        "commit-gate"
+      ],
       "temperature": 0.1,
       "max_chars": 90000,
       "max_output_chars": 4000,
@@ -90,6 +107,7 @@
       "risk_level": "medium",
       "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
       "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
+      "_commit_gate_allowed": true,
       "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s.",
       "_last_tested": "2026-05-12",
       "_health": {
@@ -102,7 +120,11 @@
     },
     "diff_reviewer": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
-      "_strengths": ["reasoning", "code-review", "diff-analysis"],
+      "_strengths": [
+        "reasoning",
+        "code-review",
+        "diff-analysis"
+      ],
       "temperature": 0.1,
       "max_chars": 120000,
       "max_output_chars": 5000,
@@ -115,15 +137,20 @@
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 7.7,
+        "avg_latency_s": 3.9,
         "last_timeout": null,
         "consecutive_failures": 0,
-        "_updated": "2026-05-18"
+        "_updated": "2026-05-19"
       }
     },
     "deep_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
-      "_strengths": ["deep-review", "architecture", "general", "reliability"],
+      "_strengths": [
+        "deep-review",
+        "architecture",
+        "general",
+        "reliability"
+      ],
       "temperature": 0.1,
       "max_chars": 160000,
       "max_output_chars": 6000,
@@ -150,7 +177,11 @@
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
-      "_strengths": ["context-breadth", "deep-review", "backup"],
+      "_strengths": [
+        "context-breadth",
+        "deep-review",
+        "backup"
+      ],
       "temperature": 0.1,
       "max_chars": 140000,
       "max_output_chars": 6000,
@@ -165,7 +196,12 @@
     },
     "reasoning_checker": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
-      "_strengths": ["reasoning", "logic", "risk-analysis", "security"],
+      "_strengths": [
+        "reasoning",
+        "logic",
+        "risk-analysis",
+        "security"
+      ],
       "temperature": 0.1,
       "max_chars": 100000,
       "max_output_chars": 5000,
@@ -192,7 +228,11 @@
     },
     "deep_reasoning": {
       "model": "deepseek-r1-distill-qwen:32b-q8-fixed",
-      "_strengths": ["reasoning", "logic", "root-cause-analysis"],
+      "_strengths": [
+        "reasoning",
+        "logic",
+        "root-cause-analysis"
+      ],
       "temperature": 0.1,
       "max_chars": 100000,
       "max_output_chars": 5000,
@@ -208,7 +248,11 @@
     },
     "translation": {
       "model": "glm-4.7-flash-q8:latest",
-      "_strengths": ["translation", "cjk", "multilingual"],
+      "_strengths": [
+        "translation",
+        "cjk",
+        "multilingual"
+      ],
       "temperature": 0.2,
       "max_chars": 80000,
       "max_output_chars": 6000,
@@ -222,7 +266,12 @@
     },
     "release_auditor": {
       "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
-      "_strengths": ["accuracy", "deep-review", "architecture", "release-audit"],
+      "_strengths": [
+        "accuracy",
+        "deep-review",
+        "architecture",
+        "release-audit"
+      ],
       "temperature": 0.1,
       "max_chars": 140000,
       "max_output_chars": 6000,
@@ -243,7 +292,11 @@
     },
     "gemma4_26b_llamacpp": {
       "model": "gemma-4-26b",
-      "_strengths": ["speed", "summarization", "suggestions"],
+      "_strengths": [
+        "speed",
+        "summarization",
+        "suggestions"
+      ],
       "temperature": 0.2,
       "max_chars": 90000,
       "max_output_chars": 5000,
@@ -267,14 +320,18 @@
       "_status": "available — port 8080, -ngl 30",
       "_health": {
         "success_rate": 1.0,
-        "avg_latency_s": 0.4,
+        "avg_latency_s": 47.9,
         "consecutive_failures": 0,
-        "_updated": "2026-05-18"
+        "_updated": "2026-05-19"
       }
     },
     "gemma4_26b": {
       "model": "gemma4-26b-it:q8_0",
-      "_strengths": ["general", "speed", "mo-efficiency"],
+      "_strengths": [
+        "general",
+        "speed",
+        "mo-efficiency"
+      ],
       "temperature": 0.2,
       "max_chars": 90000,
       "max_output_chars": 5000,
@@ -289,7 +346,11 @@
     },
     "gemma4_26b_mtp": {
       "model": "gemma4-26b-it:q8_0",
-      "_strengths": ["speed", "summarization", "mtp-accelerated"],
+      "_strengths": [
+        "speed",
+        "summarization",
+        "mtp-accelerated"
+      ],
       "temperature": 0.2,
       "max_chars": 90000,
       "max_output_chars": 5000,
@@ -306,7 +367,12 @@
     },
     "gemma4_31b": {
       "model": "gemma4-31b-opus:latest",
-      "_strengths": ["coding", "deep-review", "opus-quality", "general"],
+      "_strengths": [
+        "coding",
+        "deep-review",
+        "opus-quality",
+        "general"
+      ],
       "temperature": 0.15,
       "max_chars": 120000,
       "max_output_chars": 6000,
@@ -330,7 +396,12 @@
     },
     "deepseek_r1_70b": {
       "model": "deepseek-r1-distill-llama:70b-q8-k-xl",
-      "_strengths": ["reasoning", "logic", "math", "deep-analysis"],
+      "_strengths": [
+        "reasoning",
+        "logic",
+        "math",
+        "deep-analysis"
+      ],
       "temperature": 0.1,
       "max_chars": 120000,
       "max_output_chars": 6000,
@@ -357,7 +428,12 @@
     },
     "nemotron_super": {
       "model": "nemotron-3-super:latest",
-      "_strengths": ["reasoning", "risk-analysis", "security", "deep-review"],
+      "_strengths": [
+        "reasoning",
+        "risk-analysis",
+        "security",
+        "deep-review"
+      ],
       "temperature": 0.1,
       "max_chars": 140000,
       "max_output_chars": 6000,
@@ -378,7 +454,11 @@
     },
     "command_r": {
       "model": "command-r:35b",
-      "_strengths": ["general", "instruct-following", "summarization"],
+      "_strengths": [
+        "general",
+        "instruct-following",
+        "summarization"
+      ],
       "temperature": 0.15,
       "max_chars": 100000,
       "max_output_chars": 5000,
@@ -418,7 +498,11 @@
     },
     "qwen3.6_27b_mtp": {
       "model": "qwen3.6:27b-q8-ud",
-      "_strengths": ["general", "speed", "cjk"],
+      "_strengths": [
+        "general",
+        "speed",
+        "cjk"
+      ],
       "temperature": 0.15,
       "max_chars": 120000,
       "max_output_chars": 5000,
@@ -450,7 +534,12 @@
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b-q8-ud",
-      "_strengths": ["deep-review", "architecture", "moe", "general"],
+      "_strengths": [
+        "deep-review",
+        "architecture",
+        "moe",
+        "general"
+      ],
       "temperature": 0.1,
       "max_chars": 160000,
       "max_output_chars": 6000,

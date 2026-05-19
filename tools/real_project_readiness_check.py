@@ -27,7 +27,8 @@ PIPELINE_ROOT = SCRIPT_DIR.parent
 EXPECTED_MCP_TOOLS = {
     "local_check", "local_summarize_file", "local_summarize_tree",
     "local_generate_test_plan", "local_review_diff",
-    "local_debate_review_diff", "local_draft_code",
+    "local_debate_review_diff", "local_parallel_review",
+    "local_contextual_analyze", "local_draft_code",
 }
 
 FORBIDDEN_TOOL_KEYWORDS = [
@@ -100,8 +101,8 @@ def check_pipeline_self(dry_run: bool):
             any(kw in name.lower() for kw in FORBIDDEN_TOOL_KEYWORDS)
             for name in tool_names
         )
-        check("mcp_tool_count", len(tool_names) == 7 and has_all,
-              f"{len(tool_names)} tools (expected 7)")
+        check("mcp_tool_count", len(tool_names) == 9 and has_all,
+              f"{len(tool_names)} tools (expected 9)")
         check("mcp_no_dangerous_tools", not has_forbidden,
               "no write/delete/shell/git/deploy tools found" if not has_forbidden
               else "DANGEROUS TOOLS DETECTED")
@@ -196,7 +197,7 @@ def check_mcp_server_tools():
             check(f"mcp_tool_{expected}", expected in tool_names,
                   "present" if expected in tool_names else "MISSING")
 
-        check("mcp_tools_count", len(tools) == 7, f"{len(tools)} tools returned")
+        check("mcp_tools_count", len(tools) == 9, f"{len(tools)} tools returned")
 
         # Verify each tool has description and inputSchema
         all_valid = all(
@@ -374,15 +375,22 @@ def check_logging_safety():
         lines = log_file.read_text(encoding="utf-8").strip().split("\n")
         check("logging_jsonl_valid", len(lines) > 0, f"{len(lines)} log entries")
 
-        # Check last 10 entries for sensitive fields
-        sensitive_keywords = ["prompt", "response", "api_key", "password", "secret", ".env"]
+        # Check last 10 entries for sensitive content fields
+        # Match field keys, not substrings — prompt_id/prompt_version are metadata, not leaks
+        sensitive_key_patterns = [
+            "prompt_text", "raw_prompt", "full_prompt", "prompt_content",
+            "response_text", "raw_response", "full_response",
+            "api_key", "password", "secret", ".env", "token", "credential",
+        ]
         violations = []
         for line in lines[-10:]:
             try:
                 entry = json.loads(line)
-                for kw in sensitive_keywords:
-                    if kw in str(entry).lower():
-                        violations.append(kw)
+                for key in entry:
+                    key_lower = key.lower()
+                    for pat in sensitive_key_patterns:
+                        if pat in key_lower:
+                            violations.append(f"{key}={str(entry[key])[:80]}")
             except json.JSONDecodeError:
                 pass
 

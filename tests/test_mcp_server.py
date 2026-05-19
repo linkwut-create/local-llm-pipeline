@@ -17,14 +17,14 @@ FORBIDDEN_TOOL_KEYWORDS = [
 
 
 def test_tools_count():
-    assert len(mcp.TOOLS) == 8
+    assert len(mcp.TOOLS) == 9
 
 
 def test_tool_names():
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff", "local_debate_review_diff",
-        "local_draft_code", "local_contextual_analyze",
+        "local_parallel_review", "local_draft_code", "local_contextual_analyze",
     }
     assert set(mcp.TOOLS.keys()) == expected
 
@@ -111,7 +111,7 @@ def test_handle_tools_list():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 2
     tools = response["result"]["tools"]
-    assert len(tools) == 8
+    assert len(tools) == 9
     tool_names = {t["name"] for t in tools}
     assert "local_check" in tool_names
 
@@ -292,15 +292,14 @@ def test_commit_gate_respects_explicit_profile(monkeypatch):
 
     monkeypatch.setattr(mcp, "run_subprocess", _capture_cmd)
     monkeypatch.setattr(mcp, "load_worker_output",
-                        lambda stdout: ({"task": "review-diff", "profile": "deep_reviewer",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer",
                                          "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
-                                         "model": "qwen3.6:35b-q8-ud", "cache_hit": False,
+                                         "model": "qwen3-coder:30b", "cache_hit": False,
                                          "result": {"summary": "ok"}}, None))
-    # Large diff + commit_gate=true → skips debate, still uses explicit profile
     large = _make_diff(line_count=120, files=1)
-    mcp.call_review_diff({"diff_text": large, "commit_gate": True, "profile": "deep_reviewer"})
+    mcp.call_review_diff({"diff_text": large, "commit_gate": True, "profile": "commit_reviewer"})
     assert "--profile" in cmd_parts
-    assert "deep_reviewer" in cmd_parts
+    assert "commit_reviewer" in cmd_parts
 
 
 # --- contextual_analyze tests (v0.9.5) ---

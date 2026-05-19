@@ -6,7 +6,7 @@ Review this release for risk. Check:
 5. No secrets (.env, key, pem, settings.local.json) included
 6. No .local_llm_out / logs / cache / draft output included
 7. No real project (non-pipeline) source files modified
-8. MCP tool count (8) matches documentation
+8. MCP tool count (9) matches documentation
 9. local_draft_code writes only to .local_llm_out/
 10. Prompt registry hash matches stored values
 11. Safe to tag / commit / push

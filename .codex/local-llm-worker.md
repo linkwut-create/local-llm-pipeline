@@ -53,10 +53,10 @@ python tools/local_llm_debate.py architecture-review <path>
 
 ## MCP Integration (v0.9.6+)
 
-The pipeline exposes 8 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 9 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
-`local_draft_code`, `local_contextual_analyze`.
+`local_parallel_review`, `local_draft_code`, `local_contextual_analyze`.
 
 MCP tools are source-non-mutating — output only to `.local_llm_out/`.
 

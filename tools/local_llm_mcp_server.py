@@ -1984,30 +1984,31 @@ def call_review_diff(params: dict) -> dict:
         return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
                                  task="review-diff", cjk_ratio=cjk_ratio)
 
-    # Commit gate: pre-invocation constraint check — reject large/reasoning models
+    # Commit gate: pre-invocation constraint check — reject heavy/risky models
     if commit_gate:
         resolved_profile = params.get("profile", "commit_reviewer")
-        try:
-            profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
-            pd = json.loads(profiles_path.read_text(encoding="utf-8"))
-            p = pd.get("profiles", {}).get(resolved_profile, {})
-            constraints = (p.get("_constraints") or "").lower()
-            model_name = p.get("model", "")
-            risk = p.get("risk_level", "")
-            if ("commit gate" in constraints or ">30b" in constraints
-                    or risk == "high"):
-                return build_error_response(
-                    tool="local_review_diff",
-                    error_type="constraint_violation",
-                    error=(
-                        f"Profile '{resolved_profile}' ({model_name}) cannot be "
-                        f"used in commit gate. Risk={risk}, constraints={p.get('_constraints', '')}"
-                    ),
-                    suggestion="Use commit_reviewer profile for commit gate reviews.",
-                    profile=resolved_profile, model=model_name,
-                )
-        except Exception:
-            pass  # Best-effort check
+        if resolved_profile != "commit_reviewer":
+            try:
+                profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
+                pd = json.loads(profiles_path.read_text(encoding="utf-8"))
+                p = pd.get("profiles", {}).get(resolved_profile, {})
+                model_name = p.get("model", "")
+                risk = p.get("risk_level", "")
+                commit_gate_allowed = p.get("_commit_gate_allowed", False)
+                if risk == "high" or not commit_gate_allowed:
+                    return build_error_response(
+                        tool="local_review_diff",
+                        error_type="constraint_violation",
+                        error=(
+                            f"Profile '{resolved_profile}' ({model_name}) cannot be "
+                            f"used in commit gate. Risk={risk}, "
+                            f"commit_gate_allowed={commit_gate_allowed}"
+                        ),
+                        suggestion="Use commit_reviewer profile for commit gate reviews.",
+                        profile=resolved_profile, model=model_name,
+                    )
+            except Exception:
+                pass  # Best-effort check
 
     # Commit gate: fast direct path with 60s timeout
     request_id = _make_request_id()

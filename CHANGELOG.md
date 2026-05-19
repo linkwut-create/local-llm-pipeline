@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.7 (2026-05-19)
+
+- Fix commit gate self-block: replace substring matching with structured allowlist.
+  `commit_reviewer` profile now has `_commit_gate_allowed: true`. Constraint check
+  uses `_commit_gate_allowed` and `risk_level` instead of parsing `_constraints` text.
+- Sync MCP tool count to 9 everywhere: tests, docs, readiness checker, prompts.
+  `local_parallel_review` was added in v0.9.6 but documentation lagged.
+- Fix readiness check `logging_no_sensitive_data` false positive: match field keys
+  instead of substring-scanning JSON strings (was flagging `prompt_id` as sensitive).
+- Add `.gitattributes` for consistent line endings across platforms.
+- Bump VERSION to 0.9.7.
+
 ## v0.9.6 (2026-05-19)
 
 - Proactive input-based routing: call_summarize_file, call_generate_test_plan,

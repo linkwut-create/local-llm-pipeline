@@ -274,7 +274,8 @@ class TestQualityEscalation:
     def test_already_at_max_no_escalation(self):
         from local_llm_mcp_server import _check_quality_escalation
         payload = {"confidence": "low", "uncertain_points": ["a", "b", "c", "d", "e"]}
-        result = _check_quality_escalation(payload, "release_auditor", "architecture-review")
+        # heavy_reviewer is the terminal tier (index 5) in architecture-review chain
+        result = _check_quality_escalation(payload, "heavy_reviewer", "architecture-review")
         assert result is None, "Already at max tier should not escalate further"
 
     def test_unknown_task_no_escalation(self):

@@ -32,7 +32,7 @@ def test_version_file_is_094():
     vf = Path(__file__).parent.parent / "VERSION"
     assert vf.exists(), "VERSION file is missing"
     content = vf.read_text(encoding="utf-8").strip()
-    assert content == "0.9.6", f"VERSION should be 0.9.6, got: {content}"
+    assert content == "0.9.7", f"VERSION should be 0.9.7, got: {content}"
 
 
 def test_mcp_server_version_matches_version_file():
@@ -124,7 +124,7 @@ def test_global_launcher_exposes_seven_tools():
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = set(mcp.TOOLS.keys())
-    assert len(expected) == 8, f"Expected 8 tools, got {len(expected)}"
+    assert len(expected) == 9, f"Expected 9 tools, got {len(expected)}"
 
 
 def test_global_launcher_find_project_root_returns_none_outside_git(tmp_path, monkeypatch):

@@ -29,7 +29,7 @@ MCP integration means:
 
 ## Tools Exposed (v0.7.0+)
 
-All 8 tools are **source-non-mutating**. They never modify source files directly.
+All 9 tools are **source-non-mutating**. They never modify source files directly.
 `local_draft_code` writes generated drafts only to `.local_llm_out/` and requires
 controller verification before any source change.
 
@@ -41,6 +41,8 @@ controller verification before any source change.
 | `local_generate_test_plan` | Generate test plan for a file | `path` (required), `profile`, `model` |
 | `local_review_diff` | Single-model diff review | `diff_text` (required), `profile`, `model` |
 | `local_debate_review_diff` | Multi-model debate review | `diff_text` (required), `fast` (default: true), `summary_only` (default: true) |
+| `local_parallel_review` | Multi-model parallel cross-verification | `diff_text` (required) |
+| `local_contextual_analyze` | Targeted file analysis with a question | `path` (required), `question` (required), `profile`, `model`, `max_chars` |
 | `local_draft_code` | Draft fixes, features, refactors (to `.local_llm_out/` only) | `task` (required), `prompt` (required), `context_file`, `profile`, `model` |
 
 ### Tool Details
@@ -106,7 +108,7 @@ claude mcp add --transport stdio --scope project local-llm -- python tools/local
 
 This creates `.mcp.json` at the project root (can be committed to share with the team).
 
-Verify with `/mcp` inside Claude Code — you should see `local-llm` with 8 tools.
+Verify with `/mcp` inside Claude Code — you should see `local-llm` with 9 tools.
 
 Manual alternative (add to `.mcp.json`):
 

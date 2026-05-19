@@ -76,10 +76,11 @@ def test_default_profile_exists():
 
 
 def test_new_profiles_exist():
-    """v0.6.0: release_auditor and architecture_reviewer must exist."""
+    """v0.6.0: release_auditor and deep_reviewer must exist.
+    architecture_reviewer was renamed to deep_reviewer (same model, same benchmark)."""
     profiles = _load_profiles()["profiles"]
     assert "release_auditor" in profiles, "release_auditor profile missing"
-    assert "architecture_reviewer" in profiles, "architecture_reviewer profile missing"
+    assert "deep_reviewer" in profiles, "deep_reviewer profile missing"
     assert "embedding" in profiles, "embedding profile missing"
 
 
