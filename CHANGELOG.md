@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased (post-v0.9.7)
+
+- Call Ledger v2-A: real provider usage passthrough for non-stream calls (`5ddca41`).
+  `call_ollama` and `call_openai_compat` now return `ModelCallResult` (content +
+  normalized usage) instead of plain `str`. `normalize_usage()` maps Ollama
+  `prompt_eval_count`/`eval_count` and OpenAI-compatible `prompt_tokens`/
+  `completion_tokens` into a unified shape, including DeepSeek
+  `prompt_cache_hit_tokens`/`prompt_cache_miss_tokens`. Ledger prefers real
+  provider usage when available, falls back to `chars//4` estimation otherwise.
+  Streaming usage passthrough and cache-tier cost estimation deferred to v2-B/v2-C.
+
 ## v0.9.7 (2026-05-19)
 
 - Fix commit gate self-block: replace substring matching with structured allowlist.

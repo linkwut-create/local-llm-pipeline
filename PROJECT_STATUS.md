@@ -163,3 +163,62 @@ and per-session cap (max 10). Results land in `.local_llm_out/auto/`.
 
 **MCP is frozen.** Only bugfixes and hardening permitted.
 Development focus returns to local-translator-agent.
+
+## Call Ledger
+
+**Status**: v2-A complete (`5ddca41`, 2026-05-20). v2-B and v2-C deferred.
+
+### v1 (baseline)
+
+- Commit: `bf83f11 feat: add call ledger audit for local LLM invocations`
+- Per-call JSONL ledger with `chars // 4` token estimation (`tokens_estimated: True`)
+- CLI: `call_ledger_cli.py` (summary, group-by, filter-failures, recent)
+- `LOCAL_LLM_COST_TABLE` env var for provider cost lookup
+- Project/phase auto-detection via git
+
+### v2-A (current)
+
+- Commit: `5ddca41 feat: add real provider usage passthrough for call ledger`
+- `ModelCallResult` dataclass — non-stream return type for `call_ollama` /
+  `call_openai_compat` / `call_model` (non-stream branch)
+- `normalize_usage(provider, data)` — maps Ollama (`prompt_eval_count` /
+  `eval_count`) and OpenAI-compatible (`prompt_tokens` / `completion_tokens`)
+  responses to a unified normalized usage shape
+- DeepSeek `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` pass-through
+  into `cached_tokens` / `cache_miss_tokens`
+- Worker `_run_inner`:
+  - Non-stream: extracts `result.content` and `result.usage` from
+    `call_model_with_retry` return; forwards usage to ledger
+  - Stream: unchanged — emits `usage=None`, ledger falls back to `chars//4`
+- `tools/local_llm_debate.py` adapts: `call_model(...).content` (one-line change)
+- `call_model_with_retry` returns `(ModelCallResult | None, error_info)`;
+  on success the ledger records `tokens_estimated=False` when real provider
+  usage is present; falls back to `chars//4` estimation when usage is None
+- New file: `tools/model_call_result.py` (149 lines)
+- New tests: `tests/test_model_call_result.py` (370 lines, 20 tests)
+
+### Tests
+
+| Suite | Result |
+|-------|--------|
+| Targeted (test_model_call_result + test_call_ledger + test_local_llm_v093) | 90 passed |
+| Full suite | 763 passed |
+
+### v2-B (deferred)
+
+- Streaming usage passthrough (Ollama NDJSON final-frame `done` usage,
+  OpenAI-compatible `stream_options={"include_usage": true}`)
+- Separate plan: `docs/CALL_LEDGER_V2B_PLAN.md` (not yet written)
+
+### v2-C (deferred)
+
+- Cache-tier cost estimation: extend `LOCAL_LLM_COST_TABLE` with optional
+  `cached_in_per_1k`, compute `(cached × cached_rate + miss × standard_rate) / 1000`
+- Separate plan: `docs/CALL_LEDGER_V2C_PLAN.md` (not yet written)
+
+### Explicitly NOT in scope
+
+- SQLite-backed ledger
+- Context Budget
+- Codex / Claude / external direct API call recording
+- Cross-project ledger aggregation tooling

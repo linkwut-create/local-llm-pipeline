@@ -1,9 +1,9 @@
 # Call Ledger v2 — Real Provider Usage Passthrough · Plan
 
-**Status**: planning only. No code changes; no signature changes; no schema changes.
-Implementation gated on user approval of this document.
+**Status**: v2-A implemented (`5ddca41`); v2-B and v2-C deferred.
 
 **Parent commit**: `bf83f11 feat: add call ledger audit for local LLM invocations` (v1).
+**v2-A commit**: `5ddca41 feat: add real provider usage passthrough for call ledger`.
 
 ---
 
@@ -14,7 +14,7 @@ to land as a single reviewable diff with a focused commit_gate review.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **v2-A** | Non-stream real provider usage passthrough | **planned (this document)** |
+| **v2-A** | Non-stream real provider usage passthrough | **done** (`5ddca41`, 2026-05-20) |
 | **v2-B** | Streaming usage passthrough | deferred — separate plan |
 | **v2-C** | DeepSeek cache-tier cost estimation / cost table expansion | deferred — separate plan |
 
