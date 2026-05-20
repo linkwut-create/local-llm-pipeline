@@ -22,14 +22,7 @@
       ],
       "risk_level": "low",
       "_benchmark": "31s summarize-file (zero12)",
-      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 3.3,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-19"
-      }
+      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks."
     },
     "smart_summary": {
       "model": "qwen3.5-claude-opus-9b-q8_0:latest",
@@ -78,14 +71,7 @@
       ],
       "risk_level": "medium",
       "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
-      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks.",
-      "_health": {
-        "success_rate": 0.91,
-        "avg_latency_s": 69.3,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      }
+      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks."
     },
     "commit_reviewer": {
       "model": "qwen3-coder:30b",
@@ -109,14 +95,7 @@
       "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
       "_commit_gate_allowed": true,
       "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s.",
-      "_last_tested": "2026-05-12",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 13.7,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      }
+      "_last_tested": "2026-05-12"
     },
     "diff_reviewer": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
@@ -134,14 +113,7 @@
       "risk_level": "medium",
       "_benchmark": "27s review + reasoning capability — best combo (zero12)",
       "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Good balance of reasoning depth and speed.",
-      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 3.9,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-19"
-      }
+      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap."
     },
     "deep_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
@@ -166,14 +138,7 @@
       "risk_level": "high",
       "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)",
       "_community_reputation": "Qwen3.6 35B is a strong generalist with wide community adoption. Reliable on this machine (0 timeouts).",
-      "_constraints": "Not for commit gate (>30B). Use qwen3.6:35b-q8-ud (native MTP heads for ~1.5x speedup) over qwen3.5-35b for deep review.",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 82.1,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      }
+      "_constraints": "Not for commit gate (>30B). Use qwen3.6:35b-q8-ud (native MTP heads for ~1.5x speedup) over qwen3.5-35b for deep review."
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
@@ -217,14 +182,7 @@
       "risk_level": "medium-high",
       "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)",
       "_community_reputation": "Qwen3.5 reasoning variant. Reliable for structured analysis. Top performer in local benchmarks (2/2 passed).",
-      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only.",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 125,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      }
+      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only."
     },
     "deep_reasoning": {
       "model": "deepseek-r1-distill-qwen:32b-q8-fixed",
@@ -317,13 +275,7 @@
       "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
       "_variant_of": "gemma4_26b",
       "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
-      "_status": "available — port 8080, -ngl 30",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 47.9,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-19"
-      }
+      "_status": "available — port 8080, -ngl 30"
     },
     "gemma4_26b": {
       "model": "gemma4-26b-it:q8_0",
@@ -419,12 +371,7 @@
       "risk_level": "high",
       "_benchmark": "DeepSeek R1 distill 70B — stronger reasoning than 32B variant. Sits between deep_reasoning (32B) and release_auditor (128B).",
       "_constraints": "Not for commit gate. 70B model — deep reasoning and architecture only.",
-      "_status": "unavailable — times out on API (>60s). Too slow for routing chains. Marked 2026-05-19.",
-      "_health": {
-        "success_rate": 0.0,
-        "consecutive_failures": 1,
-        "_updated": "2026-05-19"
-      }
+      "_status": "unavailable — times out on API (>60s). Too slow for routing chains. Marked 2026-05-19."
     },
     "nemotron_super": {
       "model": "nemotron-3-super:latest",
@@ -524,13 +471,7 @@
       "_constraints": "Not for commit gate. Ollama backend (llama.cpp MTP on port 8082 pending upstream Qwen3.6 tensor fix).",
       "_last_tested": "2026-05-19",
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
-      "_acceleration": "mtp (pending upstream llama.cpp)",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 223.1,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      }
+      "_acceleration": "mtp (pending upstream llama.cpp)"
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b-q8-ud",
@@ -560,13 +501,6 @@
       "_community_reputation": "Qwen3.6 35B MoE UD. Gated Delta Net (SSM) hybrid. Native MTP for fast inference.",
       "_constraints": "Not for commit gate (>30B). Ollama backend (llama.cpp MTP on port 8083 pending upstream Qwen3.6 tensor fix).",
       "_last_tested": "2026-05-19",
-      "_health": {
-        "success_rate": 1.0,
-        "avg_latency_s": 68,
-        "last_timeout": null,
-        "consecutive_failures": 0,
-        "_updated": "2026-05-18"
-      },
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
       "_acceleration": "mtp (pending upstream llama.cpp)"
     },

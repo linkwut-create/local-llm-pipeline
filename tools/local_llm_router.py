@@ -25,6 +25,11 @@ WORKER_PATH = SCRIPT_DIR / "local_llm_worker.py"
 
 ALLOWED_ENV_VARS = {"LOCAL_LLM_BASE_URL"}
 
+# Lazy import: health_store lives in the same directory but is loaded on
+# demand so this module stays importable in environments where the
+# runtime out dir does not exist yet.
+sys.path.insert(0, str(SCRIPT_DIR))
+
 
 def load_json(path: Path) -> dict:
     if not path.exists():
@@ -82,14 +87,61 @@ def check_model_available(model: str, available: list[str]) -> bool:
     return False
 
 
-def is_profile_healthy(profile_name: str, profiles_data: dict) -> bool:
+def _resolve_health(profile_name: str, profile: dict,
+                    health_data: dict | None) -> dict:
+    """Pick the health record for `profile_name` from one of three
+    sources, in priority order.
+
+    1. Explicit `health_data` argument (used by tests / callers that
+       already loaded the runtime doc once).
+    2. Runtime health store (`.local_llm_out/local_llm_health.json`)
+       via `tools.health_store.load_profile_health` — the production
+       path after MCP Health Telemetry Isolation P1-H.2.
+    3. Legacy `profile["_health"]` from `local_llm_profiles.json` —
+       kept for `tests/test_layer4_quality.py` compatibility and for
+       any environment where the helper module is unavailable.
+
+    Returns `{}` when no source has data.
+    """
+    if health_data is not None:
+        if isinstance(health_data, dict):
+            profiles_key = health_data.get("profiles")
+            if isinstance(profiles_key, dict) and profile_name in profiles_key:
+                h = profiles_key.get(profile_name)
+                if isinstance(h, dict):
+                    return h
+            if profile_name in health_data and isinstance(
+                health_data[profile_name], dict
+            ):
+                return health_data[profile_name]
+        return {}
+    try:
+        from health_store import load_profile_health
+        runtime = load_profile_health(profile_name)
+        if runtime:
+            return runtime
+    except Exception:
+        pass
+    legacy = profile.get("_health", {}) if isinstance(profile, dict) else {}
+    return legacy if isinstance(legacy, dict) else {}
+
+
+def is_profile_healthy(profile_name: str, profiles_data: dict,
+                       health_data: dict | None = None) -> bool:
     """Check if a profile is healthy enough to use.
 
     Returns False if consecutive_failures >= 2 or success_rate < 0.5.
     This causes the router to skip unhealthy profiles and use candidates instead.
+
+    `health_data` (optional, P1-H.2): pass a pre-loaded runtime health
+    document to avoid repeated disk reads. Shape may be either the
+    full runtime doc (`{"profiles": {name: {...}}}`) or a flat
+    `{name: {...}}` map. When omitted, the runtime health store is
+    consulted; if that has no data, legacy `profile["_health"]` is
+    used (test compatibility).
     """
     profile = profiles_data.get("profiles", {}).get(profile_name, {})
-    h = profile.get("_health", {})
+    h = _resolve_health(profile_name, profile, health_data)
     if not h:
         return True  # No health data — assume healthy
     if h.get("consecutive_failures", 0) >= 2:

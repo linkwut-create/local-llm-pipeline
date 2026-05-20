@@ -29,6 +29,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from local_llm_worker import is_blocked_path
+from health_store import load_profile_health, record_invocation
 
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
@@ -428,13 +429,19 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
 def _profile_is_healthy(profile_name: str) -> bool:
     """Check if a profile is healthy (best-effort, always True on failure).
 
-    Checks health stats AND probes backend endpoint for _env profiles.
+    Reads runtime health from `.local_llm_out/local_llm_health.json`
+    (MCP Health Telemetry Isolation P1-H.2). Still reads the static
+    `_env` field from `tools/local_llm_profiles.json` for the optional
+    llama.cpp endpoint probe.
+
+    Thresholds unchanged: consecutive_failures>=2 or success_rate<0.5
+    is unhealthy. Missing runtime health is treated as healthy.
     """
     try:
         profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
         pd = json.loads(profiles_path.read_text(encoding="utf-8"))
         p = pd.get("profiles", {}).get(profile_name, {})
-        health = p.get("_health", {})
+        health = load_profile_health(profile_name)
         if health.get("consecutive_failures", 0) >= 2:
             return False
         if health.get("success_rate", 1.0) < 0.5:
@@ -549,51 +556,20 @@ def _prefer_cjk_profile(current_profile: str, task: str) -> str | None:
 
 def _update_model_health(profile_name: str, ok: bool, elapsed_s: float,
                           error_type: str = ""):
-    """Update _health fields in profiles.json after each invocation.
+    """Record per-invocation health telemetry via the runtime health
+    store (MCP Health Telemetry Isolation P1-H.2).
 
-    Uses weighted averages (90% old, 10% new) to smooth over outliers.
-    Never raises — failures are silent.
+    Previously wrote into each profile's `_health` block in
+    `tools/local_llm_profiles.json`, dirtying the configuration file
+    on every MCP call. Now delegates to
+    `tools.health_store.record_invocation`, which persists into
+    `.local_llm_out/local_llm_health.json` (gitignored).
+
+    Same 90/10 weighted formula, same field shape, same best-effort
+    contract — only the storage location changed.
     """
-    if not profile_name:
-        return
-    try:
-        profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
-        profiles = json.loads(profiles_path.read_text(encoding="utf-8"))
-        profile = profiles.get("profiles", {}).get(profile_name, {})
-        if not profile:
-            return
-        h = profile.get("_health", {})
-        now = datetime.now(timezone.utc).isoformat()[:10]
-
-        # Weighted success rate (90% old + 10% new)
-        old_rate = h.get("success_rate", 1.0)
-        new_point = 1.0 if ok else 0.0
-        h["success_rate"] = round(old_rate * 0.9 + new_point * 0.1, 3)
-
-        # Weighted avg latency
-        old_lat = h.get("avg_latency_s", elapsed_s)
-        h["avg_latency_s"] = round(old_lat * 0.9 + elapsed_s * 0.1, 1)
-
-        # Timeout tracking
-        if error_type == "timeout":
-            h["last_timeout"] = now
-
-        # Consecutive failures
-        if ok:
-            h["consecutive_failures"] = 0
-        else:
-            h["consecutive_failures"] = h.get("consecutive_failures", 0) + 1
-
-        h["_updated"] = now
-        profile["_health"] = h
-
-        # Write back atomically
-        tmp = str(profiles_path) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(profiles, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, profiles_path)
-    except Exception:
-        pass  # Health tracking is best-effort, never block on failure
+    record_invocation(profile_name, ok=ok, elapsed_s=elapsed_s,
+                      error_type=error_type)
 
 _MAX_ESCALATION_DEPTH = 2  # Allow up to 2 escalation hops (3 total invocations). Safe with _tried_profiles loop prevention.
 
