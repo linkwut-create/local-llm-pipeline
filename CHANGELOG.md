@@ -2,6 +2,13 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Health Telemetry Isolation P1-H.0: planning document
+  `docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md`. Locks the design for
+  moving per-call `_health` telemetry out of
+  `tools/local_llm_profiles.json` into a gitignored
+  `.local_llm_out/local_llm_health.json`. Implementation phases
+  P1-H.1–P1-H.4 not yet scheduled; each requires separate approval.
+  No code changes in this commit.
 - MCP Cost Discipline P1-A: new read-only helper `tools/profile_policy.py`
   that derives a normalized 8-field policy view (`risk_level`,
   `default_review_necessity`, `auto_allowed`, `requires_escalation_reason`,

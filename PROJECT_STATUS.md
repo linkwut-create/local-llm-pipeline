@@ -5,8 +5,10 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | P0 | Done (`a499dba`) | Policy doc landed (`docs/MCP_COST_DISCIPLINE_PLAN.md`) |
-| P1-A | In review | Derivation-only helper `tools/profile_policy.py`. No JSON or runtime change. See plan §12. |
-| P2 | Not started | Ledger escalation fields. |
+| P1-A | Done (`b8f681e`) | Derivation-only helper `tools/profile_policy.py`. No JSON or runtime change. See plan §12. |
+| P1-H.0 | In review | Health telemetry isolation plan (`docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md`). Blocks P2 until working-tree pollution from auto health-check is removed. |
+| P1-H.1–P1-H.4 | Not started | Helper, switch, reporting, docs closeout. |
+| P2 | Not started | Ledger escalation fields. Blocked on P1-H landing. |
 | P3 | Not started | Auto-upgrade restriction (behavioral). |
 | P4 | Not started | Worker pool dry-run. |
 | P5 | Not started | V4-Flash local experimental profile. |
