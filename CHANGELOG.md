@@ -2,6 +2,10 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Health Telemetry Isolation P1-H.1: add isolated runtime health
+  store helper `tools/health_store.py` plus tests. No call sites
+  switched yet; `tools/local_llm_profiles.json` remains unchanged.
+  P1-H.2 will perform the behavioral switch.
 - MCP Health Telemetry Isolation P1-H.0: planning document
   `docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md`. Locks the design for
   moving per-call `_health` telemetry out of
