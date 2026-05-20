@@ -2,6 +2,14 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P1-A: new read-only helper `tools/profile_policy.py`
+  that derives a normalized 8-field policy view (`risk_level`,
+  `default_review_necessity`, `auto_allowed`, `requires_escalation_reason`,
+  `debate_allowed`, `commit_gate_allowed`, `local_only`, `experimental`)
+  from each profile's existing legacy fields. `tools/local_llm_profiles.json`
+  is unchanged. No routing, hook, commit gate, or auto-upgrade behavior
+  altered — enforcement is deferred to P2+. See
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` §12.
 - Call Ledger v2-A: real provider usage passthrough for non-stream calls (`5ddca41`).
   `call_ollama` and `call_openai_compat` now return `ModelCallResult` (content +
   normalized usage) instead of plain `str`. `normalize_usage()` maps Ollama

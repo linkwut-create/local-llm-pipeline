@@ -304,3 +304,69 @@ plan before implementation.
 Define who runs what model, when escalation is allowed, and how much strong-model
 capacity each phase may consume — enforced via Call Ledger fields and CLAUDE.md
 policy, not new hook code.
+
+---
+
+## 12. P1-A Completion Notes (helper-first, derivation-only)
+
+P1 was narrowed to **P1-A: derivation helper only**. No JSON files
+changed; no runtime behavior changed. The earlier intent of stamping a
+`policy` block onto every profile is deferred — P1-A first proves the
+derivation rules and downstream consumers (P2+) can read from the helper
+without any schema migration.
+
+**What landed**
+
+- New read-only helper `tools/profile_policy.py`. Public surface:
+  `load_profiles`, `derive_policy`, `get_policy` (alias),
+  `validate_policy`, plus the enum sets `VALID_RISK_LEVELS` /
+  `VALID_REVIEW_NECESSITY` and the field tuple `POLICY_FIELDS`.
+- `derive_policy(name)` returns the normalized 8-field view derived
+  from existing profile fields (`risk_level`, `_commit_gate_allowed`,
+  `_provider` / `_local_only`, and profile name). It does **not** read
+  a `policy` block — none exists in JSON yet, and none is required.
+- `tests/test_profile_policy.py` asserts derivation rules, enum
+  validity, invariants (e.g. exactly one `commit_gate_allowed`), and
+  two guards: the helper imports no runtime modules and the helper
+  never writes any file.
+
+**What did NOT change**
+
+- `tools/local_llm_profiles.json` — unchanged byte-for-byte from
+  HEAD `a499dba`.
+- No routing logic, hook, commit gate, auto-upgrade rule, debate
+  trigger, or release guard touched.
+- Existing readers still consult `risk_level` and
+  `_commit_gate_allowed` directly. The new helper is purely additive.
+
+**Derivation rules (P1-A locked)**
+
+| Field | Derivation |
+|-------|------------|
+| `risk_level` | `profile["risk_level"]` if in enum, else `"medium"` |
+| `experimental` | `risk_level=="experimental"` OR `"experimental"` substring in profile name |
+| `commit_gate_allowed` | `profile["_commit_gate_allowed"] is True` |
+| `requires_escalation_reason` | `risk_level in {"high","experimental"}` |
+| `debate_allowed` | `risk_level in {"high","experimental"}` |
+| `auto_allowed` | `not experimental and risk_level != "high"` |
+| `local_only` | `_local_only != False AND _provider not in {external, api, cloud}` |
+| `default_review_necessity` | `commit_reviewer→required`, `diff_reviewer→recommended`, `fast/smart_summary→optional`, `high/experimental→recommended`, else `optional` |
+
+**Invariants currently machine-checked**
+
+- Every profile in `local_llm_profiles.json` yields a complete
+  8-field policy view.
+- Exactly one profile (`commit_reviewer`) derives
+  `commit_gate_allowed=true`.
+- Every `high`-risk profile derives `auto_allowed=false`,
+  `requires_escalation_reason=true`, `commit_gate_allowed=false`.
+- No profile derives `experimental=true` (reserved for P5 / V4-Flash;
+  triggered automatically when a profile is named `*experimental*`).
+- Every profile derives `local_only=true`.
+
+**Scope for P1-B (not yet started)**
+
+If/when downstream code needs to override or pin policy explicitly,
+P1-B can introduce an opt-in `policy` block in JSON — but only after
+P2 has demonstrated a concrete consumer that needs it. Until then, the
+derivation rules above are the single source of truth.

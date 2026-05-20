@@ -1,5 +1,16 @@
 # Project Status
 
+## MCP Cost Discipline
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| P0 | Done (`a499dba`) | Policy doc landed (`docs/MCP_COST_DISCIPLINE_PLAN.md`) |
+| P1-A | In review | Derivation-only helper `tools/profile_policy.py`. No JSON or runtime change. See plan §12. |
+| P2 | Not started | Ledger escalation fields. |
+| P3 | Not started | Auto-upgrade restriction (behavioral). |
+| P4 | Not started | Worker pool dry-run. |
+| P5 | Not started | V4-Flash local experimental profile. |
+
 ## Final state
 
 **MCP Goal Complete** — `c05ee7f`, branch `master`
