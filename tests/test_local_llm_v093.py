@@ -29,6 +29,12 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 
+def _mcr(text: str):
+    """v2-A: call_model returns ModelCallResult (non-stream). Wrap string mocks."""
+    from model_call_result import ModelCallResult
+    return ModelCallResult(content=text, usage=None, raw_provider="ollama")
+
+
 @pytest.fixture
 def isolated_out_dir(tmp_path, monkeypatch):
     """Redirect .local_llm_out, cache, and logs into a tmp dir so tests do
@@ -79,7 +85,8 @@ def test_summarize_tree_happy_path_returns_tree_summary(tmp_path, isolated_out_d
     (project / "beta.py").write_text("def beta(): return 2\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")
-    monkeypatch.setattr(worker, "call_model", lambda system, user, config: "DIRECTORY-SUMMARY-OK")
+    monkeypatch.setattr(worker, "call_model",
+                        lambda system, user, config: _mcr("DIRECTORY-SUMMARY-OK"))
 
     args = _make_worker_args("summarize-tree", str(project), max_files=10)
     rc = worker.run(args)
@@ -250,7 +257,7 @@ def test_prompt_metadata_in_result_log_and_cache(tmp_path, isolated_out_dir, mon
     monkeypatch.setattr(logging_mod, "LOG_DIR", isolated_out_dir / "logs")
     monkeypatch.setattr(logging_mod, "LOG_FILE",
                         isolated_out_dir / "logs" / "local_llm.jsonl")
-    monkeypatch.setattr(worker, "call_model", lambda *a, **kw: "FILE-OK")
+    monkeypatch.setattr(worker, "call_model", lambda *a, **kw: _mcr("FILE-OK"))
 
     args = _make_worker_args("summarize-file", str(src))
     rc = worker.run(args)
@@ -291,7 +298,7 @@ def test_draft_code_writes_only_to_local_llm_out(tmp_path, isolated_out_dir, mon
     .local_llm_out/. Verify by snapshotting tmp_path before and after a run."""
     worker = importlib.import_module("local_llm_worker")
     monkeypatch.setattr(worker, "call_model",
-                        lambda *a, **kw: "## DRAFT FIX\nDo not modify source files.")
+                        lambda *a, **kw: _mcr("## DRAFT FIX\nDo not modify source files."))
 
     src = tmp_path / "needs_fix.py"
     src.write_text("# placeholder\n", encoding="utf-8")

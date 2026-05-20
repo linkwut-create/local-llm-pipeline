@@ -214,6 +214,29 @@ def test_build_record_with_explicit_tokens(clean_env):
     assert rec["tokens_estimated"] is False
 
 
+def test_build_record_cache_miss_tokens(clean_env):
+    """v2-A: ledger records DeepSeek-style cache_miss_tokens when provided."""
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="deepseek-chat", provider="deepseek",
+        input_tokens=4321, output_tokens=567,
+        cached_tokens=4000, cache_miss_tokens=321,
+        success=True,
+    )
+    assert rec["cached_tokens"] == 4000
+    assert rec["cache_miss_tokens"] == 321
+    assert rec["cache_hit"] is False  # provider-side cache hit ≠ local cache_hit
+
+
+def test_build_record_cache_miss_tokens_default_none(clean_env):
+    """Existing records without cache_miss_tokens still get the field set to None."""
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="m", provider="ollama",
+        success=True,
+    )
+    assert "cache_miss_tokens" in rec
+    assert rec["cache_miss_tokens"] is None
+
+
 def test_build_record_strips_forbidden_extra(clean_env):
     rec = call_ledger.build_record(
         task_type="x", tool_name="t", model="m", provider="p",

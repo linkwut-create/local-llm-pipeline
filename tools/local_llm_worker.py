@@ -404,7 +404,8 @@ def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, st
     return system, user, meta
 
 
-def call_ollama(system: str, user: str, config: WorkerConfig) -> str:
+def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResult":
+    from model_call_result import ModelCallResult, normalize_usage
     url = f"{config.base_url}/api/chat"
     payload = {
         "model": config.model,
@@ -420,10 +421,13 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> str:
     resp = requests.post(url, json=payload, timeout=config.timeout)
     resp.raise_for_status()
     data = resp.json()
-    return data.get("message", {}).get("content", "")
+    content = data.get("message", {}).get("content", "") if isinstance(data, dict) else ""
+    usage = normalize_usage("ollama", data) if isinstance(data, dict) else None
+    return ModelCallResult(content=content, usage=usage, raw_provider="ollama")
 
 
-def call_openai_compat(system: str, user: str, config: WorkerConfig) -> str:
+def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCallResult":
+    from model_call_result import ModelCallResult, normalize_usage
     url = f"{config.base_url}/chat/completions"
     payload = {
         "model": config.model,
@@ -437,10 +441,13 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> str:
     resp = requests.post(url, json=payload, timeout=config.timeout)
     resp.raise_for_status()
     data = resp.json()
-    choices = data.get("choices", [])
-    if choices:
-        return choices[0].get("message", {}).get("content", "")
-    return ""
+    content = ""
+    if isinstance(data, dict):
+        choices = data.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            content = choices[0].get("message", {}).get("content", "") or ""
+    usage = normalize_usage("openai-compatible", data) if isinstance(data, dict) else None
+    return ModelCallResult(content=content, usage=usage, raw_provider="openai-compatible")
 
 
 def call_ollama_stream(system: str, user: str, config: WorkerConfig):
@@ -551,11 +558,15 @@ def classify_error(exc: Exception, task: str) -> tuple[str, str]:
 
 
 def call_model_with_retry(system: str, user: str, config: WorkerConfig,
-                          task: str = "") -> tuple[str, dict]:
+                          task: str = ""):
     """Call model with optional retry for transient failures.
 
-    Returns (response_text, error_info). If ok, error_info is empty.
-    If failed after retries, response_text is empty and error_info has details.
+    Returns (ModelCallResult | None, error_info).
+      - On success: (ModelCallResult, {})
+      - On failure: (None, {"error_type": ..., "error": ..., ...})
+
+    v2-A: stream path is not routed through this function (worker handles
+    streaming inline). This function is for non-stream calls only.
     """
     should_retry = task not in NO_RETRY_TASKS
     last_error = None
@@ -564,16 +575,18 @@ def call_model_with_retry(system: str, user: str, config: WorkerConfig,
     for attempt in range(MAX_RETRIES + 1):
         try:
             result = call_model(system, user, config)
+            content = result.content if result is not None else ""
             # Check for empty response
-            if not result or not result.strip():
+            if not content or not content.strip():
                 error_type, suggestion = classify_error(
                     ValueError("empty response from model"), task)
                 if should_retry and attempt < MAX_RETRIES:
                     retries += 1
                     time.sleep(RETRY_DELAY_SECONDS)
                     continue
-                return "", {"error_type": error_type, "error": "model returned empty response",
-                            "suggestion": suggestion, "retries": retries}
+                return None, {"error_type": error_type,
+                              "error": "model returned empty response",
+                              "suggestion": suggestion, "retries": retries}
             return result, {}
         except Exception as e:
             last_error = e
@@ -582,16 +595,27 @@ def call_model_with_retry(system: str, user: str, config: WorkerConfig,
                 retries += 1
                 time.sleep(RETRY_DELAY_SECONDS)
                 continue
-            return "", {"error_type": error_type, "error": str(e)[:300],
-                        "suggestion": suggestion, "retries": retries}
+            return None, {"error_type": error_type, "error": str(e)[:300],
+                          "suggestion": suggestion, "retries": retries}
 
     # Should never reach here, but just in case
     error_type, suggestion = classify_error(last_error or Exception("unknown"), task)
-    return "", {"error_type": error_type, "error": str(last_error)[:300] if last_error else "unknown",
-                "suggestion": suggestion, "retries": retries}
+    return None, {"error_type": error_type,
+                  "error": str(last_error)[:300] if last_error else "unknown",
+                  "suggestion": suggestion, "retries": retries}
 
 
-def call_model(system: str, user: str, config: WorkerConfig) -> str:
+def call_model(system: str, user: str, config: WorkerConfig):
+    """Dispatch to the appropriate provider call.
+
+    v2-A:
+      - non-stream path returns ModelCallResult.
+      - stream path returns a Generator[str] (unchanged from v1).
+
+    Callers already branch on `config.stream` before consuming the result,
+    so the mode-dependent return type does not leak. Streaming is deferred
+    to v2-B; see docs/CALL_LEDGER_V2_PLAN.md §3.5.
+    """
     if config.stream:
         return call_model_stream(system, user, config)
     if config.provider == "ollama":
@@ -1080,12 +1104,24 @@ def _run_inner(args: argparse.Namespace) -> int:
     def _emit_ledger(*, output_chars: int, duration_ms: int,
                      success: bool, cache_hit: bool,
                      failure_reason: str | None,
-                     result_summary: str | None) -> None:
+                     result_summary: str | None,
+                     usage: dict | None = None) -> None:
         if not (_ledger_build and _ledger_record):
             return
         commit_after, dirty_after = (
             _ledger_git_state() if _ledger_git_state else (None, None)
         )
+        # Pull real provider tokens out of the normalized usage block when
+        # present; ledger will set tokens_estimated=False automatically.
+        input_tokens = None
+        output_tokens = None
+        cached_tokens = None
+        cache_miss_tokens = None
+        if isinstance(usage, dict):
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            cached_tokens = usage.get("cached_tokens")
+            cache_miss_tokens = usage.get("cache_miss_tokens")
         try:
             rec = _ledger_build(
                 task_type=args.task,
@@ -1095,6 +1131,10 @@ def _run_inner(args: argparse.Namespace) -> int:
                 base_url=config.base_url,
                 input_chars=len(user),
                 output_chars=output_chars,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cache_miss_tokens=cache_miss_tokens,
                 duration_ms=duration_ms,
                 success=success,
                 cache_hit=cache_hit,
@@ -1157,6 +1197,10 @@ def _run_inner(args: argparse.Namespace) -> int:
     log_start = time.time()
     print(f"Calling {config.provider} model {config.model}...", file=sys.stderr)
 
+    # v2-A: non-stream path returns ModelCallResult (with content + usage).
+    # Stream path still yields plain str chunks; usage capture for streaming
+    # is deferred to v2-B (see docs/CALL_LEDGER_V2_PLAN.md §6).
+    call_usage: dict | None = None
     if config.stream:
         # Streaming mode: emit tokens as they arrive, accumulate for output
         raw_result = []
@@ -1173,7 +1217,12 @@ def _run_inner(args: argparse.Namespace) -> int:
             error_info = {"error_type": error_type, "error": str(exc)[:300],
                           "suggestion": suggestion, "retries": 0}
     else:
-        raw_result, error_info = call_model_with_retry(system, user, config, task=args.task)
+        result, error_info = call_model_with_retry(system, user, config, task=args.task)
+        if result is not None:
+            raw_result = result.content
+            call_usage = result.usage
+        else:
+            raw_result = ""
     log_duration = time.time() - log_start
 
     if error_info:
@@ -1235,7 +1284,8 @@ def _run_inner(args: argparse.Namespace) -> int:
                  duration_ms=int(log_duration * 1000),
                  success=True, cache_hit=False,
                  failure_reason=None,
-                 result_summary=output.summary)
+                 result_summary=output.summary,
+                 usage=call_usage)
 
     print(f"OK: {args.task} completed", file=sys.stderr)
     print(f"JSON: {json_path}")

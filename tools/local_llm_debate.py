@@ -185,7 +185,9 @@ def run_round(round_num: int, task: str, original_input: str,
 
     start = time.time()
     try:
-        raw = call_model(system, user, config)
+        # v2-A: call_model returns ModelCallResult on the non-stream path.
+        # Debate rounds always run non-stream, so `.content` is safe here.
+        raw = call_model(system, user, config).content
         elapsed = round(time.time() - start, 2)
         return {
             "round": round_num,
