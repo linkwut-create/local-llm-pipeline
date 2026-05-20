@@ -1058,6 +1058,59 @@ def _run_inner(args: argparse.Namespace) -> int:
     # Cache check for cacheable tasks (never let a cache failure crash the run).
     from local_llm_cache import CACHEABLE_TASKS, get_cache, put_cache
     from local_llm_logging import log_success as ls, log_failure as lf
+    try:
+        from call_ledger import (
+            build_record as _ledger_build,
+            record_call as _ledger_record,
+            git_state as _ledger_git_state,
+        )
+    except Exception:
+        _ledger_build = _ledger_record = _ledger_git_state = None  # ledger disabled
+
+    _ledger_commit_before, _ledger_dirty_before = (
+        _ledger_git_state() if _ledger_git_state else (None, None)
+    )
+    if input_meta.get("stdin"):
+        _ledger_files = []
+    elif input_meta.get("path"):
+        _ledger_files = [input_meta["path"]]
+    else:
+        _ledger_files = []
+
+    def _emit_ledger(*, output_chars: int, duration_ms: int,
+                     success: bool, cache_hit: bool,
+                     failure_reason: str | None,
+                     result_summary: str | None) -> None:
+        if not (_ledger_build and _ledger_record):
+            return
+        commit_after, dirty_after = (
+            _ledger_git_state() if _ledger_git_state else (None, None)
+        )
+        try:
+            rec = _ledger_build(
+                task_type=args.task,
+                tool_name=args.task,
+                model=config.model,
+                provider=config.provider,
+                base_url=config.base_url,
+                input_chars=len(user),
+                output_chars=output_chars,
+                duration_ms=duration_ms,
+                success=success,
+                cache_hit=cache_hit,
+                failure_reason=failure_reason,
+                result_summary=result_summary,
+                files_referenced=_ledger_files,
+                git_commit_before=_ledger_commit_before,
+                git_dirty_before=_ledger_dirty_before,
+                git_commit_after=commit_after,
+                git_dirty_after=dirty_after,
+                request_id=request_id,
+            )
+            _ledger_record(rec)
+        except Exception:
+            pass  # ledger must never crash the call
+
     cache_hit = False
     cache_key, cache_warn = (None, None)
     if args.task in CACHEABLE_TASKS:
@@ -1093,6 +1146,10 @@ def _run_inner(args: argparse.Namespace) -> int:
                    cache_hit=True, retries=0, request_id=request_id,
                    prompt_id=output.prompt_id, prompt_version=output.prompt_version,
                    prompt_hash=output.prompt_hash)
+                _emit_ledger(output_chars=len(output.result), duration_ms=0,
+                             success=True, cache_hit=True,
+                             failure_reason=None,
+                             result_summary=output.summary)
                 print(f"OK (cache hit): {args.task} completed", file=sys.stderr)
                 print(f"JSON: {json_path}")
                 return 0
@@ -1131,6 +1188,10 @@ def _run_inner(args: argparse.Namespace) -> int:
            len(user), output.retries, request_id=request_id,
            prompt_id=output.prompt_id, prompt_version=output.prompt_version,
            prompt_hash=output.prompt_hash)
+        _emit_ledger(output_chars=0, duration_ms=int(log_duration * 1000),
+                     success=False, cache_hit=False,
+                     failure_reason=output.error_type or output.error or "unknown_error",
+                     result_summary=None)
         return _emit_failure(output, config)
 
     output.ok = True
@@ -1170,6 +1231,11 @@ def _run_inner(args: argparse.Namespace) -> int:
        len(raw_result), cache_hit=False, retries=0, request_id=request_id,
        prompt_id=output.prompt_id, prompt_version=output.prompt_version,
        prompt_hash=output.prompt_hash)
+    _emit_ledger(output_chars=len(raw_result),
+                 duration_ms=int(log_duration * 1000),
+                 success=True, cache_hit=False,
+                 failure_reason=None,
+                 result_summary=output.summary)
 
     print(f"OK: {args.task} completed", file=sys.stderr)
     print(f"JSON: {json_path}")
