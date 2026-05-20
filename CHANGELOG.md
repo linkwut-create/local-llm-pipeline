@@ -2,6 +2,10 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Health Telemetry Isolation P1-H.4: docs closeout for
+  P1-H.0–P1-H.3, recording runtime health telemetry migration
+  completion in `docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md` §11.
+  No code changes.
 - MCP Health Telemetry Isolation P1-H.3: switch `cmd_health_report`
   (router) and `auto_tune_recommendations`
   (update_profiles_from_ollama) to read from the runtime health

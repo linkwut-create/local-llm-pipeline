@@ -255,3 +255,87 @@ into a gitignored `.local_llm_out/local_llm_health.json` so the
 configuration file stops getting dirtied by background MCP work —
 without changing routing semantics, health thresholds, or the 90/10
 weighted-average formula.
+
+---
+
+## 11. Completion Notes / Closeout (P1-H DONE)
+
+All four implementation phases landed between `f8b15c1`'s predecessor
+and HEAD. The migration is complete; `tools/local_llm_profiles.json`
+is now a true static configuration file.
+
+### 11.1 Phase commits
+
+| Phase | Status | Commit | Summary |
+|-------|--------|--------|---------|
+| P1-H.0 | DONE | `6968406` | `docs: plan health telemetry isolation` |
+| P1-H.1 | DONE | `3ff9ea4` | `feat: add runtime health store helper` |
+| P1-H.2 | DONE | `f8b15c1` | `fix: isolate health telemetry from profiles config` |
+| P1-H.3 | DONE | `14b84b0` | `fix: read health reporting from runtime store` |
+| P1-H.4 | DONE | this commit | docs closeout |
+
+### 11.2 Final state of the system
+
+- `tools/local_llm_profiles.json` is now **static config**. No
+  `_health` blocks remain (one-time cleanup landed in P1-H.2).
+- Per-call runtime telemetry lives in
+  `.local_llm_out/local_llm_health.json` — gitignored, never
+  enters the working tree.
+- Writer: `_update_model_health` in `tools/local_llm_mcp_server.py`
+  delegates to `tools/health_store.py::record_invocation`. Same
+  90/10 weighted formula, same field shape, same best-effort
+  contract — only the storage location changed.
+- Readers:
+  - `tools/local_llm_mcp_server.py::_profile_is_healthy` reads
+    runtime health (still reads static `_env` from profiles JSON for
+    the optional llama.cpp endpoint probe).
+  - `tools/local_llm_router.py::is_profile_healthy` accepts an
+    optional `health_data` argument and otherwise consults the
+    runtime store.
+  - `tools/local_llm_router.py::cmd_health_report` loads the runtime
+    document once and looks up each profile by membership; runtime
+    presence wins over legacy.
+  - `tools/update_profiles_from_ollama.py::auto_tune_recommendations`
+    also reads runtime data, with the same `health_data` parameter
+    convention.
+- Legacy `profile["_health"]` is honored only as a fallback for
+  synthetic-dict callers (e.g. `tests/test_layer4_quality.py`). It
+  has no presence in the live config.
+- No VERSION bump. No tag. No release. Working between `v0.9.7` and
+  the next planned release.
+
+### 11.3 Review policy actually used
+
+| Phase | Commit gate | Debate review | Notes |
+|-------|-------------|---------------|-------|
+| P1-H.0 | yes (`ok=true`, 12.5s) | no | docs-only |
+| P1-H.1 | yes (`ok=true`, 13.7s) | no | helper-only, low risk |
+| P1-H.2 | yes (`ok=true`, 15.2s) | yes — auto-escalated fast mode (`ok=true`, 400s, `high_confidence_findings=[]`) | behavioral switch + router/MCP server health code |
+| P1-H.3 | yes (`ok=true`, 13.8s) | yes — auto-escalated fast mode (`ok=true`, 245s, `high_confidence_findings=[]`) | two real findings fixed (sys.path module-level, runtime-presence-wins-over-truthiness) |
+| P1-H.4 | this commit (docs-only) | no | matches §9 policy |
+
+### 11.4 Acceptance evidence
+
+- `tests/test_health_store.py` (P1-H.1) — 20 tests, all passing
+- `tests/test_health_telemetry.py` (P1-H.2) — 13 tests, all passing,
+  includes the byte-hash regression guard
+  `test_update_model_health_does_not_modify_profiles_json`
+- `tests/test_health_reporting.py` (P1-H.3) — 13 tests, all passing,
+  includes the byte-hash regression guards for both
+  `cmd_health_report` and `auto_tune_recommendations`, plus the
+  runtime-presence-wins-over-legacy test
+- `tools/validate_configs.py` — exit 0 throughout
+- `tests/test_layer4_quality.py` — unchanged from before P1-H,
+  still passes via the legacy `profile["_health"]` fallback
+
+### 11.5 Out-of-scope follow-ups (not P1-H)
+
+- `P2`: Ledger escalation fields. No longer blocked by
+  working-tree pollution now that P1-H is complete, but still
+  scheduled separately.
+- Concurrency-safe writes beyond `.tmp + os.replace` — explicit
+  Non-Goal per §5.
+- Cross-host health aggregation — separate workstream.
+- Backfill of pre-P1-H.2 `_health` values into the runtime file —
+  explicit Non-Goal per §5 (the 90/10 weighted average reconverges
+  within a handful of calls).
