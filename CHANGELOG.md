@@ -2,6 +2,11 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Health Telemetry Isolation P1-H.3: switch `cmd_health_report`
+  (router) and `auto_tune_recommendations`
+  (update_profiles_from_ollama) to read from the runtime health
+  store. Legacy `profile["_health"]` fallback preserved for
+  synthetic-dict tests. No profiles JSON writes.
 - MCP Health Telemetry Isolation P1-H.1: add isolated runtime health
   store helper `tools/health_store.py` plus tests. No call sites
   switched yet; `tools/local_llm_profiles.json` remains unchanged.

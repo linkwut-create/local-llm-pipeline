@@ -7,9 +7,9 @@
 | P0 | Done (`a499dba`) | Policy doc landed (`docs/MCP_COST_DISCIPLINE_PLAN.md`) |
 | P1-A | Done (`b8f681e`) | Derivation-only helper `tools/profile_policy.py`. No JSON or runtime change. See plan §12. |
 | P1-H.0 | Done (`6968406`) | Health telemetry isolation plan (`docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md`). Blocks P2 until working-tree pollution from auto health-check is removed. |
-| P1-H.1 | In review | `tools/health_store.py` helper-only; no call sites switched. |
-| P1-H.2 | Not started | Switch writer/readers + clean `_health` from profiles JSON. Requires debate review. |
-| P1-H.3 | Not started | `health-report` / `auto_tune_recommendations` follow-up. |
+| P1-H.1 | Done (`3ff9ea4`) | `tools/health_store.py` helper-only; no call sites switched. |
+| P1-H.2 | Done (`f8b15c1`) | Writer/readers switched + `_health` cleaned from profiles JSON. Debate review passed (fast mode). |
+| P1-H.3 | In review | `cmd_health_report` and `auto_tune_recommendations` switched to runtime health store. |
 | P1-H.4 | Not started | Docs closeout. |
 | P2 | Not started | Ledger escalation fields. Blocked on P1-H landing. |
 | P3 | Not started | Auto-upgrade restriction (behavioral). |

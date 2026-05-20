@@ -22,6 +22,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 
+# Make the runtime health helper importable (P1-H.3). Module-level so
+# `_load_runtime_health` doesn't mutate sys.path on each call.
+sys.path.insert(0, str(SCRIPT_DIR))
+
 SKIP_SUFFIXES = ["-original", "-agentprefill", "-toolfix", "-agent"]
 
 PROFILE_SPECS = {
@@ -176,18 +180,58 @@ def match_model(profile_name: str, spec: dict, base_models: list[str]) -> str | 
     return candidates[0]
 
 
+def _load_runtime_health() -> dict:
+    """Best-effort load of `.local_llm_out/local_llm_health.json::profiles`.
+    Returns `{}` on any failure (missing file, parse error, helper not
+    importable). Used by `auto_tune_recommendations` after the
+    P1-H.2 storage switch."""
+    try:
+        from health_store import load_health
+        return load_health().get("profiles", {}) or {}
+    except Exception:
+        return {}
+
+
+def _resolve_profile_health(profile_name: str, profile_data: dict,
+                             runtime_profiles: dict) -> dict:
+    """Pick a health record for `profile_name`: runtime data wins, then
+    legacy `profile["_health"]` for backward compatibility / test
+    fixtures, otherwise `{}`."""
+    h = runtime_profiles.get(profile_name)
+    if isinstance(h, dict) and h:
+        return h
+    legacy = profile_data.get("_health") if isinstance(profile_data, dict) else None
+    return legacy if isinstance(legacy, dict) else {}
+
+
 def auto_tune_recommendations(existing_profiles: dict, all_models: list[str],
-                               base_models: list[str]) -> list[dict]:
-    """Compare _health data between current profile models and available candidates.
+                               base_models: list[str],
+                               health_data: dict | None = None) -> list[dict]:
+    """Compare runtime health data between current profile models and
+    available candidates.
+
+    `health_data` (P1-H.3): optional pre-loaded runtime health document
+    (full doc or `profiles` sub-map). When omitted, the runtime health
+    store is consulted; profiles without runtime data fall back to a
+    legacy `profile["_health"]` block if present.
 
     Returns a list of recommendation dicts with keys:
-        profile, current_model, current_latency, candidate, candidate_latency, improvement_pct
+        profile, current_model, current_latency, candidate,
+        candidate_latency, improvement_pct
     """
+    if health_data is None:
+        runtime_profiles = _load_runtime_health()
+    elif isinstance(health_data, dict):
+        sub = health_data.get("profiles")
+        runtime_profiles = sub if isinstance(sub, dict) else health_data
+    else:
+        runtime_profiles = {}
+
     recs = []
     for profile_name, spec in PROFILE_SPECS.items():
         current = existing_profiles.get(profile_name, {})
         current_model = current.get("model", "")
-        h = current.get("_health", {})
+        h = _resolve_profile_health(profile_name, current, runtime_profiles)
         current_latency = h.get("avg_latency_s")
         if current_latency is None:
             continue
@@ -201,16 +245,16 @@ def auto_tune_recommendations(existing_profiles: dict, all_models: list[str],
                     candidates.append(model)
                     break
 
-        # Check each candidate's health data in existing profiles
+        # Check each candidate's health data via the runtime store
         for cand_model in candidates:
-            # Look for health data across ALL profiles (a candidate might be the
-            # primary model of a different profile)
-            cand_health = None
+            cand_health: dict = {}
             for ep_name, ep_data in existing_profiles.items():
                 if ep_data.get("model") == cand_model:
-                    cand_health = ep_data.get("_health", {})
+                    cand_health = _resolve_profile_health(
+                        ep_name, ep_data, runtime_profiles
+                    )
                     break
-            cand_latency = cand_health.get("avg_latency_s") if cand_health else None
+            cand_latency = cand_health.get("avg_latency_s")
             if cand_latency is None:
                 continue
             if cand_health.get("success_rate", 0) < 0.8:

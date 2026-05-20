@@ -218,16 +218,42 @@ def _try_audit_result(task: str, profile: str, model: str,
 
 
 def cmd_health_report():
-    """Print model health report from profiles.json _health fields."""
+    """Print model health report.
+
+    After MCP Health Telemetry Isolation P1-H.3 the report reads runtime
+    health from `.local_llm_out/local_llm_health.json` instead of each
+    profile's `_health` block (which no longer exists in profiles.json
+    as of P1-H.2). Static profile metadata (name, model) still comes
+    from profiles.json.
+
+    Falls back to the legacy `cfg["_health"]` block when runtime data
+    is unavailable for a profile — keeps the report working in
+    synthetic test setups and any future profile that re-introduces
+    the legacy field locally.
+    """
     profiles_data = load_json(PROFILES_PATH)
     profiles = profiles_data.get("profiles", {})
+
+    runtime_profiles: dict = {}
+    try:
+        from health_store import load_health
+        runtime_profiles = load_health().get("profiles", {}) or {}
+    except Exception:
+        runtime_profiles = {}
+
     print(f"{'Profile':30s} {'Model':40s} {'Success':>8s} {'Avg Lat':>8s} {'Timeouts':>8s} {'ConsecFail':>10s}")
     print("-" * 110)
     healthy = 0
     unhealthy = 0
     no_data = 0
     for name, cfg in sorted(profiles.items()):
-        h = cfg.get("_health", {})
+        # Runtime wins by presence, not truthiness — an explicit empty
+        # runtime record means "no data" rather than "fall back to
+        # legacy stale data".
+        if name in runtime_profiles:
+            h = runtime_profiles[name] if isinstance(runtime_profiles[name], dict) else {}
+        else:
+            h = cfg.get("_health", {})
         if not h:
             no_data += 1
             continue
