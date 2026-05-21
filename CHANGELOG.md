@@ -2,6 +2,11 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-D1: call ledger CLI adds `by-profile`,
+  `by-mcp-tool`, `escalations`, and `debates` reporting commands over
+  P2 cost-discipline fields. Includes `group_by_extra`,
+  `filter_escalations`, and `filter_debates` library helpers with
+  old-record compatibility (missing extra/profile → `<none>` bucket).
 - MCP Cost Discipline P2-C3.1: debate rounds now emit one call ledger
   record per `run_round()` with debate metadata (`debate_mode`,
   `debate_rounds`, `debate_round_index`, `debate_trigger`) while

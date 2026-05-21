@@ -407,3 +407,55 @@ def recent(records: Iterable[Mapping[str, Any]], limit: int) -> list[dict[str, A
     if limit is None or limit <= 0:
         return []
     return items[-limit:]
+
+
+def _extra_value(record: Mapping[str, Any], key: str) -> object | None:
+    """Extract a value from record['extra'][key], or None if unavailable."""
+    extra = record.get("extra")
+    if not isinstance(extra, dict):
+        return None
+    val = extra.get(key)
+    if val is None or val == "":
+        return None
+    return val
+
+
+# P2-D1: group records by a key in the `extra` dict, with optional
+# fallback to a top-level key when the extra key is unavailable.
+def group_by_extra(records: Iterable[Mapping[str, Any]], key: str,
+                   fallback_key: str | None = None) -> dict[str, dict[str, Any]]:
+    buckets: dict[str, list[Mapping[str, Any]]] = {}
+    for r in records:
+        val = _extra_value(r, key)
+        if val is None and fallback_key:
+            raw = r.get(fallback_key)
+            val = str(raw) if raw is not None and raw != "" else None
+        bucket_key = str(val) if val is not None else "<none>"
+        buckets.setdefault(bucket_key, []).append(r)
+    return {k: summarize(v) for k, v in buckets.items()}
+
+
+# P2-D1: filter records that carry escalation extra fields.
+def filter_escalations(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for r in records:
+        extra = r.get("extra")
+        if not isinstance(extra, dict):
+            continue
+        if extra.get("auto_escalated") is True:
+            out.append(dict(r))
+            continue
+        if any(extra.get(f) is not None for f in (
+            "parent_request_id", "escalation_trigger",
+            "escalation_from_profile", "escalation_to_profile",
+            "escalation_depth",
+        )):
+            out.append(dict(r))
+    return out
+
+
+# P2-D1: filter records that carry debate extra fields.
+def filter_debates(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(r) for r in records
+            if isinstance(r.get("extra"), dict)
+            and r["extra"].get("debate_mode") is True]

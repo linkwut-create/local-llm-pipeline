@@ -680,3 +680,340 @@ def test_cli_missing_file_empty_output(clean_env, tmp_path, capsys):
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     assert data["calls"] == 0
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: sample records with extra dicts for escalation / debate / MCP tests
+# ---------------------------------------------------------------------------
+
+
+def _seed_p2_ledger(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        # Pre-P2 record: no extra, no profile
+        fh.write(json.dumps({
+            "id": "call_old", "timestamp": "2026-05-01T00:00:00+00:00",
+            "project": "A", "task_type": "review-diff", "tool_name": "local_review_diff",
+            "profile": None, "model": "old-model", "provider": "ollama",
+            "input_tokens": 10, "output_tokens": 5, "total_tokens": 15,
+            "duration_ms": 1000, "estimated_cost_cny": 0.0, "success": True,
+        }) + "\n")
+        # P2-C1.1 record: has mcp_tool_name in extra
+        fh.write(json.dumps({
+            "id": "call_mcp", "timestamp": "2026-05-10T00:00:00+00:00",
+            "project": "A", "task_type": "summarize-file", "tool_name": "summarize-file",
+            "profile": "fast_summary", "model": "gemma4:e4b", "provider": "ollama",
+            "input_tokens": 20, "output_tokens": 10, "total_tokens": 30,
+            "duration_ms": 2000, "estimated_cost_cny": 0.0, "success": True,
+            "extra": {"mcp_tool_name": "local_summarize_file", "source": "manual-mcp"},
+        }) + "\n")
+        # P2-C1.2 record: auto-hook
+        fh.write(json.dumps({
+            "id": "call_hook", "timestamp": "2026-05-15T00:00:00+00:00",
+            "project": "A", "task_type": "review-diff", "tool_name": "local_review_diff",
+            "profile": "commit_reviewer", "model": "qwen3-coder:30b", "provider": "ollama",
+            "input_tokens": 30, "output_tokens": 15, "total_tokens": 45,
+            "duration_ms": 3000, "estimated_cost_cny": 0.0, "success": True,
+            "extra": {"mcp_tool_name": "local_review_diff", "commit_gate": True,
+                      "source": "auto-hook"},
+        }) + "\n")
+        # P2-C2.1 escalation record
+        fh.write(json.dumps({
+            "id": "call_esc", "timestamp": "2026-05-18T00:00:00+00:00",
+            "project": "A", "task_type": "summarize-file", "tool_name": "summarize-file",
+            "profile": "smart_summary", "model": "gemma4:9b", "provider": "ollama",
+            "input_tokens": 40, "output_tokens": 20, "total_tokens": 60,
+            "duration_ms": 4000, "estimated_cost_cny": 0.0, "success": True,
+            "request_id": "req_parent",
+            "extra": {
+                "mcp_tool_name": "local_summarize_file", "source": "manual-mcp",
+                "auto_escalated": True, "escalation_trigger": "low_confidence",
+                "escalation_reason": "confidence=low on fast_summary",
+                "escalation_from_profile": "fast_summary",
+                "escalation_to_profile": "smart_summary",
+                "escalation_depth": 1, "parent_request_id": "req_parent_001",
+            },
+        }) + "\n")
+        # P2-C3.1 debate round records (2 rounds)
+        fh.write(json.dumps({
+            "id": "call_deb1", "timestamp": "2026-05-20T00:00:00+00:00",
+            "project": "A", "task_type": "debate-review-diff",
+            "tool_name": "local_debate_review_diff",
+            "profile": "qwen3.6_27b_mtp", "model": "qwen3.6:27b-q8-ud",
+            "provider": "ollama",
+            "input_tokens": 50, "output_tokens": 25, "total_tokens": 75,
+            "duration_ms": 5000, "estimated_cost_cny": 0.0, "success": True,
+            "extra": {
+                "debate_mode": True, "debate_rounds": 2, "debate_round_index": 1,
+                "debate_trigger": "manual-mcp",
+                "mcp_tool_name": "local_debate_review_diff", "source": "manual-mcp",
+            },
+        }) + "\n")
+        fh.write(json.dumps({
+            "id": "call_deb2", "timestamp": "2026-05-20T00:01:00+00:00",
+            "project": "A", "task_type": "debate-review-diff",
+            "tool_name": "local_debate_review_diff",
+            "profile": "reasoning_checker",
+            "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
+            "provider": "ollama",
+            "input_tokens": 60, "output_tokens": 30, "total_tokens": 90,
+            "duration_ms": 6000, "estimated_cost_cny": 0.0, "success": False,
+            "failure_reason": "timeout",
+            "extra": {
+                "debate_mode": True, "debate_rounds": 2, "debate_round_index": 2,
+                "debate_trigger": "manual-mcp",
+                "mcp_tool_name": "local_debate_review_diff", "source": "manual-mcp",
+            },
+        }) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: group_by_extra
+# ---------------------------------------------------------------------------
+
+
+def test_group_by_extra_basic(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    groups = call_ledger.group_by_extra(records, "mcp_tool_name")
+    assert "local_summarize_file" in groups
+    assert "local_review_diff" in groups
+    assert "local_debate_review_diff" in groups
+    # Pre-P2 record has no extra → <none>
+    assert "<none>" in groups
+    assert groups["<none>"]["calls"] == 1
+
+
+def test_group_by_extra_missing_extra(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    groups = call_ledger.group_by_extra(records, "nonexistent_key")
+    assert set(groups.keys()) == {"<none>"}
+    assert groups["<none>"]["calls"] == 6
+
+
+def test_group_by_extra_missing_key(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    groups = call_ledger.group_by_extra(records, "review_necessity")
+    assert set(groups.keys()) == {"<none>"}
+
+
+def test_group_by_extra_fallback_tool_name(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    # With fallback_key="tool_name", the old record without extra
+    # should fall back to its top-level tool_name.
+    groups = call_ledger.group_by_extra(
+        records, "mcp_tool_name", fallback_key="tool_name")
+    # Pre-P2 record: tool_name="local_review_diff" → bucket
+    assert "<none>" not in groups
+    # All records should be categorized
+    total = sum(g["calls"] for g in groups.values())
+    assert total == 6
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: filter_escalations
+# ---------------------------------------------------------------------------
+
+
+def test_filter_escalations_finds_auto_escalated(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    items = call_ledger.filter_escalations(records)
+    assert len(items) == 1
+    assert items[0]["id"] == "call_esc"
+
+
+def test_filter_escalations_empty_when_none(ledger_path):
+    # Only pre-P2 records (no escalation fields)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(ledger_path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "id": "c1", "timestamp": "2026-01-01T00:00:00+00:00",
+            "project": "X", "task_type": "review-diff", "tool_name": "t",
+            "profile": None, "model": "m", "provider": "p",
+            "success": True, "input_tokens": 1, "output_tokens": 1,
+            "total_tokens": 2, "duration_ms": 1,
+        }) + "\n")
+    records = call_ledger.read_records(ledger_path)
+    assert call_ledger.filter_escalations(records) == []
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: filter_debates
+# ---------------------------------------------------------------------------
+
+
+def test_filter_debates(ledger_path):
+    _seed_p2_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    items = call_ledger.filter_debates(records)
+    assert len(items) == 2
+    ids = {r["id"] for r in items}
+    assert ids == {"call_deb1", "call_deb2"}
+
+
+def test_filter_debates_empty_when_none(ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(ledger_path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "id": "c1", "timestamp": "2026-01-01T00:00:00+00:00",
+            "project": "X", "task_type": "review-diff", "tool_name": "t",
+            "profile": None, "model": "m", "provider": "p",
+            "success": True, "input_tokens": 1, "output_tokens": 1,
+            "total_tokens": 2, "duration_ms": 1,
+        }) + "\n")
+    records = call_ledger.read_records(ledger_path)
+    assert call_ledger.filter_debates(records) == []
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: CLI commands — by-profile
+# ---------------------------------------------------------------------------
+
+
+def test_cli_by_profile_table(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "by-profile"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "fast_summary" in captured
+    assert "smart_summary" in captured
+    assert "<none>" in captured  # old record has profile=None
+
+
+def test_cli_by_profile_json(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "by-profile"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "fast_summary" in data
+    assert "<none>" in data
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: CLI commands — by-mcp-tool
+# ---------------------------------------------------------------------------
+
+
+def test_cli_by_mcp_tool_table(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "by-mcp-tool"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "local_summarize_file" in captured
+    assert "local_review_diff" in captured
+    assert "local_debate_review_diff" in captured
+
+
+def test_cli_by_mcp_tool_json(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "by-mcp-tool"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "local_summarize_file" in data
+    assert "local_review_diff" in data
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: CLI commands — escalations
+# ---------------------------------------------------------------------------
+
+
+def test_cli_escalations_table(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "escalations"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "low_confidence" in captured
+    assert "fast_summary" in captured
+    assert "smart_summary" in captured
+
+
+def test_cli_escalations_json(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "escalations"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert isinstance(data, list)
+    assert len(data) == 1
+    extra = data[0].get("extra") or {}
+    assert extra.get("auto_escalated") is True
+
+
+def test_cli_escalations_limit(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "escalations", "--limit", "1"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert len(data) == 1
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: CLI commands — debates
+# ---------------------------------------------------------------------------
+
+
+def test_cli_debates_table(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "debates"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "manual-mcp" in captured
+    assert "qwen3.6_27b_mtp" in captured
+    assert "reasoning_checker" in captured
+
+
+def test_cli_debates_json(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "debates"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert isinstance(data, list)
+    assert len(data) == 2
+    extras = [d.get("extra") or {} for d in data]
+    assert all(e.get("debate_mode") is True for e in extras)
+
+
+def test_cli_debates_limit(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "debates", "--limit", "1"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert len(data) == 1
+
+
+# ---------------------------------------------------------------------------
+# P2-D1: CLI commands — old record compatibility
+# ---------------------------------------------------------------------------
+
+
+def test_cli_by_profile_old_records_none_bucket(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "by-profile"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "<none>" in data
+    assert data["<none>"]["calls"] >= 1
+
+
+def test_cli_by_mcp_tool_old_records_none_bucket(clean_env, ledger_path, capsys):
+    # Without fallback, old records go to <none>
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "by-mcp-tool"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    # Pre-P2 record has no extra; it goes to <none> via group_by_extra
+    # (fallback_key="tool_name" in CLI, so actually all records are covered)
+    total = sum(g["calls"] for g in data.values())
+    assert total == 6

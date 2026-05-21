@@ -18,8 +18,8 @@
 | P2-C1.2 | Done (`3fff081`) | Auto-hook env replacement. `tools/claude_hooks/mcp_auto_worker.py` gains a self-contained `_build_ledger_extra_env` helper (decoupled from MCP server) and `spawn_review_diff` drops the broken `--commit_gate true` CLI passthrough, stamping the subprocess env with `{mcp_tool_name=local_review_diff, commit_gate=true, source=auto-hook}` instead. Fire-and-forget behaviour preserved; no worker / MCP server / router / debate changes. |
 | P2-C2.0 | Done (`034bedb`) | Schema allowlist extension: add `escalation_trigger` to `KNOWN_EXTRA_KEYS` in `tools/call_ledger.py`; update tests. No worker / MCP server / router / debate / hook behavior changes. |
 | P2-C2.1 | Done (`a2a5547`) | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child invocation via `_merge_escalation_ledger_extra_env` + `_derive_escalation_trigger` helpers. |
-| P2-C3.1 | In review | Debate round ledger emission: `run_round()` emits one call ledger record per round with debate metadata; MCP handler passes `--debate-trigger manual-mcp`; auto-escalation passes `--debate-trigger auto-escalate`. Captures real provider `ModelCallResult.usage`. No worker / router / hook changes. |
-| P2-D | Not started | Reporting/CLI: `call_ledger_cli.py` gains `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over the new fields. |
+| P2-C3.1 | Done (`9bfbb6d`) | Debate round ledger emission. |
+| P2-D1 | In review | Reporting/CLI: `call_ledger_cli.py` adds `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over P2 cost-discipline fields. Includes `group_by_extra`, `filter_escalations`, `filter_debates` library helpers. |
 | P2-E | Not started | Docs closeout for P2. |
 | P3 | Not started | Auto-upgrade restriction (behavioral). |
 | P4 | Not started | Worker pool dry-run. |

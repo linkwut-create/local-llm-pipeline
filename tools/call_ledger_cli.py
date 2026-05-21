@@ -21,8 +21,11 @@ from pathlib import Path
 
 from call_ledger import (
     LEDGER_FILE,
+    filter_debates,
+    filter_escalations,
     filter_failures,
     group_by,
+    group_by_extra,
     read_records,
     recent,
     summarize,
@@ -98,6 +101,69 @@ def _print_records(records: list[dict], fmt: str) -> None:
         print(line)
 
 
+def _print_escalations(records: list[dict], fmt: str) -> None:
+    if fmt == "json":
+        print(json.dumps(records, ensure_ascii=False, indent=2, default=str))
+        return
+    if not records:
+        print("(no records)")
+        return
+    header = (
+        f"{'timestamp':<20} {'parent_req':<22} {'trigger':<18} "
+        f"{'from→to':<34} {'d':>2} {'profile':<22} {'ok':>5} {'dur_ms':>8} {'cost':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+    for r in records:
+        extra = r.get("extra") or {}
+        ts = (r.get("timestamp") or "")[:19]
+        parent = (extra.get("parent_request_id") or "-")[:21]
+        trigger = (extra.get("escalation_trigger") or "-")[:17]
+        from_p = (extra.get("escalation_from_profile") or "-")[:16]
+        to_p = (extra.get("escalation_to_profile") or "-")[:16]
+        depth = extra.get("escalation_depth", "?")
+        profile = (r.get("profile") or "-")[:21]
+        ok = "OK" if r.get("success") else "FAIL"
+        dur = r.get("duration_ms") or 0
+        cost = r.get("estimated_cost_cny")
+        cost_s = f"{cost:.4f}" if isinstance(cost, (int, float)) else "?"
+        print(
+            f"{ts:<20} {parent:<22} {trigger:<18} "
+            f"{from_p:<16}→{to_p:<16} {str(depth):>2} {profile:<22} {ok:>5} {dur:>8} {cost_s:>8}"
+        )
+
+
+def _print_debates(records: list[dict], fmt: str) -> None:
+    if fmt == "json":
+        print(json.dumps(records, ensure_ascii=False, indent=2, default=str))
+        return
+    if not records:
+        print("(no records)")
+        return
+    header = (
+        f"{'timestamp':<20} {'trigger':<15} {'round':>5} {'of':>3} "
+        f"{'profile':<22} {'provider':<10} {'ok':>5} {'dur_ms':>8} {'cost':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+    for r in records:
+        extra = r.get("extra") or {}
+        ts = (r.get("timestamp") or "")[:19]
+        trigger = (extra.get("debate_trigger") or "-")[:14]
+        round_idx = extra.get("debate_round_index", "?")
+        total = extra.get("debate_rounds", "?")
+        profile = (r.get("profile") or "-")[:21]
+        provider = (r.get("provider") or "-")[:9]
+        ok = "OK" if r.get("success") else "FAIL"
+        dur = r.get("duration_ms") or 0
+        cost = r.get("estimated_cost_cny")
+        cost_s = f"{cost:.4f}" if isinstance(cost, (int, float)) else "?"
+        print(
+            f"{ts:<20} {trigger:<15} {str(round_idx):>5} {str(total):>3} "
+            f"{profile:<22} {provider:<10} {ok:>5} {dur:>8} {cost_s:>8}"
+        )
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
     records = read_records(_resolve_path(args.path))
     _print_summary(summarize(records), args.format)
@@ -131,6 +197,39 @@ def cmd_recent(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_by_profile(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    _print_groups(group_by(records, "profile"), args.format)
+    return 0
+
+
+def cmd_by_mcp_tool(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    _print_groups(
+        group_by_extra(records, "mcp_tool_name", fallback_key="tool_name"),
+        args.format,
+    )
+    return 0
+
+
+def cmd_escalations(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    items = filter_escalations(records)
+    if args.limit and args.limit > 0:
+        items = items[-args.limit:]
+    _print_escalations(items, args.format)
+    return 0
+
+
+def cmd_debates(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    items = filter_debates(records)
+    if args.limit and args.limit > 0:
+        items = items[-args.limit:]
+    _print_debates(items, args.format)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="call_ledger_cli",
@@ -155,6 +254,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp_recent.add_argument("--limit", type=int, default=20,
                            help="number of records to show (default 20)")
     sp_recent.set_defaults(func=cmd_recent)
+
+    sub.add_parser("by-profile", help="totals grouped by profile").set_defaults(func=cmd_by_profile)
+
+    sub.add_parser("by-mcp-tool", help="totals grouped by MCP tool name").set_defaults(func=cmd_by_mcp_tool)
+
+    sp_esc = sub.add_parser("escalations", help="list auto-escalation records")
+    sp_esc.add_argument("--limit", type=int, default=0,
+                        help="limit to last N (0 = all)")
+    sp_esc.set_defaults(func=cmd_escalations)
+
+    sp_deb = sub.add_parser("debates", help="list debate round records")
+    sp_deb.add_argument("--limit", type=int, default=0,
+                        help="limit to last N (0 = all)")
+    sp_deb.set_defaults(func=cmd_debates)
 
     return p
 
