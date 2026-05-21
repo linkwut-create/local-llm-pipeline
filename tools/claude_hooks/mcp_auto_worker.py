@@ -23,6 +23,29 @@ _ROUTER_PATH = SCRIPT_DIR / "local_llm_router.py"
 _CHECK_PATH = SCRIPT_DIR / "local_llm_check.py"
 
 
+# MCP Cost Discipline P2-C1.2: stamp auto-hook worker subprocesses with the
+# LOCAL_LLM_LEDGER_EXTRA channel (P2-C1.0 worker read-side; P2-C1.1 MCP-server
+# write-side). The auto-hook never imports local_llm_mcp_server so it stays
+# decoupled — this helper is a small self-contained mirror of the MCP-server
+# helper, defaulting to the auto-hook's primary use case (review-diff).
+def _build_ledger_extra_env(
+    *,
+    mcp_tool_name: str = "local_review_diff",
+    commit_gate: bool = True,
+    source: str = "auto-hook",
+) -> dict[str, str]:
+    payload = {
+        "commit_gate": bool(commit_gate),
+        "mcp_tool_name": mcp_tool_name,
+        "source": source,
+    }
+    return {
+        "LOCAL_LLM_LEDGER_EXTRA": json.dumps(
+            payload, separators=(",", ":"), sort_keys=True,
+        ),
+    }
+
+
 def auto_output_dir(repo_root: str | None = None) -> Path:
     """Return the auto/ subdirectory under .local_llm_out/."""
     if repo_root:
@@ -185,18 +208,27 @@ def spawn_review_diff(config_dir: str, diff_text: str,
     except OSError:
         pass
 
+    # P2-C1.2: the router does not accept `--commit_gate` as a CLI flag, so
+    # the previous passthrough was a no-op (and on stricter argparse builds it
+    # would have silently failed). Auto-hook callers express commit_gate /
+    # source via the LOCAL_LLM_LEDGER_EXTRA env channel introduced in P2-C1.0,
+    # which the worker reads and folds into the ledger record's `extra` field.
     cmd = [
         sys.executable,
         str(_ROUTER_PATH),
         "review-diff",
         "--stdin",
-        "--commit_gate", "true",
         "--json-only",
         "--output-dir", str(auto_dir),
     ]
 
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.update(_build_ledger_extra_env(
+        mcp_tool_name="local_review_diff",
+        commit_gate=True,
+        source="auto-hook",
+    ))
 
     spawn_background(cmd, env=env, cwd=repo_root, stdin_path=str(stdin_path))
 

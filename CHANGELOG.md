@@ -2,6 +2,15 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C1.2: auto hook replaces broken CLI
+  `--commit_gate true` passthrough with `LOCAL_LLM_LEDGER_EXTRA` env
+  stamping. `tools/claude_hooks/mcp_auto_worker.py` ships a
+  self-contained `_build_ledger_extra_env` helper (decoupled from the
+  MCP server) and `spawn_review_diff` now drops the dead CLI flag and
+  stamps the subprocess env with
+  `{mcp_tool_name=local_review_diff, commit_gate=true, source=auto-hook}`.
+  No worker / MCP server / router / debate changes; fire-and-forget
+  behaviour preserved.
 - MCP Cost Discipline P2-C1.1: MCP server stamps worker subprocess calls
   with `LOCAL_LLM_LEDGER_EXTRA`. `tools/local_llm_mcp_server.py` gains a
   `_build_ledger_extra_env` helper and an `extra_env` parameter on
