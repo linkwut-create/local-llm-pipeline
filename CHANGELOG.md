@@ -2,6 +2,23 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-B: env knob helper + constants in
+  `tools/local_llm_mcp_server.py`. Adds `_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE`
+  and `_ENV_AUTO_ESCALATE_ON_UNCERTAIN` literal env-var names, plus
+  `_parse_env_flag(name, default=False)` boolean parser (truthy: `true`
+  / `1` / `yes` / `on`; falsy: `false` / `0` / `no` / `off` / empty;
+  unrecognized → default; case-insensitive, whitespace-trimmed).
+  **Plumbing only — helpers exist but are NOT wired into
+  `_check_quality_escalation`.** Pre-P3 escalation behavior preserved
+  unchanged at this commit: `confidence=="low"` and
+  `len(uncertain_points) > 3` continue to auto-escalate regardless of
+  either knob's value. Adds `tests/test_p3_env_knobs.py` (49 tests):
+  constant-name spec lock, parser semantics across unset/truthy/falsy/
+  empty/unrecognized/case/whitespace variants, plus three runtime-
+  invariance smoke tests that fail if the wiring leaks into P3-B. P3-C1
+  / P3-C2 will perform the behavioral flip (default OFF, env-knob
+  restorable). No `tools/call_ledger.py` / `tools/call_ledger_cli.py` /
+  `CLAUDE.md` / `docs/mcp-task-policy.md` / `VERSION` / tag changes.
 - MCP Cost Discipline P3-A.1: docs/spec reconciliation only. Rewrites
   `docs/MCP_COST_DISCIPLINE_PLAN.md` §1.1, §4 (split into §4.1 current
   runtime behavior, §4.2 P3 target, §4.3 other escalation surfaces

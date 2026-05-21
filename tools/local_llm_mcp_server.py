@@ -573,6 +573,39 @@ def _update_model_health(profile_name: str, ok: bool, elapsed_s: float,
 
 _MAX_ESCALATION_DEPTH = 2  # Allow up to 2 escalation hops (3 total invocations). Safe with _tried_profiles loop prevention.
 
+
+# MCP Cost Discipline P3-B: env knob constants + parser.
+# Defined but NOT wired into _check_quality_escalation yet — P3-B is the
+# helper/plumbing phase; behavioral flip lives in P3-C1 / P3-C2. The
+# current default-on behavior for `confidence=="low"` and
+# `len(uncertain_points) > 3` is preserved unchanged at this commit.
+# See docs/MCP_COST_DISCIPLINE_PLAN.md §4.2 for the P3 target table.
+_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE = "LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE"
+_ENV_AUTO_ESCALATE_ON_UNCERTAIN = "LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN"
+
+
+def _parse_env_flag(name: str, default: bool = False) -> bool:
+    """Parse an environment variable as a boolean.
+
+    - Unset → ``default``.
+    - Truthy values ``true`` / ``1`` / ``yes`` / ``on`` (case-insensitive,
+      whitespace-trimmed) → ``True``.
+    - Falsy values ``false`` / ``0`` / ``no`` / ``off`` and the empty
+      string (after trim) → ``False`` (explicit; does not fall back to
+      ``default``).
+    - Unrecognized non-empty values → ``default``.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    val = raw.strip().lower()
+    if val in ("true", "1", "yes", "on"):
+        return True
+    if val in ("", "false", "0", "no", "off"):
+        return False
+    return default
+
+
 # CJK Unicode ranges for language-aware routing (Phase 3A)
 _CJK_RANGES = [
     (0x4E00, 0x9FFF),   # CJK Unified Ideographs
