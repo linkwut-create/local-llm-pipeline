@@ -54,6 +54,7 @@ KNOWN_EXTRA_KEYS = frozenset({
     "commit_gate_allowed",
     # Auto-escalation context (populated by _wrap_worker_call in P2-C2)
     "auto_escalated",
+    "escalation_trigger",
     "escalation_reason",
     "escalation_from_profile",
     "escalation_to_profile",

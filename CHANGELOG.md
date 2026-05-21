@@ -2,6 +2,9 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C2.0: add `escalation_trigger` to call ledger
+  known extra keys, preparing escalation context ledger capture. No
+  worker / MCP server / router / debate / hook behavior changes.
 - MCP Cost Discipline P2-C1.2: auto hook replaces broken CLI
   `--commit_gate true` passthrough with `LOCAL_LLM_LEDGER_EXTRA` env
   stamping. `tools/claude_hooks/mcp_auto_worker.py` ships a
