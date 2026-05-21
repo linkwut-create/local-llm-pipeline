@@ -487,3 +487,74 @@ def test_call_debate_review_diff_does_not_stamp_env(monkeypatch):
     env = captured["env"]
     assert env is not None
     assert "LOCAL_LLM_LEDGER_EXTRA" not in env
+
+
+# --------------------------------------------------------------------------- #
+# 5. P2-C3.1: debate trigger attribution in MCP handler                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_debate_handler_passes_manual_mcp_trigger(monkeypatch):
+    """call_debate_review_diff must pass --debate-trigger manual-mcp
+    when called directly (no auto-escalation marker in params)."""
+    captured_cmd = None
+
+    def _capture_run(cmd, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = list(cmd)
+        return {
+            "ok": True,
+            "stdout": json.dumps({"task": "debate-review-diff", "ok": True, "result": "ok"}),
+            "stderr": "",
+            "returncode": 0,
+            "elapsed_seconds": 1.0,
+        }
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_run)
+    diff = (
+        "diff --git a/x.py b/x.py\n"
+        "--- a/x.py\n+++ b/x.py\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+    )
+    mcp.call_debate_review_diff({"diff_text": diff})
+
+    assert captured_cmd is not None
+    assert "--debate-trigger" in captured_cmd
+    trigger_idx = captured_cmd.index("--debate-trigger")
+    assert captured_cmd[trigger_idx + 1] == "manual-mcp"
+
+
+def test_review_diff_auto_escalate_passes_auto_escalate_trigger(monkeypatch):
+    """call_review_diff auto-escalation to debate must pass
+    --debate-trigger auto-escalate."""
+    captured_cmd = None
+
+    def _capture_run(cmd, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = list(cmd)
+        return {
+            "ok": True,
+            "stdout": json.dumps({"task": "debate-review-diff", "ok": True, "result": "ok"}),
+            "stderr": "",
+            "returncode": 0,
+            "elapsed_seconds": 1.0,
+        }
+
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_run)
+
+    # Build a diff with >100 lines to trigger auto-escalation.
+    # commit_gate=False is the default — keeps us out of the gate path.
+    diff_lines = ["diff --git a/x.py b/x.py",
+                  "--- a/x.py", "+++ b/x.py"]
+    for i in range(1, 120):
+        diff_lines.append(f"@@ -{i},1 +{i},1 @@")
+        diff_lines.append(f" old line {i}")
+        diff_lines.append(f"+new line {i}")
+    large_diff = "\n".join(diff_lines)
+
+    mcp.call_review_diff({"diff_text": large_diff})
+
+    assert captured_cmd is not None
+    assert "--debate-trigger" in captured_cmd
+    trigger_idx = captured_cmd.index("--debate-trigger")
+    assert captured_cmd[trigger_idx + 1] == "auto-escalate"

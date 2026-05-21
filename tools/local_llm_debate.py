@@ -29,6 +29,13 @@ from local_llm_worker import (
     collect_tree,
 )
 
+# P2-C3.1: import call_ledger for per-round debate records.
+# Best-effort — debate must not fail if ledger is unavailable.
+try:
+    from call_ledger import build_record as _ledger_build, record_call as _ledger_record
+except Exception:
+    _ledger_build = _ledger_record = None
+
 PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 
@@ -158,10 +165,71 @@ def get_round_prompt(round_num: int, task: str) -> str:
     return round_prompts.get(task, round_prompts.get("_default", f"Round {round_num}: Analyze the input."))
 
 
+def _emit_debate_round_ledger(
+    *,
+    task_type: str,
+    profile: str,
+    provider: str,
+    model: str,
+    success: bool,
+    elapsed_seconds: float,
+    input_text: str,
+    output_text: str,
+    usage: dict | None,
+    error: str | None,
+    debate_round_index: int,
+    debate_rounds: int,
+    debate_trigger: str,
+) -> None:
+    """Write one call ledger record per debate round.  Never raises."""
+    if not (_ledger_build and _ledger_record):
+        return
+    try:
+        input_tokens = None
+        output_tokens = None
+        cached_tokens = None
+        cache_miss_tokens = None
+        if isinstance(usage, dict):
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            cached_tokens = usage.get("cached_tokens")
+            cache_miss_tokens = usage.get("cache_miss_tokens")
+        rec = _ledger_build(
+            task_type=task_type,
+            tool_name="local_debate_review_diff",
+            profile=profile,
+            model=model,
+            provider=provider,
+            input_chars=len(input_text),
+            output_chars=len(output_text),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cache_miss_tokens=cache_miss_tokens,
+            duration_ms=int(elapsed_seconds * 1000),
+            success=success,
+            failure_reason=error,
+            result_summary=(output_text[:300] if output_text else None),
+            extra={
+                "debate_mode": True,
+                "debate_rounds": debate_rounds,
+                "debate_round_index": debate_round_index,
+                "debate_trigger": debate_trigger,
+                "mcp_tool_name": "local_debate_review_diff",
+                "source": debate_trigger,
+            },
+        )
+        _ledger_record(rec)
+    except Exception:
+        pass  # ledger failures must never break debate output
+
+
 def run_round(round_num: int, task: str, original_input: str,
               prior_outputs: list[str], profile_name: str,
               profiles: dict, provider: str, timeout: int,
-              max_output_chars: int) -> dict:
+              max_output_chars: int,
+              total_rounds: int = MAX_ROUNDS,
+              debate_trigger: str = "cli") -> dict:
     profile = profiles.get(profile_name, {})
     model = profile.get("model", "unknown")
 
@@ -185,10 +253,27 @@ def run_round(round_num: int, task: str, original_input: str,
 
     start = time.time()
     try:
-        # v2-A: call_model returns ModelCallResult on the non-stream path.
-        # Debate rounds always run non-stream, so `.content` is safe here.
-        raw = call_model(system, user, config).content
+        # P2-C3.1: capture full ModelCallResult to extract real provider
+        # usage for the call ledger instead of dropping it.
+        model_result = call_model(system, user, config)
+        raw = model_result.content
+        usage = getattr(model_result, "usage", None)
         elapsed = round(time.time() - start, 2)
+        _emit_debate_round_ledger(
+            task_type=f"debate-{task}",
+            profile=profile_name,
+            provider=provider,
+            model=model,
+            success=True,
+            elapsed_seconds=elapsed,
+            input_text=user,
+            output_text=raw or "",
+            usage=usage if isinstance(usage, dict) else None,
+            error=None,
+            debate_round_index=round_num,
+            debate_rounds=total_rounds,
+            debate_trigger=debate_trigger,
+        )
         return {
             "round": round_num,
             "profile": profile_name,
@@ -201,6 +286,22 @@ def run_round(round_num: int, task: str, original_input: str,
         }
     except Exception as e:
         elapsed = round(time.time() - start, 2)
+        error_str = str(e)[:300]
+        _emit_debate_round_ledger(
+            task_type=f"debate-{task}",
+            profile=profile_name,
+            provider=provider,
+            model=model,
+            success=False,
+            elapsed_seconds=elapsed,
+            input_text=user,
+            output_text="",
+            usage=None,
+            error=error_str,
+            debate_round_index=round_num,
+            debate_rounds=total_rounds,
+            debate_trigger=debate_trigger,
+        )
         return {
             "round": round_num,
             "profile": profile_name,
@@ -209,7 +310,7 @@ def run_round(round_num: int, task: str, original_input: str,
             "raw_output": "",
             "elapsed_seconds": elapsed,
             "ok": False,
-            "error": str(e)[:300],
+            "error": error_str,
         }
 
 
@@ -352,6 +453,9 @@ def main():
                         help="Timeout per round in seconds")
     parser.add_argument("--summary-only", action="store_true",
                         help="Output only findings summary (no per-round details)")
+    parser.add_argument("--debate-trigger", default="cli",
+                        choices=["cli", "manual-mcp", "auto-escalate"],
+                        help="Trigger context for call ledger (default: cli)")
 
     args = parser.parse_args()
 
@@ -427,6 +531,8 @@ def main():
             provider=args.provider,
             timeout=args.timeout,
             max_output_chars=args.max_output_chars,
+            total_rounds=num_rounds,
+            debate_trigger=args.debate_trigger,
         )
         rounds.append(result)
 

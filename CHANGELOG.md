@@ -2,6 +2,14 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C3.1: debate rounds now emit one call ledger
+  record per `run_round()` with debate metadata (`debate_mode`,
+  `debate_rounds`, `debate_round_index`, `debate_trigger`) while
+  preserving debate stdout/output JSON format. Captures real provider
+  usage from `ModelCallResult` instead of dropping it.
+  `call_debate_review_diff` MCP handler now passes `--debate-trigger
+  manual-mcp`; `call_review_diff` auto-escalation to debate passes
+  `--debate-trigger auto-escalate`. No worker / router / hook changes.
 - MCP Cost Discipline P2-C2.1: `_wrap_worker_call` now stamps escalated
   child worker calls with escalation context in `LOCAL_LLM_LEDGER_EXTRA`,
   preserving MCP tool/source/commit_gate identity and linking child

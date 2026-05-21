@@ -2082,6 +2082,7 @@ def call_review_diff(params: dict) -> dict:
             if is_heavy and has_logic:
                 print(f"MCP: heavy diff ({line_count}L, {file_count} files, has_logic) → auto-debate",
                       file=sys.stderr)
+            params["_debate_trigger"] = "auto-escalate"
             return call_debate_review_diff(params)
 
     # Unified complexity-based routing: security → reasoning, CJK → CJK-capable,
@@ -2212,6 +2213,12 @@ def call_debate_review_diff(params: dict) -> dict:
         cmd.append("--summary-only")
     if params.get("max_chars"):
         cmd.extend(["--max-chars", str(min(int(params["max_chars"]), MAX_PATH_MAX_CHARS))])
+
+    # P2-C3.1: pass debate trigger attribution to the subprocess.
+    # Default is manual-mcp; auto-escalation from call_review_diff
+    # sets _debate_trigger=auto-escalate in params.
+    debate_trigger = params.get("_debate_trigger", "manual-mcp")
+    cmd.extend(["--debate-trigger", debate_trigger])
 
     request_id = _make_request_id()
     result = run_subprocess(cmd, stdin_data=diff_text, timeout=DEBATE_TIMEOUT)
