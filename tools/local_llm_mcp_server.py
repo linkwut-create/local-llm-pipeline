@@ -1079,8 +1079,38 @@ def build_router_cmd(task: str, path: str | None, max_files: int | None,
     return cmd
 
 
+# MCP Cost Discipline P2-C1.1: build the env dict that stamps per-call
+# cost-discipline context onto a worker subprocess via the
+# LOCAL_LLM_LEDGER_EXTRA channel introduced in P2-C1.0. The worker reads
+# this env var, intersects with call_ledger.KNOWN_EXTRA_KEYS, and folds
+# the result into the call ledger record's `extra` field.
+#
+# Call sites pass the returned dict as `extra_env=` to run_subprocess /
+# run_subprocess_streaming / _wrap_worker_call. P2-C1.2 (auto hook) will
+# call this helper with `source="auto-hook"`. P2-C1.1 itself only sets it
+# from MCP tool handlers, which default to "manual-mcp".
+def _build_ledger_extra_env(
+    *,
+    mcp_tool_name: str,
+    commit_gate: bool | None = None,
+    source: str = "manual-mcp",
+) -> dict[str, str]:
+    payload: dict[str, object] = {
+        "mcp_tool_name": mcp_tool_name,
+        "source": source,
+    }
+    if commit_gate is not None:
+        payload["commit_gate"] = bool(commit_gate)
+    return {
+        "LOCAL_LLM_LEDGER_EXTRA": json.dumps(
+            payload, separators=(",", ":"), sort_keys=True,
+        ),
+    }
+
+
 def run_subprocess(cmd: list[str], stdin_data: str | None = None,
-                   timeout: int = DEFAULT_TIMEOUT) -> dict:
+                   timeout: int = DEFAULT_TIMEOUT,
+                   extra_env: dict[str, str] | None = None) -> dict:
     """Run a subprocess and return a structured result.
 
     Forces UTF-8 decoding with `errors="replace"` so non-ASCII output (e.g.
@@ -1090,6 +1120,10 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
 
     Uses the effective project root (LOCAL_LLM_TARGET_PROJECT when set) as
     cwd so output lands in the correct project's .local_llm_out/.
+
+    ``extra_env`` (P2-C1.1) is merged into the child env after the defaults
+    are seeded; values in ``extra_env`` overwrite any inherited value so a
+    per-call MCP-tool stamp wins over a stale external env.
     """
     start = time.time()
     effective_root = _get_effective_project_root()
@@ -1097,6 +1131,8 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
     env.setdefault("PYTHONIOENCODING", "utf-8")
     # Direct worker output to the effective project's .local_llm_out/
     env.setdefault("LOCAL_LLM_OUTPUT_DIR", str(effective_root / ".local_llm_out"))
+    if extra_env:
+        env.update(extra_env)
     try:
         result = subprocess.run(
             cmd,
@@ -1141,18 +1177,24 @@ def run_subprocess(cmd: list[str], stdin_data: str | None = None,
 
 def run_subprocess_streaming(cmd: list[str], progress_token: str,
                               stdin_data: str | None = None,
-                              timeout: int = DEFAULT_TIMEOUT) -> dict:
+                              timeout: int = DEFAULT_TIMEOUT,
+                              extra_env: dict[str, str] | None = None) -> dict:
     """Run a subprocess with real-time progress via MCP $/progress notifications.
 
     Reads stdout line-by-line. Lines prefixed ``DATA:`` are treated as
     streaming content tokens and forwarded as progress notifications.
     Lines prefixed ``JSON:`` are the final output marker (same as batch mode).
+
+    ``extra_env`` (P2-C1.1) is merged into the child env after the defaults
+    are seeded; values in ``extra_env`` overwrite any inherited value.
     """
     start = time.time()
     effective_root = _get_effective_project_root()
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("LOCAL_LLM_OUTPUT_DIR", str(effective_root / ".local_llm_out"))
+    if extra_env:
+        env.update(extra_env)
 
     accumulated = []
     token_count = 0
@@ -1474,7 +1516,8 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                       timeout: int = DEFAULT_TIMEOUT, task: str | None = None,
                       auto_escalate: bool = True, _depth: int = 0,
                       cjk_ratio: float = 0.0,
-                      _tried_profiles: set[str] | None = None) -> dict:
+                      _tried_profiles: set[str] | None = None,
+                      extra_env: dict[str, str] | None = None) -> dict:
     """Run the worker subprocess and translate its output into a uniform MCP
     response. Always loads the JSON file the worker pointed to via its
     `JSON: <path>` marker — never falls back to "latest file in
@@ -1493,6 +1536,7 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
             cmd = cmd + ["--stream"]
         result = run_subprocess_streaming(
             cmd, progress_token, stdin_data=stdin_data, timeout=timeout,
+            extra_env=extra_env,
         )
         payload, _ = load_worker_output(result["stdout"])
         if result["ok"] and payload:
@@ -1509,7 +1553,8 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
         return coerce_failure_response(tool, payload, result.get("stderr", ""),
                                        result["elapsed_seconds"], request_id)
 
-    result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout)
+    result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout,
+                            extra_env=extra_env)
     payload, parse_err = load_worker_output(result["stdout"])
 
     # Phase 3B: auto-update model health (best-effort, never blocks)
@@ -1596,6 +1641,7 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                     timeout=timeout, task=task, auto_escalate=auto_escalate,
                     _depth=_depth + 1, cjk_ratio=cjk_ratio,
                     _tried_profiles=_tried_profiles,
+                    extra_env=extra_env,
                 )
 
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
@@ -1663,11 +1709,19 @@ def call_parallel_review(params: dict) -> dict:
             stdin_path = SCRIPT_DIR / ".local_llm_out" / f"parallel_{request_id}_{p}.stdin"
             stdin_path.parent.mkdir(parents=True, exist_ok=True)
             stdin_path.write_text(diff_text, encoding="utf-8")
+            # P2-C1.1: stamp the worker subprocess with the real MCP tool
+            # name so each parallel worker emits a ledger record tagged as
+            # local_parallel_review (not just review-diff).
+            child_env = os.environ.copy()
+            child_env.setdefault("PYTHONIOENCODING", "utf-8")
+            child_env.update(_build_ledger_extra_env(
+                mcp_tool_name="local_parallel_review"))
             with open(stdin_path, "r", encoding="utf-8") as f:
                 proc = subprocess.Popen(
                     cmd, stdin=f,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, encoding="utf-8", errors="replace",
+                    env=child_env,
                 )
             processes[p] = proc
         except Exception as e:
@@ -1802,7 +1856,9 @@ def call_summarize_file(params: dict) -> dict:
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
                            proactive_profile or user_profile, params.get("model"))
     result = _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
-                               cjk_ratio=cjk_ratio)
+                               cjk_ratio=cjk_ratio,
+                               extra_env=_build_ledger_extra_env(
+                                   mcp_tool_name="local_summarize_file"))
 
     # Write to cache on success
     if result.get("ok"):
@@ -1865,7 +1921,9 @@ def call_summarize_tree(params: dict) -> dict:
     cmd = build_router_cmd("summarize-tree", path_str, max_files, max_chars,
                            proactive_profile or user_profile, params.get("model"))
     return _wrap_worker_call("local_summarize_tree", cmd, task="summarize-tree",
-                             cjk_ratio=cjk_ratio)
+                             cjk_ratio=cjk_ratio,
+                             extra_env=_build_ledger_extra_env(
+                                 mcp_tool_name="local_summarize_tree"))
 
 
 def call_generate_test_plan(params: dict) -> dict:
@@ -1904,7 +1962,9 @@ def call_generate_test_plan(params: dict) -> dict:
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
                            proactive_profile or user_profile, params.get("model"))
     return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan",
-                             cjk_ratio=cjk_ratio)
+                             cjk_ratio=cjk_ratio,
+                             extra_env=_build_ledger_extra_env(
+                                 mcp_tool_name="local_generate_test_plan"))
 
 
 REVIEW_TIMEOUT = 60
@@ -1958,7 +2018,10 @@ def call_review_diff(params: dict) -> dict:
     # Non-commit-gate: route through _wrap_worker_call for quality escalation (v0.9.6)
     if not commit_gate:
         return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
-                                 task="review-diff", cjk_ratio=cjk_ratio)
+                                 task="review-diff", cjk_ratio=cjk_ratio,
+                                 extra_env=_build_ledger_extra_env(
+                                     mcp_tool_name="local_review_diff",
+                                     commit_gate=False))
 
     # Commit gate: pre-invocation constraint check — reject heavy/risky models
     if commit_gate:
@@ -1988,7 +2051,11 @@ def call_review_diff(params: dict) -> dict:
 
     # Commit gate: fast direct path with 60s timeout
     request_id = _make_request_id()
-    result = run_subprocess(cmd, stdin_data=diff_text, timeout=REVIEW_TIMEOUT)
+    result = run_subprocess(
+        cmd, stdin_data=diff_text, timeout=REVIEW_TIMEOUT,
+        extra_env=_build_ledger_extra_env(
+            mcp_tool_name="local_review_diff", commit_gate=True),
+    )
 
     if not result["ok"] and "timed out" in result["stderr"].lower():
         return build_error_response(
@@ -2173,7 +2240,9 @@ def call_contextual_analyze(params: dict) -> dict:
     cmd = build_router_cmd("contextual-analyze", path_str, None, max_chars,
                            proactive_profile or user_profile, params.get("model"))
     return _wrap_worker_call("local_contextual_analyze", cmd, stdin_data=stdin_data,
-                             task="contextual-analyze", cjk_ratio=cjk_ratio)
+                             task="contextual-analyze", cjk_ratio=cjk_ratio,
+                             extra_env=_build_ledger_extra_env(
+                                 mcp_tool_name="local_contextual_analyze"))
 
 
 def call_draft_code(params: dict) -> dict:
@@ -2229,7 +2298,9 @@ def call_draft_code(params: dict) -> dict:
     if params.get("model"):
         cmd.extend(["--model", params["model"]])
 
-    return _wrap_worker_call("local_draft_code", cmd, stdin_data=prompt, task=task)
+    return _wrap_worker_call("local_draft_code", cmd, stdin_data=prompt, task=task,
+                             extra_env=_build_ledger_extra_env(
+                                 mcp_tool_name="local_draft_code"))
 
 
 TOOL_HANDLERS = {

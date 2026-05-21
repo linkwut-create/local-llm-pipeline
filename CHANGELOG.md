@@ -2,6 +2,17 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C1.1: MCP server stamps worker subprocess calls
+  with `LOCAL_LLM_LEDGER_EXTRA`. `tools/local_llm_mcp_server.py` gains a
+  `_build_ledger_extra_env` helper and an `extra_env` parameter on
+  `run_subprocess` / `run_subprocess_streaming` / `_wrap_worker_call`.
+  Every worker-backed MCP tool now stamps the child env with the real
+  `mcp_tool_name` and `source="manual-mcp"`; `local_review_diff` also
+  stamps `commit_gate` (true on the gate path, false otherwise);
+  `local_parallel_review` stamps each parallel worker. `local_check` and
+  `local_debate_review_diff` are intentionally left unstamped — the
+  former runs the env-health probe, the latter is P2-C3 (per-round
+  ledger emission). No hook/router/debate/escalation wiring yet.
 - MCP Cost Discipline P2-C1.0: worker ledger env plumbing. Worker reads
   `LOCAL_LLM_LEDGER_EXTRA`, filters JSON via the P2-B `KNOWN_EXTRA_KEYS`
   allowlist, and folds the result into the call ledger record's `extra`
