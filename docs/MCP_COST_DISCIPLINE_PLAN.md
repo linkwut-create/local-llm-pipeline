@@ -14,7 +14,7 @@ discipline has not kept pace with capability.
 
 | Issue | Symptom |
 |-------|---------|
-| **Auto-upgrade inflation** | CLAUDE.md escalation rule triggers `deep_reviewer` whenever `confidence=medium` or `uncertain_points ≥ 3`. A medium-confidence review on a small docs diff can escalate to a 35B+ model for no gain. |
+| **Auto-upgrade inflation** | `_check_quality_escalation` in `tools/local_llm_mcp_server.py` upgrades a profile whenever a worker returns `confidence=="low"` or `len(uncertain_points) > 3`. A low-confidence review on a small docs diff can escalate to a 35B+ model for no gain. (Earlier drafts of this plan referenced `confidence=medium` as the trigger — that has never been the runtime behavior. Corrected by P3-A.1.) |
 | **Debate over-provisioning** | Debate is recommended for large diffs (>100 lines, 3+ files, logic changes) but the triggers are broad. Every multi-file diff that touches worker code can theoretically trigger debate. |
 | **No per-phase cost cap** | Nothing limits how many strong-model reviews can fire in one phase. A phase with many small commits could burn deep-review tokens at scale. |
 | **Hardware role confusion** | Profiles, health fields, and backend notes describe models on specific hosts (zero12, laptop) but there is no policy-level statement of which machine does what. |
@@ -98,38 +98,110 @@ guards.
 
 ## 4. Escalation Rules
 
-### 4.1 Default: no auto-upgrade
+> **Reconciled by P3-A.1 (docs-only).** Earlier drafts described
+> `confidence=medium` and `uncertain_points ≥ 3` as the auto-upgrade
+> triggers, and proposed a strict `escalation_reason` enum
+> (`test-failure | dirty-after-review | structural-risk |
+> reviewer-disagreement | user-requested`). Neither matched the
+> runtime at HEAD `e8a5315`. P3-A read-only audit established the
+> actual behavior; this section reflects it. P3-A.1 is the
+> reconciliation pass; no runtime code was changed.
 
-The current CLAUDE.md auto-upgrade rule (**`confidence=medium` triggers deep
-reviewer**) is too aggressive. It must be replaced with a narrower trigger set.
+### 4.1 Current runtime behavior (pre-P3, factual)
 
-### 4.2 Upgrade only when
+Auto-escalation today is concentrated in
+`tools/local_llm_mcp_server.py::_check_quality_escalation`, called from
+`_wrap_worker_call`. It fires post-call, based on signals the worker
+emitted in its JSON payload:
 
-| # | Condition | Rationale |
-|---|-----------|-----------|
-| a | Tests fail after review | Reviewer missed a real bug |
-| b | Working tree dirty after review | Diff changed, re-review needed |
-| c | Diff touches hook/gate/security/release/schema/destructive-mutation | Structural risk |
-| d | Two local reviewers from different model families disagree | Debate needed to resolve |
-| e | User explicitly requests | Override, must be recorded |
+| Worker signal | `_check_quality_escalation` action | Ledger `escalation_trigger` value |
+|---------------|------------------------------------|-----------------------------------|
+| `payload.error_type == "timeout"` | Downgrade to a lighter model in the chain (loop-safe via `_tried_profiles`) | `"timeout"` |
+| `payload.confidence == "low"` | Upgrade one tier (CJK-aware) | `"low_confidence"` |
+| `len(payload.uncertain_points) > 3` | Upgrade one tier (CJK-aware) | `"uncertain_points"` |
+| (no quality issue) | No escalation | n/a |
+| (`_derive_escalation_trigger` fallthrough) | n/a — only reached if upstream branch fires without a known signal | `"unknown"` |
 
-`confidence=medium` alone does **not** trigger upgrade. If the only signal is
-`confidence=medium` with `uncertain_points < 3` and none of conditions a-e,
-accept the review result.
+`confidence == "medium"` does **not** trigger anything. `uncertain_points`
+with count ≤ 3 does **not** trigger anything. `_MAX_ESCALATION_DEPTH` is 2
+(up to three total invocations). `_tried_profiles` prevents revisiting
+profiles in the same chain.
 
-### 4.3 Every escalation must record reason
+The ledger `escalation_reason` field is a **free-form human-readable
+string** (e.g. `"confidence=low on fast_summary"`,
+`"4 uncertain_points on commit_reviewer"`, `"timeout on
+diff_reviewer"`). It is not a closed enum. P3 does not introduce one;
+see §4.4.
 
-The Call Ledger `extra` dict must include:
+### 4.2 P3 target behavior (proposed, not yet implemented)
 
-```json
-{
-  "escalation_reason": "<one of: test-failure | dirty-after-review | structural-risk | reviewer-disagreement | user-requested>",
-  "escalation_from_profile": "commit_reviewer",
-  "escalation_to_profile": "deep_reviewer"
-}
-```
+P3 narrows §4.1's auto-escalation: `low_confidence` and
+`uncertain_points` cease to be default triggers and become opt-in via
+env knobs. `timeout` downgrade is kept (it moves work to a *lighter*
+model, so it doesn't cause cost inflation).
 
-### 4.4 Maximum review passes per diff
+| Worker signal | P3 default | P3 opt-in restore |
+|---------------|------------|-------------------|
+| `error_type == "timeout"` | Still downgrades (unchanged) | n/a |
+| `confidence == "low"` | **Does not escalate** (P3-C1) | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` |
+| `len(uncertain_points) > 3` | **Does not escalate** (P3-C2) | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` |
+
+Loop prevention, `_MAX_ESCALATION_DEPTH`, and the existing trigger
+value space (`timeout` / `low_confidence` / `uncertain_points` /
+`unknown`) are unchanged by P3.
+
+### 4.3 Other escalation surfaces (informational — outside P3)
+
+The runtime contains three additional escalation-shaped paths besides
+§4.1. They are **not** the target of P3 and are listed here so
+future readers do not assume `_check_quality_escalation` is the only
+site.
+
+| Path | Location | Kind | Captured in ledger? |
+|------|----------|------|---------------------|
+| **A** — Starting-profile resolution | `_resolve_starting_profile` (mcp_server.py:224) | Pre-call *routing*: picks the initial profile based on user override, commit-gate flag, security/architecture/CJK content patterns, complexity tier, and health. Can jump straight to reasoning models when security patterns are detected. | No (routing decision, not an escalation hop) |
+| **B** — Volume-based auto-debate | `call_review_diff` (mcp_server.py:2069–2086) | Pre-call: if non-commit-gate AND (`line_count > 100` OR `file_count >= 3` OR (`has_logic` AND `file_count >= 2`) OR (`is_heavy` AND `has_logic`)), bypass single-model review and call `call_debate_review_diff`. | Yes, as `debate_trigger="auto-escalate"` per debate-round record (P2-C3.1); not as `escalation_trigger` |
+| **C** — Quality-signal escalation | `_check_quality_escalation` + `_wrap_worker_call` | Post-call: §4.1. The only path that stamps `escalation_trigger` today. | Yes |
+| **D** — Hook-layer advisory | `tools/claude_hooks/mcp_gate.py::classify_diff_risk` + `recommend_mcp_action` | Classifies risk by touched-file paths and line count; recommends MCP actions to the controller. **Advisory only — does not invoke escalation.** | No (advisory, never reaches the worker) |
+
+P3 modifies Path C only. Paths A, B, D are explicitly out of scope
+for P3 — see §10 / §13.5.
+
+### 4.4 Why P3 does not introduce a strict `escalation_reason` enum
+
+Earlier §4.3 drafts proposed locking `escalation_reason` to
+`test-failure | dirty-after-review | structural-risk |
+reviewer-disagreement | user-requested`. That enum was aspirational
+and matches none of the runtime's observed values. Adopting it would
+require either:
+
+- Breaking the 28 tests in `tests/test_mcp_escalation_ledger_env.py`
+  that pin the current `low_confidence` / `uncertain_points` /
+  `timeout` / `unknown` `escalation_trigger` values, *or*
+- Mapping `low_confidence`/`uncertain_points` → some enum slot that
+  doesn't fit any of the proposed names.
+
+Three of the proposed reasons (`test-failure`, `dirty-after-review`,
+`reviewer-disagreement`) describe events the MCP server cannot
+observe — it has no access to pytest output, no view of `git status`
+after a review, and no comparison logic between parallel-review
+outputs. They are **controller policy obligations**, already
+documented in CLAUDE.md MCP-USAGE-RETRO-1 and "Escalation Rules",
+not runtime behavior.
+
+The `structural-risk` reason is partially covered by Paths A
+(content-pattern routing) and B (volume-based auto-debate) but with
+different definitions in each site. Adding a runtime `structural_risk`
+escalation trigger would create a third site with a third definition.
+Deferred outside P3.
+
+The `user-requested` reason is achievable today via the existing
+`profile` parameter on every MCP tool (`_resolve_starting_profile`
+respects user overrides). P3-C3 may add an additive
+`review_necessity="user-forced"` ledger stamp using the existing
+`KNOWN_EXTRA_KEYS` slot — no new MCP API surface required.
+
+### 4.5 Maximum review passes per diff (unchanged from earlier drafts)
 
 | Context | Max passes |
 |---------|-----------|
@@ -290,7 +362,7 @@ This plan does **not** address:
 | **P0** | Docs policy (this document). Approve. | 1 (this file) | none |
 | **P1** | Profile/policy metadata. Add `_cost_discipline` fields to `local_llm_profiles.json` (e.g., `_max_per_phase`, `_allowed_triggers`). Schema-additive only. | `local_llm_profiles.json` | low |
 | **P2** | Ledger escalation fields. Worker `_emit_ledger` populates `extra.escalation_reason` etc. **Additive to JSONL schema — no migration.** | `call_ledger.py`, `local_llm_worker.py` | low |
-| **P3** | Auto-upgrade restriction. Replace CLAUDE.md escalation rule with §4 logic. Remove `confidence=medium` → auto-deep-reviewer trigger. | `CLAUDE.md` (policy doc) | **medium** — behavioral change |
+| **P3** | Auto-upgrade restriction. Narrow `_check_quality_escalation` (Path C in §4.3) so `confidence=="low"` and `uncertain_points > 3` no longer auto-escalate by default; both restorable via env knobs. `timeout` downgrade kept. Optional P3-C3: stamp `review_necessity="user-forced"` in the ledger when an MCP call carries an explicit `profile` override. **Does not** add a `structural_risk` runtime trigger or a new `escalate=` MCP parameter — both deferred outside P3 (§13.5). Sub-phase split: P3-A (audit), P3-A.1 (this commit, docs reconciliation), P3-B (helpers + env-knob plumbing), P3-C1, P3-C2, P3-C3 (optional), P3-D (CLAUDE.md alignment), P3-E (docs closeout). | `tools/local_llm_mcp_server.py`, `tests/test_mcp_escalation_ledger_env.py`, `tests/test_layer4_quality.py`, `CLAUDE.md`, `docs/mcp-task-policy.md` (P3-D only) | **medium** — behavioral change |
 | **P4** | Worker pool dry-run. `local_check` probes AI Max 2 (when available). No routing changes. | `local_llm_check.py`, profiles | low |
 | **P5** | V4-Flash local experimental profile. Add profile entry in `local_llm_profiles.json`. Manual invocation only. Ledger records provider=tongyi, model=v4-flash. | `local_llm_profiles.json` | low |
 
@@ -467,9 +539,15 @@ CLI surfaces them. No VERSION bump, no tag, no release.
 
 ### 13.5 Out-of-scope follow-ups (still open after P2)
 
-- **P3** (not started): Auto-upgrade restriction. Replace the CLAUDE.md
-  `confidence=medium` → deep-reviewer trigger with the §4 logic. This is
-  a behavioral change and requires its own plan + debate review.
+- **P3** (audit + docs reconciliation in progress; implementation not
+  started): Auto-upgrade restriction. Narrow `_check_quality_escalation`
+  (Path C in §4.3) so `confidence=="low"` and `uncertain_points > 3` no
+  longer auto-escalate by default; both restorable via env knobs.
+  `timeout` downgrade unchanged. Optional `review_necessity="user-forced"`
+  stamping. **Does not** add a `structural_risk` runtime trigger or a new
+  `escalate=` MCP parameter; both deferred to separate phases. See §4 for
+  the reconciled spec and §10 for the sub-phase split. Behavioral change —
+  P3-B/C sub-phases each require their own debate review per §5.
 - **P4** (not started): Worker pool dry-run. `local_check` probes a
   second worker host (AI Max 2) when available. Ledger already records
   `worker_id` in `extra` for future use.

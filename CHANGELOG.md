@@ -2,6 +2,24 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-A.1: docs/spec reconciliation only. Rewrites
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` §1.1, §4 (split into §4.1 current
+  runtime behavior, §4.2 P3 target, §4.3 other escalation surfaces
+  Paths A/B/C/D, §4.4 why no strict `escalation_reason` enum, §4.5 max
+  passes), §10 P3 row, and §13.5 P3 follow-up to match the runtime at
+  HEAD `e8a5315`. Earlier drafts referenced `confidence=medium` and
+  `uncertain_points ≥ 3` as the triggers; the runtime actually keys on
+  `confidence=="low"` and `uncertain_points > 3`. The proposed
+  `escalation_reason` enum (`test-failure | dirty-after-review |
+  structural-risk | reviewer-disagreement | user-requested`) was never
+  implemented and is withdrawn. P3 scope narrowed to env-knob-restorable
+  default-OFF for `low_confidence` / `uncertain_points` plus an optional
+  `review_necessity="user-forced"` ledger stamp; `structural_risk`
+  runtime trigger and new `escalate=` MCP parameter both deferred outside
+  P3. `PROJECT_STATUS.md` adds P3-A / P3-A.1 rows and the P3-B → P3-E
+  sub-phase split. Also fixes the stale P2-E row from `Done (this
+  commit)` to `Done (e8a5315)`. No runtime / test / VERSION / tag
+  changes.
 - MCP Cost Discipline P2-E: docs closeout for P2-A → P2-D1. Records the
   completed cost-discipline ledger chain in `PROJECT_STATUS.md`, adds the
   `docs/MCP_COST_DISCIPLINE_PLAN.md` §13 P2 completion notes (phase commit

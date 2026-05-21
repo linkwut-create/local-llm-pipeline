@@ -20,8 +20,15 @@
 | P2-C2.1 | Done (`a2a5547`) | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child invocation via `_merge_escalation_ledger_extra_env` + `_derive_escalation_trigger` helpers. |
 | P2-C3.1 | Done (`9bfbb6d`) | Debate round ledger emission. |
 | P2-D1 | Done (`afca643`) | Reporting/CLI: `call_ledger_cli.py` adds `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over P2 cost-discipline fields. Includes `group_by_extra`, `filter_escalations`, `filter_debates` library helpers. Old records (missing `extra`/`profile`) bucket into `<none>`. |
-| P2-E | Done (this commit) | Docs closeout for P2-A → P2-D1. `PROJECT_STATUS.md`, `CHANGELOG.md`, `README.md`, and `docs/MCP_COST_DISCIPLINE_PLAN.md` §13 updated to reflect the completed cost-discipline ledger chain. No runtime / test / VERSION changes. |
-| P3 | Not started | Auto-upgrade restriction (behavioral). |
+| P2-E | Done (`e8a5315`) | Docs closeout for P2-A → P2-D1. `PROJECT_STATUS.md`, `CHANGELOG.md`, `README.md`, and `docs/MCP_COST_DISCIPLINE_PLAN.md` §13 updated to reflect the completed cost-discipline ledger chain. No runtime / test / VERSION changes. |
+| P3-A | Done (audit, no code) | Read-only audit of auto-escalation runtime. Found four escalation-shaped paths (A starting-profile routing, B volume-based auto-debate, C `_check_quality_escalation` quality signals, D hook-layer advisory) and three spec/runtime mismatches in `docs/MCP_COST_DISCIPLINE_PLAN.md` §4 (`confidence=medium` vs `low`, `≥ 3` vs `> 3`, the never-implemented `escalation_reason` enum). Decision: WARN — docs reconciliation required before P3-B. |
+| P3-A.1 | In review | Docs-only reconciliation of `docs/MCP_COST_DISCIPLINE_PLAN.md` §1.1, §4 (rewritten as §4.1–§4.5), §10 P3 row, and §13.5 to match runtime at HEAD `e8a5315`. Narrowed P3 scope: P3 modifies Path C only; `structural_risk` runtime trigger and `user_requested` MCP parameter both deferred outside P3. No runtime / test / VERSION changes. |
+| P3-B | Not started | Helper additions + env-knob plumbing (no behavioral wiring). |
+| P3-C1 | Not started | Decommission `confidence=="low"` auto-escalation (default OFF, env-knob restorable). Behavioral. |
+| P3-C2 | Not started | Decommission `uncertain_points > 3` auto-escalation (default OFF, env-knob restorable). Behavioral. |
+| P3-C3 | Not started (optional) | Stamp `review_necessity="user-forced"` when MCP call carries explicit `profile` override. Additive only. |
+| P3-D | Not started | CLAUDE.md + `docs/mcp-task-policy.md` final alignment with the narrowed runtime. |
+| P3-E | Not started | Docs closeout for P3 chain. |
 | P4 | Not started | Worker pool dry-run. |
 | P5 | Not started | V4-Flash local experimental profile. |
 
