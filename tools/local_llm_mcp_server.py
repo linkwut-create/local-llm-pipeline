@@ -660,8 +660,17 @@ def _check_quality_escalation(payload: dict, current_profile: str, task: str,
             return target
         return None
 
-    # Low confidence → escalate to next tier (prefer CJK-capable if CJK detected)
-    if confidence == "low":
+    # Low confidence → escalate to next tier (prefer CJK-capable if CJK detected).
+    # MCP Cost Discipline P3-C1: default OFF. Legacy "always escalate on
+    # confidence=low" behavior is restorable via the env knob
+    # LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true (see
+    # docs/MCP_COST_DISCIPLINE_PLAN.md §4.2). When the knob is OFF we fall
+    # through to the uncertain_points check rather than short-circuiting,
+    # so a payload with confidence=low AND uncertain_points>3 still
+    # escalates via the uncertain branch. P3-C2 will gate the
+    # uncertain_points branch behind LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN.
+    if confidence == "low" and _parse_env_flag(
+            _ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, default=False):
         target = None
         if cjk_ratio > 0.1 and current_profile not in _CJK_CAPABLE_PROFILES:
             target = _prefer_cjk_profile(current_profile, task)
@@ -1147,12 +1156,21 @@ def _build_ledger_extra_env(
 #   timeout        → error_type == "timeout"
 #   low_confidence → confidence == "low"
 #   uncertain_points → len(uncertain_points) > 3
+#
+# MCP Cost Discipline P3-C1: the low_confidence branch is gated behind
+# LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE so the returned trigger label
+# matches the branch in _check_quality_escalation that actually fired.
+# When the knob is OFF and a payload has both `confidence=="low"` and
+# `uncertain_points > 3`, escalation fires via the uncertain_points
+# branch and this helper now correctly reports "uncertain_points"
+# instead of the stale "low_confidence" label.
 def _derive_escalation_trigger(payload: dict) -> str:
     error_type = (payload.get("error_type") or "").lower()
     if error_type == "timeout":
         return "timeout"
     confidence = (payload.get("confidence") or "medium").lower()
-    if confidence == "low":
+    if confidence == "low" and _parse_env_flag(
+            _ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, default=False):
         return "low_confidence"
     uncertain_count = len(payload.get("uncertain_points") or [])
     if uncertain_count > 3:

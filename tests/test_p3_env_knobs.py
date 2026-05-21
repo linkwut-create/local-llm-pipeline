@@ -1,4 +1,4 @@
-"""P3-B — env knob helpers for auto-escalation restriction.
+"""P3-B / P3-C1 — env knob helpers for auto-escalation restriction.
 
 Covers:
 
@@ -8,11 +8,18 @@ Covers:
 2. The two P3 env-knob constant names exist with the expected literal
    string values.
 
-3. Smoke check: the existing P3-A.1-documented runtime escalation
-   behavior is unchanged at this commit (``_check_quality_escalation``
-   still escalates on ``confidence=="low"`` and ``len(uncertain_points) > 3``
-   when no env knob is set — P3-B is wiring-free; P3-C1 / P3-C2 will
-   flip these to default OFF behind the same knobs).
+3. P3-C1 behavioral gate (``confidence=="low"`` auto-escalation):
+   - Default OFF: ``_check_quality_escalation`` no longer escalates on
+     ``confidence=="low"`` alone.
+   - ``LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true`` (or any truthy
+     value) restores the legacy auto-escalation.
+   - Falsy / empty / unrecognized values keep the gate closed.
+   - ``_derive_escalation_trigger`` returns ``"low_confidence"`` only
+     when the knob is ON; otherwise falls through to the uncertain /
+     unknown labels so the ledger trigger matches what actually fired.
+
+4. P3-C1 must NOT change the ``uncertain_points > 3`` branch or the
+   ``timeout`` downgrade path (those remain P3-C2 / unchanged).
 """
 from __future__ import annotations
 
@@ -122,46 +129,129 @@ def test_parse_env_flag_unrecognized_uses_default(monkeypatch, value):
 
 
 # --------------------------------------------------------------------------- #
-# Runtime invariance smoke test (P3-B must NOT change current behavior)       #
+# P3-C1: confidence=="low" auto-escalation is now default OFF.                #
 # --------------------------------------------------------------------------- #
 
 
-def test_p3b_low_confidence_escalation_unchanged(monkeypatch):
-    """P3-B is wiring-free. ``_check_quality_escalation`` must still
-    escalate on ``confidence=="low"`` regardless of whether the new env
-    knob is set, unset, or explicitly OFF — the runtime flip happens in
-    P3-C1, not P3-B."""
-    for env_state in (None, "true", "false", "", "0", "1"):
+@pytest.mark.parametrize("env_state", [None, "false", "FALSE", "0",
+                                        "no", "off", "", "  ", "garbage"])
+def test_p3c1_low_confidence_default_off(monkeypatch, env_state):
+    """P3-C1 default: a payload with only confidence=="low" must NOT escalate
+    when the env knob is unset, falsy, empty, or an unrecognized value."""
+    if env_state is None:
+        monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
+    else:
+        monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, env_state)
+    payload = {"confidence": "low", "uncertain_points": []}
+    result = mcp._check_quality_escalation(payload, "fast_summary", "summarize-file")
+    assert result is None, (
+        f"P3-C1 regression: low-confidence escalated despite knob={env_state!r}"
+    )
+
+
+@pytest.mark.parametrize("env_state", ["true", "TRUE", "True",
+                                        "1", "yes", "YES", "on", "ON",
+                                        "  true  "])
+def test_p3c1_low_confidence_env_knob_restores_legacy(monkeypatch, env_state):
+    """When the env knob is truthy, confidence=="low" escalates exactly
+    like the pre-P3-C1 behavior."""
+    monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, env_state)
+    payload = {"confidence": "low", "uncertain_points": []}
+    result = mcp._check_quality_escalation(payload, "fast_summary", "summarize-file")
+    assert result is not None, (
+        f"P3-C1 regression: low-confidence escalation suppressed even with knob={env_state!r}"
+    )
+    # The escalated target is the next tier in the summarize-file chain.
+    assert result in ("smart_summary", "qwen3.6_27b_mtp", "code_worker"), (
+        f"Unexpected escalation target: {result}"
+    )
+
+
+def test_p3c1_low_confidence_plus_uncertain_still_escalates_via_uncertain(monkeypatch):
+    """Dual signal: when confidence=="low" AND len(uncertain_points) > 3,
+    escalation must still fire — but via the uncertain_points branch
+    (since low_confidence is gated OFF by default). P3-C2 will gate
+    uncertain_points too; until then this is the expected behavior."""
+    monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
+    monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_UNCERTAIN, raising=False)
+    payload = {"confidence": "low",
+               "uncertain_points": ["a", "b", "c", "d", "e"]}
+    result = mcp._check_quality_escalation(payload, "fast_summary", "summarize-file")
+    assert result is not None, "Dual signal should still escalate via uncertain branch"
+
+
+# --------------------------------------------------------------------------- #
+# P3-C1: _derive_escalation_trigger respects the same knob                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_p3c1_derive_trigger_low_confidence_off_returns_unknown(monkeypatch):
+    monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
+    assert mcp._derive_escalation_trigger({"confidence": "low"}) == "unknown"
+
+
+def test_p3c1_derive_trigger_low_confidence_on_returns_low_confidence(monkeypatch):
+    monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, "true")
+    assert mcp._derive_escalation_trigger({"confidence": "low"}) == "low_confidence"
+
+
+def test_p3c1_derive_trigger_dual_signal_off_returns_uncertain(monkeypatch):
+    """When knob is OFF and payload has both signals, the trigger label
+    must match the branch that actually fired (uncertain_points)."""
+    monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
+    assert mcp._derive_escalation_trigger({
+        "confidence": "low",
+        "uncertain_points": ["a", "b", "c", "d"],
+    }) == "uncertain_points"
+
+
+def test_p3c1_derive_trigger_dual_signal_on_returns_low_confidence(monkeypatch):
+    """When knob is ON the legacy ordering wins: low_confidence over uncertain_points."""
+    monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, "true")
+    assert mcp._derive_escalation_trigger({
+        "confidence": "low",
+        "uncertain_points": ["a", "b", "c", "d"],
+    }) == "low_confidence"
+
+
+def test_p3c1_derive_trigger_timeout_still_wins(monkeypatch):
+    """timeout precedence is unchanged regardless of the low_confidence knob."""
+    for env_state in (None, "true", "false"):
         if env_state is None:
             monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
         else:
             monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, env_state)
-        payload = {"confidence": "low", "uncertain_points": []}
-        result = mcp._check_quality_escalation(payload, "fast_summary", "summarize-file")
-        assert result is not None, (
-            f"P3-B regression: low-confidence escalation disabled with env={env_state!r}; "
-            f"behavioral flip must wait for P3-C1"
-        )
+        assert mcp._derive_escalation_trigger({
+            "error_type": "timeout",
+            "confidence": "low",
+        }) == "timeout"
 
 
-def test_p3b_uncertain_points_escalation_unchanged(monkeypatch):
-    """Same invariance for the uncertain_points > 3 path (P3-C2 territory)."""
+# --------------------------------------------------------------------------- #
+# Untouched paths (P3-C2 / unchanged territory)                               #
+# --------------------------------------------------------------------------- #
+
+
+def test_p3c1_uncertain_points_escalation_unchanged(monkeypatch):
+    """P3-C1 must NOT touch the uncertain_points > 3 branch.
+    It still auto-escalates regardless of either env knob's value."""
     for env_state in (None, "true", "false", "", "0", "1"):
         if env_state is None:
             monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_UNCERTAIN, raising=False)
         else:
             monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_UNCERTAIN, env_state)
+        monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
         payload = {"confidence": "medium",
                    "uncertain_points": ["a", "b", "c", "d"]}
         result = mcp._check_quality_escalation(payload, "fast_summary", "summarize-file")
         assert result is not None, (
-            f"P3-B regression: uncertain-points escalation disabled with env={env_state!r}; "
-            f"behavioral flip must wait for P3-C2"
+            f"P3-C1 must NOT gate uncertain_points; knob={env_state!r}, result={result!r}"
         )
 
 
-def test_p3b_timeout_downgrade_unchanged(monkeypatch):
-    """Timeout downgrade is kept across all P3 phases per §4.2; not gated by either knob."""
+def test_p3c1_timeout_downgrade_unchanged(monkeypatch):
+    """Timeout downgrade is kept across all P3 phases per §4.2; not gated
+    by either knob. P3-C1 must NOT touch it."""
     monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, raising=False)
     monkeypatch.delenv(mcp._ENV_AUTO_ESCALATE_ON_UNCERTAIN, raising=False)
     payload = {"error_type": "timeout"}

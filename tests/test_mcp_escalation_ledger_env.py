@@ -25,6 +25,24 @@ import local_llm_mcp_server as mcp  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
+# P3-C1 compatibility fixture: this file exercises the escalation-ledger
+# plumbing (the env-stamping that happens *when* escalation fires).
+# After P3-C1, ``confidence=="low"`` no longer auto-escalates by default,
+# so without the env knob set the existing escalation-trigger tests would
+# get no escalation hop to inspect. We restore the legacy behavior at
+# module scope so these tests continue to exercise the plumbing for both
+# signals (low_confidence and uncertain_points). P3-C2 will need the
+# uncertain knob set too; we set both upfront for forward-compatibility.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def _restore_legacy_escalation_signals(monkeypatch):
+    monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, "true")
+    monkeypatch.setenv(mcp._ENV_AUTO_ESCALATE_ON_UNCERTAIN, "true")
+
+
+# --------------------------------------------------------------------------- #
 # Shared helpers                                                              #
 # ---------------------------------------------------------------------------
 

@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add tools to path for imports (no subprocess — test against the source)
 SCRIPT_DIR = Path(__file__).parent.parent / "tools"
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -243,7 +245,24 @@ class TestEscalationChain:
 
 
 class TestQualityEscalation:
-    """C1: _check_quality_escalation behavior."""
+    """C1: _check_quality_escalation behavior.
+
+    P3-C1 compatibility: ``confidence=="low"`` auto-escalation is now
+    default OFF. These tests assert the legacy semantics
+    (``low_confidence`` and ``uncertain_points > 3`` both auto-escalate,
+    ``timeout`` downgrades), so the autouse fixture below sets both env
+    knobs to ``true`` to keep that behavior available. The new default-OFF
+    behavior is covered by ``tests/test_p3_env_knobs.py``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _restore_legacy_escalation_signals(self, monkeypatch):
+        from local_llm_mcp_server import (
+            _ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE,
+            _ENV_AUTO_ESCALATE_ON_UNCERTAIN,
+        )
+        monkeypatch.setenv(_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, "true")
+        monkeypatch.setenv(_ENV_AUTO_ESCALATE_ON_UNCERTAIN, "true")
 
     def test_low_confidence_triggers_escalation(self):
         from local_llm_mcp_server import _check_quality_escalation

@@ -2,6 +2,35 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-C1: first behavioral flip in the
+  auto-escalation chain. `_check_quality_escalation` in
+  `tools/local_llm_mcp_server.py` now gates the `confidence=="low"`
+  branch behind `_parse_env_flag(_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE,
+  default=False)`. Default behavior: a worker payload with
+  `confidence=="low"` alone no longer auto-escalates. Legacy behavior is
+  restorable by setting `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true`
+  (or any truthy value: `1`, `yes`, `on`, case-insensitive). When the
+  knob is OFF and a payload carries both `confidence=="low"` and
+  `len(uncertain_points) > 3`, escalation still fires via the uncertain
+  branch (which P3-C2 will gate). `_derive_escalation_trigger` updated
+  in lock-step so the ledger `escalation_trigger` label matches the
+  branch that actually fires — `"low_confidence"` now appears only when
+  the knob is ON; otherwise the helper falls through to
+  `"uncertain_points"` / `"unknown"`. `_check_quality_escalation`
+  `uncertain_points > 3` and `timeout` branches unchanged; Path A
+  (starting-profile routing), Path B (volume-based auto-debate), and
+  Path D (mcp_gate advisory) unchanged. `tests/test_p3_env_knobs.py`
+  expanded from 49 → 72 tests covering: default-OFF for low_confidence,
+  env-knob restore on truthy values, falsy/empty/unrecognized → OFF,
+  dual-signal fallthrough to uncertain, `_derive_escalation_trigger`
+  behavior across knob states, timeout precedence unchanged, and three
+  untouched-path guards. `tests/test_mcp_escalation_ledger_env.py` and
+  `tests/test_layer4_quality.py::TestQualityEscalation` gained autouse
+  fixtures that set both env knobs to `true` so their existing
+  escalation-plumbing assertions continue to exercise the legacy path.
+  No `tools/call_ledger.py` / `tools/call_ledger_cli.py` /
+  `tools/local_llm_profiles.json` / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / `VERSION` / tag changes.
 - MCP Cost Discipline P3-B: env knob helper + constants in
   `tools/local_llm_mcp_server.py`. Adds `_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE`
   and `_ENV_AUTO_ESCALATE_ON_UNCERTAIN` literal env-var names, plus
