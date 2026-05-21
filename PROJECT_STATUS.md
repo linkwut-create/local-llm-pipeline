@@ -19,8 +19,8 @@
 | P2-C2.0 | Done (`034bedb`) | Schema allowlist extension: add `escalation_trigger` to `KNOWN_EXTRA_KEYS` in `tools/call_ledger.py`; update tests. No worker / MCP server / router / debate / hook behavior changes. |
 | P2-C2.1 | Done (`a2a5547`) | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child invocation via `_merge_escalation_ledger_extra_env` + `_derive_escalation_trigger` helpers. |
 | P2-C3.1 | Done (`9bfbb6d`) | Debate round ledger emission. |
-| P2-D1 | In review | Reporting/CLI: `call_ledger_cli.py` adds `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over P2 cost-discipline fields. Includes `group_by_extra`, `filter_escalations`, `filter_debates` library helpers. |
-| P2-E | Not started | Docs closeout for P2. |
+| P2-D1 | Done (`afca643`) | Reporting/CLI: `call_ledger_cli.py` adds `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over P2 cost-discipline fields. Includes `group_by_extra`, `filter_escalations`, `filter_debates` library helpers. Old records (missing `extra`/`profile`) bucket into `<none>`. |
+| P2-E | Done (this commit) | Docs closeout for P2-A → P2-D1. `PROJECT_STATUS.md`, `CHANGELOG.md`, `README.md`, and `docs/MCP_COST_DISCIPLINE_PLAN.md` §13 updated to reflect the completed cost-discipline ledger chain. No runtime / test / VERSION changes. |
 | P3 | Not started | Auto-upgrade restriction (behavioral). |
 | P4 | Not started | Worker pool dry-run. |
 | P5 | Not started | V4-Flash local experimental profile. |

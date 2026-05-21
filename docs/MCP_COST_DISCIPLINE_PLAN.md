@@ -370,3 +370,112 @@ If/when downstream code needs to override or pin policy explicitly,
 P1-B can introduce an opt-in `policy` block in JSON — but only after
 P2 has demonstrated a concrete consumer that needs it. Until then, the
 derivation rules above are the single source of truth.
+
+---
+
+## 13. P2 Completion Notes (P2 DONE)
+
+P2 was split into sub-phases P2-A through P2-D1, all additive to the JSONL
+ledger schema (no migration). P2-E is the docs closeout (this section plus
+`PROJECT_STATUS.md`, `CHANGELOG.md`, `README.md`). The cost-discipline
+ledger chain is complete; runtime call sites stamp the new fields and the
+CLI surfaces them. No VERSION bump, no tag, no release.
+
+### 13.1 Phase commits
+
+| Phase | Status | Commit | Summary |
+|-------|--------|--------|---------|
+| P2-A | DONE | (audit, no code) | Read-only audit of call ledger gaps. Locks the P2-B field model: debate calls bypass ledger, escalation context lost, commit-gate flag uncaptured. |
+| P2-B | DONE | `285279c` | Schema/helper extension in `tools/call_ledger.py`: top-level `profile` field on `build_record` and `KNOWN_EXTRA_KEYS` allowlist (MCP routing identity, escalation context, debate context, review classification, worker-pool attribution, structured error type). No call sites wired. |
+| P2-C1.0 | DONE | `3abe46e` | Worker ledger env plumbing: worker reads `LOCAL_LLM_LEDGER_EXTRA`, filters via `KNOWN_EXTRA_KEYS`, folds into ledger `extra`; `_emit_ledger` populates top-level `profile` from `config.profile`. |
+| P2-C1.1 | DONE | `cc1bcbf` | MCP server per-tool stamps. `_build_ledger_extra_env` helper; `extra_env` parameter on `run_subprocess` / `run_subprocess_streaming` / `_wrap_worker_call`. Every worker-backed MCP tool stamps `mcp_tool_name` + `source="manual-mcp"`; `local_review_diff` stamps `commit_gate`; `local_parallel_review` stamps each parallel worker. `local_check` and `local_debate_review_diff` intentionally unstamped here (the latter handled in P2-C3.1). |
+| P2-C1.2 | DONE | `3fff081` | Auto-hook env replacement. `tools/claude_hooks/mcp_auto_worker.py` ships a self-contained `_build_ledger_extra_env` helper (decoupled from MCP server) and `spawn_review_diff` drops the broken `--commit_gate true` CLI passthrough, stamping `{mcp_tool_name=local_review_diff, commit_gate=true, source=auto-hook}` via env instead. |
+| P2-C2.0 | DONE | `034bedb` | Schema allowlist extension: `escalation_trigger` added to `KNOWN_EXTRA_KEYS`. |
+| P2-C2.1 | DONE | `a2a5547` | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child via `_merge_escalation_ledger_extra_env` + `_derive_escalation_trigger` helpers. |
+| P2-C3.1 | DONE | `9bfbb6d` | Debate round ledger emission: `run_round()` emits one ledger record per round with debate metadata (`debate_mode`, `debate_rounds`, `debate_round_index`, `debate_trigger`); `call_debate_review_diff` MCP handler passes `--debate-trigger manual-mcp`; auto-escalation passes `--debate-trigger auto-escalate`; captures real provider `ModelCallResult.usage` instead of dropping it. |
+| P2-D1 | DONE | `afca643` | Reporting/CLI: `tools/call_ledger_cli.py` gains `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands. Library helpers `group_by_extra`, `filter_escalations`, `filter_debates` in `tools/call_ledger.py`. Old records (missing `extra`/`profile`) bucket into `<none>`; `by-mcp-tool` falls back to top-level `tool_name`. |
+| P2-E | DONE | this commit | Docs closeout: this section + `PROJECT_STATUS.md` + `CHANGELOG.md` + `README.md` "Call ledger reporting". |
+
+### 13.2 Final state of the ledger schema and call sites
+
+- **Top-level fields** (`tools/call_ledger.py::build_record`):
+  - `profile` — populated by the worker from `config.profile`. Default
+    `None` for synthetic/test callers. Old records (pre-P2-B) bucket into
+    `<none>` in the CLI.
+- **`extra` dict** — additive, allowlisted via `KNOWN_EXTRA_KEYS`:
+  - MCP routing identity: `mcp_tool_name`, `source`, `commit_gate`.
+  - Escalation: `auto_escalated`, `escalation_trigger`,
+    `escalation_reason`, `escalation_from_profile`,
+    `escalation_to_profile`, `escalation_depth`, `parent_request_id`.
+  - Debate: `debate_mode`, `debate_rounds`, `debate_round_index`,
+    `debate_trigger`.
+  - Future-reserved (declared in P2-B, not yet stamped):
+    `review_necessity`, `worker_id`, `cost_budget_remaining`,
+    `error_type`.
+- **Call sites stamping the env**:
+  - `tools/local_llm_mcp_server.py`: every worker-backed MCP tool via
+    `_build_ledger_extra_env` + `extra_env` parameter. `local_review_diff`
+    stamps `commit_gate`; `local_parallel_review` stamps each parallel
+    worker. `_wrap_worker_call` stamps escalation context on the
+    escalated child.
+  - `tools/claude_hooks/mcp_auto_worker.py`: `spawn_review_diff` stamps
+    `{mcp_tool_name=local_review_diff, commit_gate=true,
+    source=auto-hook}` directly (no MCP server dependency).
+  - `tools/local_llm_debate.py`: `run_round()` emits one ledger record
+    per round with debate metadata; trigger comes from the
+    `--debate-trigger` CLI flag (`manual-mcp` / `auto-escalate`).
+- **Reader/reporting** (`tools/call_ledger_cli.py`):
+  - `summary`, `by-project`, `by-task`, `failures`, `recent` —
+    unchanged.
+  - `by-profile`, `by-mcp-tool`, `escalations`, `debates` — new.
+- **Backward compatibility**: every change is JSONL-additive. Pre-P2
+  records (no `extra`, no `profile`) still parse and aggregate; they
+  land in the `<none>` bucket, except `by-mcp-tool` which falls back to
+  the top-level `tool_name`.
+
+### 13.3 Review policy actually used
+
+| Phase | Commit gate | Debate review | Notes |
+|-------|-------------|---------------|-------|
+| P2-A | n/a (audit, no commit) | n/a | Read-only audit, no diff to review. |
+| P2-B | yes (`ok=true`) | no | Schema/helper only; no call sites wired. |
+| P2-C1.0 | yes (`ok=true`) | yes (fast mode) | Worker behavioral change — touches `_emit_ledger` and worker env. |
+| P2-C1.1 | yes (`ok=true`) | yes (fast mode) | MCP server change — matches §5.2 "hook/gate/security boundary" by analogy. |
+| P2-C1.2 | yes (`ok=true`) | yes (fast mode) | Hook code change — matches §5.2. |
+| P2-C2.0 | yes (`ok=true`) | no | Allowlist constant only; no behavior change. |
+| P2-C2.1 | yes (`ok=true`) | yes (fast mode) | `_wrap_worker_call` behavioral change in MCP server. |
+| P2-C3.1 | yes (`ok=true`) | yes (fast mode) | Debate runtime change. |
+| P2-D1 | yes (`ok=true`, 26.05s, `commit_reviewer` / qwen3-coder:30b) | no | Reporting/CLI read path only; does not touch worker, MCP server, router, debate, or hooks. |
+| P2-E | this commit (docs-only) | no | Matches §9 docs-only policy. |
+
+### 13.4 Acceptance evidence
+
+- `tests/test_call_ledger.py` — 106 passed after P2-D1 (`afca643`),
+  including:
+  - P2-B schema/helper tests (top-level `profile`, `KNOWN_EXTRA_KEYS`).
+  - P2-C escalation context tests (`_merge_escalation_ledger_extra_env`,
+    `_derive_escalation_trigger`).
+  - P2-D1 reporting tests: `group_by_extra` (basic, missing extra,
+    missing key, `tool_name` fallback); `filter_escalations` (finds
+    auto-escalated, empty when none); `filter_debates` (finds both
+    rounds, empty when none); CLI subcommands `by-profile`,
+    `by-mcp-tool`, `escalations`, `debates` (table + JSON + limit);
+    old-record `<none>` bucket compatibility.
+- `py -m compileall -q tools tests` — clean throughout the chain.
+- VERSION unchanged at `0.9.7` from P2-B through P2-E.
+- No tag created. No release.
+
+### 13.5 Out-of-scope follow-ups (still open after P2)
+
+- **P3** (not started): Auto-upgrade restriction. Replace the CLAUDE.md
+  `confidence=medium` → deep-reviewer trigger with the §4 logic. This is
+  a behavioral change and requires its own plan + debate review.
+- **P4** (not started): Worker pool dry-run. `local_check` probes a
+  second worker host (AI Max 2) when available. Ledger already records
+  `worker_id` in `extra` for future use.
+- **P5** (not started): V4-Flash local experimental profile.
+- Cost budget enforcement (§6) is **policy-only** today — the ledger
+  records strong-model usage but no hook blocks at the cap. Enforcement
+  is deferred to a future phase.
+- `review_necessity` and `cost_budget_remaining` are declared in
+  `KNOWN_EXTRA_KEYS` but not yet stamped by any call site.

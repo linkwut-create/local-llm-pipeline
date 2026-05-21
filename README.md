@@ -74,6 +74,35 @@ python tools/claude_hooks/mcp_doctor.py --repo-root /path/to/other/repo
 
 See [Cross-Project Setup](docs/mcp-cross-project-setup.md) for details.
 
+## Call Ledger Reporting
+
+The pipeline records every local model call to a JSONL ledger
+(`tools/call_ledger.py`). Each record carries a top-level `profile` and an
+`extra` dict that captures cost-discipline context (`mcp_tool_name`,
+`source`, `commit_gate`, escalation fields, debate round fields).
+
+Inspect the ledger via `tools/call_ledger_cli.py`:
+
+| Command | Output |
+|---------|--------|
+| `summary` | Aggregate totals (calls, tokens, duration, cost). |
+| `by-project` | Totals grouped by project. |
+| `by-task` | Totals grouped by `task_type`. |
+| `by-profile` | Totals grouped by profile (old records → `<none>`). |
+| `by-mcp-tool` | Totals grouped by `extra.mcp_tool_name`, with fallback to top-level `tool_name` for pre-P2 records. |
+| `failures` | List of failed calls. |
+| `recent [--limit N]` | Most recent N records (default 20). |
+| `escalations [--limit N]` | Records carrying escalation context (`auto_escalated=true` or any `escalation_*` / `parent_request_id` field). |
+| `debates [--limit N]` | Per-round debate records (`extra.debate_mode=true`), one ledger row per `run_round()`. |
+
+All subcommands support `--format json` for machine-readable output and
+`--path <ledger.jsonl>` to point at an alternate ledger location. Pre-P2
+records that lack the `extra` dict still aggregate correctly — they fall
+into the `<none>` bucket (or the `tool_name` fallback for `by-mcp-tool`).
+
+See `docs/MCP_COST_DISCIPLINE_PLAN.md` for the cost-discipline policy
+backing these fields, and `PROJECT_STATUS.md` for the P2 phase chain.
+
 ## Security
 
 All local model output is advisory only. MCP tools are source-non-mutating:

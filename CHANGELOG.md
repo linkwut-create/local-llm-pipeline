@@ -2,6 +2,13 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-E: docs closeout for P2-A → P2-D1. Records the
+  completed cost-discipline ledger chain in `PROJECT_STATUS.md`, adds the
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` §13 P2 completion notes (phase commit
+  table, final state of the ledger schema and call sites, review policy
+  actually used, acceptance evidence), and adds a "Call ledger reporting"
+  section to `README.md` listing the `call_ledger_cli.py` subcommands. No
+  code, tests, profiles JSON, or VERSION changes. No tag.
 - MCP Cost Discipline P2-D1: call ledger CLI adds `by-profile`,
   `by-mcp-tool`, `escalations`, and `debates` reporting commands over
   P2 cost-discipline fields. Includes `group_by_extra`,
