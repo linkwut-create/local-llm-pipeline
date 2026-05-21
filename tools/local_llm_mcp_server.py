@@ -1108,6 +1108,67 @@ def _build_ledger_extra_env(
     }
 
 
+# MCP Cost Discipline P2-C2.1: derive the escalation trigger from the
+# worker payload's quality signals that drove _check_quality_escalation
+# to escalate.  The three triggers mirror the branches in that function:
+#   timeout        → error_type == "timeout"
+#   low_confidence → confidence == "low"
+#   uncertain_points → len(uncertain_points) > 3
+def _derive_escalation_trigger(payload: dict) -> str:
+    error_type = (payload.get("error_type") or "").lower()
+    if error_type == "timeout":
+        return "timeout"
+    confidence = (payload.get("confidence") or "medium").lower()
+    if confidence == "low":
+        return "low_confidence"
+    uncertain_count = len(payload.get("uncertain_points") or [])
+    if uncertain_count > 3:
+        return "uncertain_points"
+    return "unknown"
+
+
+# MCP Cost Discipline P2-C2.1: build the env dict for an escalated
+# child worker call.  Inherits parent extra_env fields (mcp_tool_name,
+# source, commit_gate) and adds escalation context so the child's ledger
+# record links back to the parent request.
+def _merge_escalation_ledger_extra_env(
+    extra_env: dict[str, str] | None,
+    *,
+    auto_escalated: bool,
+    escalation_trigger: str,
+    escalation_reason: str,
+    escalation_from_profile: str,
+    escalation_to_profile: str,
+    escalation_depth: int,
+    parent_request_id: str,
+) -> dict[str, str]:
+    parent_payload: dict[str, object] = {}
+    if extra_env:
+        raw = extra_env.get("LOCAL_LLM_LEDGER_EXTRA", "")
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    parent_payload = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+    child_payload: dict[str, object] = dict(parent_payload)
+    child_payload.update({
+        "auto_escalated": auto_escalated,
+        "escalation_trigger": escalation_trigger,
+        "escalation_reason": escalation_reason,
+        "escalation_from_profile": escalation_from_profile,
+        "escalation_to_profile": escalation_to_profile,
+        "escalation_depth": escalation_depth,
+        "parent_request_id": parent_request_id,
+    })
+    return {
+        "LOCAL_LLM_LEDGER_EXTRA": json.dumps(
+            child_payload, separators=(",", ":"), sort_keys=True,
+        ),
+    }
+
+
 def run_subprocess(cmd: list[str], stdin_data: str | None = None,
                    timeout: int = DEFAULT_TIMEOUT,
                    extra_env: dict[str, str] | None = None) -> dict:
@@ -1636,12 +1697,33 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                 except Exception:
                     pass
 
+                # P2-C2.1: stamp escalated child call with escalation context
+                # in LOCAL_LLM_LEDGER_EXTRA while preserving parent identity
+                # fields (mcp_tool_name, source, commit_gate).
+                trigger = _derive_escalation_trigger(payload)
+                uncertain_n = len(prev_uncertain) if isinstance(prev_uncertain, list) else 0
+                reason = (
+                    f"confidence=low on {current_profile}" if trigger == "low_confidence"
+                    else f"{uncertain_n} uncertain_points on {current_profile}" if trigger == "uncertain_points"
+                    else f"timeout on {current_profile}" if trigger == "timeout"
+                    else f"unknown on {current_profile}"
+                )
+                child_extra_env = _merge_escalation_ledger_extra_env(
+                    extra_env,
+                    auto_escalated=True,
+                    escalation_trigger=trigger,
+                    escalation_reason=reason,
+                    escalation_from_profile=current_profile,
+                    escalation_to_profile=escalated,
+                    escalation_depth=_depth + 1,
+                    parent_request_id=request_id,
+                )
                 return _wrap_worker_call(
                     tool, escalated_cmd, stdin_data=escalated_stdin,
                     timeout=timeout, task=task, auto_escalate=auto_escalate,
                     _depth=_depth + 1, cjk_ratio=cjk_ratio,
                     _tried_profiles=_tried_profiles,
-                    extra_env=extra_env,
+                    extra_env=child_extra_env,
                 )
 
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)

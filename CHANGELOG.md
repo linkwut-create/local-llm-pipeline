@@ -2,6 +2,12 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C2.1: `_wrap_worker_call` now stamps escalated
+  child worker calls with escalation context in `LOCAL_LLM_LEDGER_EXTRA`,
+  preserving MCP tool/source/commit_gate identity and linking child
+  ledger records to the parent request via `parent_request_id`. Adds
+  `_derive_escalation_trigger` and `_merge_escalation_ledger_extra_env`
+  helpers. No worker / router / debate / hook behavior changes.
 - MCP Cost Discipline P2-C2.0: add `escalation_trigger` to call ledger
   known extra keys, preparing escalation context ledger capture. No
   worker / MCP server / router / debate / hook behavior changes.
