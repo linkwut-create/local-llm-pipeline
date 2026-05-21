@@ -2,6 +2,12 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-C1.0: worker ledger env plumbing. Worker reads
+  `LOCAL_LLM_LEDGER_EXTRA`, filters JSON via the P2-B `KNOWN_EXTRA_KEYS`
+  allowlist, and folds the result into the call ledger record's `extra`
+  field. `_emit_ledger` now also passes `profile=config.profile` into the
+  P2-B top-level slot. No MCP server / hook / router / debate wiring yet —
+  setting the env var is P2-C1.1 (MCP server) and P2-C1.2 (auto hook).
 - MCP Cost Discipline P2-B: extend `tools/call_ledger.py` schema/helpers
   for the cost-discipline field model. Adds a top-level `profile` field
   to `build_record` (default `None`, additive JSONL — no migration), and

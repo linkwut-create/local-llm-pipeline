@@ -12,8 +12,10 @@
 | P1-H.3 | Done (`14b84b0`) | `cmd_health_report` and `auto_tune_recommendations` switched to runtime health store. |
 | P1-H.4 | Done (`ca2211d`) | Docs closeout for P1-H. |
 | P2-A | Done | Read-only audit of current call ledger coverage. Identifies the three highest-risk gaps (debate bypass, lost escalation context, missing commit-gate marker) and locks the P2-B field model. No code changes. |
-| P2-B | In review | Call ledger schema/helper extension only. Adds top-level `profile` field and `KNOWN_EXTRA_KEYS` allowlist to `tools/call_ledger.py`. No MCP/debate/router/worker/hook call sites wired. |
-| P2-C1 | Not started | MCP write-path integration: `mcp_tool_name`, `commit_gate`, `source` propagated from MCP server through worker into ledger extras. |
+| P2-B | Done (`285279c`) | Call ledger schema/helper extension only. Top-level `profile` field and `KNOWN_EXTRA_KEYS` allowlist added to `tools/call_ledger.py`. No call sites wired. |
+| P2-C1.0 | In review | Worker ledger env plumbing only. Worker reads `LOCAL_LLM_LEDGER_EXTRA`, filters via `KNOWN_EXTRA_KEYS`, folds into ledger `extra`; `_emit_ledger` populates the P2-B top-level `profile` slot from `config.profile`. No MCP server / hook / router / debate wiring. |
+| P2-C1.1 | Not started | MCP server per-tool stamps via `LOCAL_LLM_LEDGER_EXTRA` (mcp_tool_name, commit_gate, source). `run_subprocess` gains `extra_env` parameter. |
+| P2-C1.2 | Not started | Auto-hook env replacement: `tools/claude_hooks/mcp_auto_worker.py` replaces broken `--commit_gate true` CLI passthrough with `LOCAL_LLM_LEDGER_EXTRA` env. Requires fast-mode debate review (touches hook code). |
 | P2-C2 | Not started | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child invocation. Requires debate review (touches routing pivot). |
 | P2-C3 | Not started | Debate ledger emission: `local_llm_debate.run_round` emits one ledger record per round with `debate_mode` / `debate_rounds` / `debate_round_index` / `debate_trigger`. Requires debate review (previously-silent path becomes writing). |
 | P2-D | Not started | Reporting/CLI: `call_ledger_cli.py` gains `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over the new fields. |

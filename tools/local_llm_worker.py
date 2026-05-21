@@ -193,6 +193,43 @@ Do NOT claim urgency. Each suggestion must stand on its own merit.""",
 }
 
 
+# MCP Cost Discipline P2-C1.0: callers (MCP server / hook) may stamp per-call
+# cost-discipline context for the call ledger via the LOCAL_LLM_LEDGER_EXTRA
+# env var. This helper reads it, intersects with the P2-B allowlist, and
+# returns a dict ready to be passed as `extra=` to call_ledger.build_record.
+#
+# Contract:
+#   - Never raises.
+#   - Never mutates os.environ.
+#   - Returns {} on: unset env, empty string, malformed JSON, non-dict JSON,
+#     missing call_ledger module, or any unexpected failure.
+#   - Only allowlisted keys (KNOWN_EXTRA_KEYS) are returned. Unknown keys —
+#     including secret-shaped keys like api_key / token / password / secret /
+#     authorization — are dropped at this layer. Defence-in-depth: the ledger
+#     itself also strips _FORBIDDEN_KEYS in build_record.
+#
+# P2-C1.1 / P2-C1.2 will *set* this env var from the MCP server and the
+# auto-hook respectively. P2-C1.0 only consumes it.
+def _load_ledger_extra_from_env() -> dict:
+    raw = os.environ.get("LOCAL_LLM_LEDGER_EXTRA")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    try:
+        script_dir_str = str(SCRIPT_DIR)
+        if script_dir_str not in sys.path:
+            sys.path.insert(0, script_dir_str)
+        from call_ledger import KNOWN_EXTRA_KEYS
+    except Exception:
+        return {}
+    return {k: v for k, v in data.items() if k in KNOWN_EXTRA_KEYS}
+
+
 @dataclass
 class WorkerConfig:
     provider: str = "ollama"
@@ -1122,10 +1159,15 @@ def _run_inner(args: argparse.Namespace) -> int:
             output_tokens = usage.get("output_tokens")
             cached_tokens = usage.get("cached_tokens")
             cache_miss_tokens = usage.get("cache_miss_tokens")
+        # P2-C1.0: pull per-call cost-discipline extras from env (allowlist-
+        # filtered). When unset, returns {} and the record looks the same as
+        # before this phase. config.profile flows into the P2-B top-level slot.
+        ledger_extra = _load_ledger_extra_from_env()
         try:
             rec = _ledger_build(
                 task_type=args.task,
                 tool_name=args.task,
+                profile=config.profile or None,
                 model=config.model,
                 provider=config.provider,
                 base_url=config.base_url,
@@ -1146,6 +1188,7 @@ def _run_inner(args: argparse.Namespace) -> int:
                 git_commit_after=commit_after,
                 git_dirty_after=dirty_after,
                 request_id=request_id,
+                extra=ledger_extra or None,
             )
             _ledger_record(rec)
         except Exception:
