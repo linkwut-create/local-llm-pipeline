@@ -2,6 +2,19 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P2-B: extend `tools/call_ledger.py` schema/helpers
+  for the cost-discipline field model. Adds a top-level `profile` field
+  to `build_record` (default `None`, additive JSONL — no migration), and
+  exposes a `KNOWN_EXTRA_KEYS` allowlist (frozenset) covering MCP routing
+  identity, auto-escalation context, debate context, review classification,
+  worker-pool attribution, and structured error type. No call sites wired
+  — MCP server, debate, router, worker, and hooks are untouched. Secret
+  stripping (`_FORBIDDEN_KEYS`) and backward compatibility preserved.
+- MCP Cost Discipline P2-A: read-only audit of current call ledger
+  coverage, recorded in conversation; no code changes. Identifies the
+  three highest-risk gaps (debate calls bypass ledger entirely;
+  auto-escalation child calls lose escalation context; commit-gate flag
+  not captured) and the precise schema additions required for P2-B.
 - MCP Health Telemetry Isolation P1-H.4: docs closeout for
   P1-H.0–P1-H.3, recording runtime health telemetry migration
   completion in `docs/MCP_HEALTH_TELEMETRY_ISOLATION_PLAN.md` §11.

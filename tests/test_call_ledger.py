@@ -237,6 +237,148 @@ def test_build_record_cache_miss_tokens_default_none(clean_env):
     assert rec["cache_miss_tokens"] is None
 
 
+# ---------------------------------------------------------------------------
+# P2-B: top-level profile field and KNOWN_EXTRA_KEYS allowlist
+# ---------------------------------------------------------------------------
+
+def test_build_record_default_profile_is_none(clean_env):
+    """A caller that does not pass profile gets profile=None top-level."""
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="m", provider="ollama",
+        success=True,
+    )
+    assert "profile" in rec
+    assert rec["profile"] is None
+
+
+def test_build_record_with_profile_top_level(clean_env):
+    """Explicit profile is recorded at top level (not in extra)."""
+    rec = call_ledger.build_record(
+        task_type="review-diff", tool_name="local_review_diff",
+        profile="commit_reviewer",
+        model="qwen3-coder:30b", provider="ollama",
+        success=True,
+    )
+    assert rec["profile"] == "commit_reviewer"
+    # Must not leak into extra; profile is a top-level field.
+    assert "extra" not in rec or "profile" not in rec.get("extra", {})
+
+
+def test_known_extra_keys_constant_exists():
+    """The cost-discipline allowlist is exposed as a public module constant."""
+    assert hasattr(call_ledger, "KNOWN_EXTRA_KEYS")
+    keys = call_ledger.KNOWN_EXTRA_KEYS
+    # frozenset for immutability
+    assert isinstance(keys, frozenset)
+    # Must contain every cost-discipline field documented for P2-C+.
+    expected = {
+        "mcp_tool_name",
+        "source",
+        "commit_gate",
+        "commit_gate_allowed",
+        "auto_escalated",
+        "escalation_reason",
+        "escalation_from_profile",
+        "escalation_to_profile",
+        "escalation_depth",
+        "parent_request_id",
+        "debate_mode",
+        "debate_rounds",
+        "debate_round_index",
+        "debate_trigger",
+        "review_necessity",
+        "risk_level",
+        "cost_class",
+        "local_only",
+        "cost_budget_remaining",
+        "worker_id",
+        "host",
+        "error_type",
+    }
+    assert expected.issubset(keys), f"missing keys: {expected - keys}"
+
+
+def test_known_extra_keys_disjoint_from_forbidden():
+    """Allowlist and the secret-stripping forbidden list must not collide."""
+    overlap = call_ledger.KNOWN_EXTRA_KEYS & call_ledger._FORBIDDEN_KEYS
+    assert overlap == set()
+
+
+# Each allowlisted key is exercised by a single parametrized test rather than
+# 22 separate ones — P2-B only proves the schema can carry these; P2-C wires
+# the actual call sites.
+_ALLOWED_EXTRA_SAMPLES = [
+    ("mcp_tool_name", "local_review_diff"),
+    ("source", "manual-mcp"),
+    ("commit_gate", True),
+    ("commit_gate_allowed", True),
+    ("auto_escalated", True),
+    ("escalation_reason", "low_confidence"),
+    ("escalation_from_profile", "diff_reviewer"),
+    ("escalation_to_profile", "deep_reviewer"),
+    ("escalation_depth", 1),
+    ("parent_request_id", "req_abc123"),
+    ("debate_mode", True),
+    ("debate_rounds", 3),
+    ("debate_round_index", 2),
+    ("debate_trigger", "hook-gate-security"),
+    ("review_necessity", "required"),
+    ("risk_level", "high"),
+    ("cost_class", "low"),
+    ("local_only", True),
+    ("cost_budget_remaining", 4),
+    ("worker_id", "zero12"),
+    ("host", "ai-max-1.local"),
+    ("error_type", "timeout"),
+]
+
+
+@pytest.mark.parametrize("key,value", _ALLOWED_EXTRA_SAMPLES)
+def test_build_record_allowed_extra_passes_through(clean_env, key, value):
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="m", provider="ollama",
+        success=True,
+        extra={key: value},
+    )
+    extra = rec.get("extra") or {}
+    assert key in extra
+    assert extra[key] == value
+
+
+def test_build_record_unknown_extra_still_passes_through(clean_env):
+    """P2-B is additive: unknown keys remain allowed (backward compatibility).
+
+    Filtering for unknown keys is explicitly NOT part of P2-B. If a future
+    phase introduces it, this test should be updated then, not silently.
+    """
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="m", provider="ollama",
+        success=True,
+        extra={"some_future_field": "still-here"},
+    )
+    extra = rec.get("extra") or {}
+    assert extra.get("some_future_field") == "still-here"
+
+
+def test_build_record_forbidden_keys_still_stripped_with_known_extras(clean_env):
+    """Adding KNOWN_EXTRA_KEYS must not weaken secret stripping."""
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t", model="m", provider="ollama",
+        success=True,
+        extra={
+            "api_key": "sk-secret",
+            "mcp_tool_name": "local_review_diff",
+            "PASSWORD": "x",
+            "commit_gate": True,
+        },
+    )
+    extra = rec.get("extra") or {}
+    assert "api_key" not in extra
+    assert "PASSWORD" not in extra
+    assert extra.get("mcp_tool_name") == "local_review_diff"
+    assert extra.get("commit_gate") is True
+
+
 def test_build_record_strips_forbidden_extra(clean_env):
     rec = call_ledger.build_record(
         task_type="x", tool_name="t", model="m", provider="p",

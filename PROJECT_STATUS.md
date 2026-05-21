@@ -10,8 +10,14 @@
 | P1-H.1 | Done (`3ff9ea4`) | `tools/health_store.py` helper-only; no call sites switched. |
 | P1-H.2 | Done (`f8b15c1`) | Writer/readers switched + `_health` cleaned from profiles JSON. Debate review passed (fast mode). |
 | P1-H.3 | Done (`14b84b0`) | `cmd_health_report` and `auto_tune_recommendations` switched to runtime health store. |
-| P1-H.4 | In review | Docs closeout (this commit). |
-| P2 | Not started | Ledger escalation fields. No longer blocked by working-tree pollution now that P1-H is complete. |
+| P1-H.4 | Done (`ca2211d`) | Docs closeout for P1-H. |
+| P2-A | Done | Read-only audit of current call ledger coverage. Identifies the three highest-risk gaps (debate bypass, lost escalation context, missing commit-gate marker) and locks the P2-B field model. No code changes. |
+| P2-B | In review | Call ledger schema/helper extension only. Adds top-level `profile` field and `KNOWN_EXTRA_KEYS` allowlist to `tools/call_ledger.py`. No MCP/debate/router/worker/hook call sites wired. |
+| P2-C1 | Not started | MCP write-path integration: `mcp_tool_name`, `commit_gate`, `source` propagated from MCP server through worker into ledger extras. |
+| P2-C2 | Not started | Escalation context: `_wrap_worker_call` injects `escalation_*` fields and `parent_request_id` into the escalated child invocation. Requires debate review (touches routing pivot). |
+| P2-C3 | Not started | Debate ledger emission: `local_llm_debate.run_round` emits one ledger record per round with `debate_mode` / `debate_rounds` / `debate_round_index` / `debate_trigger`. Requires debate review (previously-silent path becomes writing). |
+| P2-D | Not started | Reporting/CLI: `call_ledger_cli.py` gains `by-profile`, `by-mcp-tool`, `escalations`, `debates` subcommands over the new fields. |
+| P2-E | Not started | Docs closeout for P2. |
 | P3 | Not started | Auto-upgrade restriction (behavioral). |
 | P4 | Not started | Worker pool dry-run. |
 | P5 | Not started | V4-Flash local experimental profile. |

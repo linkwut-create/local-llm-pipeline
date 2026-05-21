@@ -41,6 +41,42 @@ _FORBIDDEN_KEYS = frozenset({
     "api_key", "token", "password", "secret", "authorization",
 })
 
+# Cost-discipline / model-allocation fields that P2-C+ will populate via the
+# `extra` dict on a per-call basis. Listed here so downstream consumers can
+# distinguish recognised cost-discipline keys from ad-hoc ones. This is an
+# allowlist for documentation and downstream filtering; `build_record` itself
+# does NOT reject unknown extras — backward compatibility is preserved.
+KNOWN_EXTRA_KEYS = frozenset({
+    # MCP / routing identity
+    "mcp_tool_name",
+    "source",
+    "commit_gate",
+    "commit_gate_allowed",
+    # Auto-escalation context (populated by _wrap_worker_call in P2-C2)
+    "auto_escalated",
+    "escalation_reason",
+    "escalation_from_profile",
+    "escalation_to_profile",
+    "escalation_depth",
+    "parent_request_id",
+    # Debate context (populated by debate path in P2-C3)
+    "debate_mode",
+    "debate_rounds",
+    "debate_round_index",
+    "debate_trigger",
+    # Review classification
+    "review_necessity",
+    "risk_level",
+    "cost_class",
+    "local_only",
+    "cost_budget_remaining",
+    # Worker-pool attribution (future)
+    "worker_id",
+    "host",
+    # Structured error type (worker already classifies via output.error_type)
+    "error_type",
+})
+
 
 def is_ledger_enabled() -> bool:
     """True unless LOCAL_LLM_LEDGER is set to a falsy value."""
@@ -175,6 +211,7 @@ def build_record(*,
                  phase: str | None = None,
                  task_type: str,
                  tool_name: str,
+                 profile: str | None = None,
                  model: str | None,
                  provider: str | None,
                  base_url: str | None = None,
@@ -231,6 +268,7 @@ def build_record(*,
         "phase": phase if phase is not None else detect_phase(),
         "task_type": task_type,
         "tool_name": tool_name,
+        "profile": profile,
         "provider": provider,
         "model": model,
         "base_url": base_url,
