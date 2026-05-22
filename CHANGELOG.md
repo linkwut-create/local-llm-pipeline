@@ -2,6 +2,73 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Worker Pool Dry-Run P4-B: smallest viable implementation slice per
+  `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` §5. Adds two opt-in CLI flags
+  to `tools/local_llm_check.py`:
+
+  - `--probe-workers` — runs a diagnostic worker-pool dry-run probe.
+  - `--json` — when combined with `--probe-workers`, emits the probe
+    report as a single JSON object on stdout (no human-readable flow);
+    no-op for probing without `--probe-workers`.
+
+  Adds a `build_probe_report()` helper and a
+  `PROBE_REPORT_SCHEMA_VERSION = 1` constant. The probe reuses
+  existing endpoint sources only — resolved Ollama URL,
+  `OPENAI_COMPAT_BASE`, and `_MTP_ENDPOINTS` — for a total of 5
+  configured workers in the current zero12 environment. Each
+  configured worker has `{id, host, endpoint, endpoint_type}`;
+  reachable workers also carry `reachable=True`; unreachable workers
+  carry `reachable=False` and `error`; `probe_errors` mirrors them
+  with `{id, error}`. `routing_changed` and `ledger_stamped` are
+  baked in as the literal boolean `False` in both the helper and the
+  emitted JSON. Probe failures never raise — network errors,
+  timeouts, and a missing `requests` library all land in
+  `unreachable_workers` / `probe_errors`.
+
+  When `--probe-workers` is passed alone (no `--json`), the existing
+  human-readable health check runs unchanged and a "Worker Pool
+  Dry-Run Probe (diagnostic only)" section is appended at the end
+  with a count summary, per-unreachable details, and the literal
+  `routing_changed: False` / `ledger_stamped: False` lines. Default
+  invocation with no flags is byte-equivalent (modulo timestamps) to
+  the pre-P4-B build — no probe runs and no probe section emits.
+
+  New tests in `tests/test_p4_worker_pool_dry_run.py` (32 cases):
+  shape and required-keys assertions, `schema_version == 1`,
+  `worker_pool_dry_run_enabled is True`, `routing_changed is False`
+  and `ledger_stamped is False` across both reachable and
+  unreachable scenarios (each tested as the literal `bool`),
+  configured-workers count matches `len(_MTP_ENDPOINTS) + 2`,
+  reachable/unreachable bucketing under mocked HTTP, mixed
+  reachable+unreachable parity, no-raise guarantee on network error,
+  graceful handling of `requests is None`, the four CLI flag
+  combinations (no flags, `--json` alone, `--probe-workers` alone,
+  `--probe-workers --json`), default-path retains
+  "Local LLM Environment Health Check" banner with no JSON object,
+  and four source-level assertions that `build_probe_report` does
+  not reference router or ledger code and that the module does not
+  import `call_ledger` or `local_llm_router`. All HTTP is mocked;
+  no real network is required.
+
+  Regression: `tests/test_mcp_server.py` 68/68 passes (MCP
+  `call_local_check` contract unchanged — it still shells out and
+  returns `{stdout, stderr}`; the structured probe surface is
+  CLI-only); `tests/test_router_profiles.py` +
+  `tests/test_call_ledger.py` 130/130 passes (no routing change, no
+  ledger schema change, `worker_id` / `host` slots remain
+  allowlisted but unstamped).
+
+  `PROJECT_STATUS.md` flips P4-B from `Not started` to `Done`.
+
+  No changes to `tools/local_llm_mcp_server.py`,
+  `tools/local_llm_router.py`, `tools/call_ledger.py`,
+  `tools/call_ledger_cli.py`, `tools/local_llm_profiles.json`,
+  `tools/local_llm_worker.py`, `tools/health_store.py`,
+  `tools/claude_hooks/`, `CLAUDE.md`, `docs/mcp-task-policy.md`,
+  `docs/MCP_COST_DISCIPLINE_PLAN.md`, `VERSION`, or tags. VERSION
+  remains `0.9.7`; HEAD carries no tag; no release. P4-C
+  (configurable worker list) and P4-D (P4 chain closeout) remain
+  `Not started, optional`.
 - Worker Pool Dry-Run P4-A: read-only audit + boundary lock-in. Adds
   `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` recording: P4's hard
   boundary as a probe-only diagnostic (no scheduler, no daemon, no

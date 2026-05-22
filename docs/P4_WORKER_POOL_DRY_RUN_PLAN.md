@@ -290,13 +290,33 @@ files.
 
 | Sub-phase | Status | Scope |
 |-----------|--------|-------|
-| **P4-A** | **Done** (this doc) | Read-only audit + boundary lock-in. Docs-only. No runtime / test / profile / ledger / VERSION / tag changes. |
-| **P4-B** | Not started | Smallest viable implementation slice per §5. Requires separate approval. CLI-opt-in JSON probe surface in `tools/local_llm_check.py`. |
+| **P4-A** | Done | Read-only audit + boundary lock-in. Docs-only. No runtime / test / profile / ledger / VERSION / tag changes. |
+| **P4-B** | **Done** (this entry) | Smallest viable implementation slice per §5 shipped: `--probe-workers` / `--json` flags + `build_probe_report()` + `PROBE_REPORT_SCHEMA_VERSION = 1` in `tools/local_llm_check.py`; 32 new tests in `tests/test_p4_worker_pool_dry_run.py`. Default invocation unchanged. MCP `call_local_check` contract unchanged. `routing_changed` / `ledger_stamped` literal `False`. |
 | **P4-C** | Not started, optional | Configurable worker list (env var / JSON). Only after P4-B has been used and a real configuration need has emerged. |
 | **P4-D** | Not started, optional | Docs/status closeout for P4 chain (mirrors P3-E pattern). |
 
-P4-B is **not** authorized by P4-A. Any future implementation must
-re-cite this §2 / §4 / §6 set verbatim.
+### 7.1 P4-B landed surface (recap)
+
+- New CLI flags on `tools/local_llm_check.py`:
+  - `--probe-workers` (off by default) — runs the probe.
+  - `--json` (off by default) — switches to JSON output; only honored
+    with `--probe-workers`.
+- New helper `build_probe_report(probe_timeout: float = 5.0) -> dict`
+  with the contract shape recorded in §5.2.
+- New module-level constant `PROBE_REPORT_SCHEMA_VERSION = 1` so
+  consumers can pin against the schema.
+- No changes to `tools/local_llm_mcp_server.py`,
+  `tools/local_llm_router.py`, `tools/call_ledger.py`,
+  `tools/call_ledger_cli.py`, `tools/local_llm_profiles.json`,
+  `tools/local_llm_worker.py`, `tools/health_store.py`, or
+  `tools/claude_hooks/`.
+- Live probe in the current zero12 environment yields 5 configured
+  workers (1 ollama + 1 openai_compat + 3 llama_cpp_mtp), with
+  `routing_changed: false` / `ledger_stamped: false` in the JSON
+  payload as required.
+
+P4-B did not authorize P4-C. Any P4-C work (env var / JSON
+configuration surface) must re-cite this §2 / §4 / §6 set verbatim.
 
 ## 8. Stop conditions
 

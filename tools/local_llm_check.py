@@ -6,6 +6,7 @@ Checks Python, requests, git root, Ollama, OpenAI-compatible server,
 scans real available models, and recommends profile assignments.
 """
 
+import argparse
 import json
 import os
 import re
@@ -177,6 +178,93 @@ def check_mtp_endpoints() -> list[CheckResult]:
     return results
 
 
+PROBE_REPORT_SCHEMA_VERSION = 1
+_PROBE_TIMEOUT_DEFAULT = 5.0
+
+
+def _probe_endpoint(endpoint_url: str, timeout: float) -> tuple[bool, str]:
+    """Reachability probe for a single endpoint URL.
+
+    Returns `(ok, error_message)`. Never raises. `requests` missing is
+    treated as a probe failure with an explanatory error.
+    """
+    if requests is None:
+        return False, "requests library not installed"
+    try:
+        resp = requests.get(endpoint_url, timeout=timeout)
+        resp.raise_for_status()
+        return True, ""
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
+def build_probe_report(probe_timeout: float = _PROBE_TIMEOUT_DEFAULT) -> dict:
+    """Build a worker-pool dry-run probe report.
+
+    Diagnostic only. Does not change routing, dispatch tasks, persist
+    state, or stamp the call ledger. Reaches into the same endpoint
+    config sources `local_check` already inspects:
+
+      * resolved Ollama base URL
+      * the OpenAI-compatible server (`OPENAI_COMPAT_BASE`)
+      * `_MTP_ENDPOINTS` (zero12 llama.cpp MTP hosts)
+
+    Returns a dict with the P4-B contract shape. `routing_changed` and
+    `ledger_stamped` are always the literal boolean `False` — they are
+    in the schema so future readers see a machine-checkable "no" to
+    "did this probe change routing or write to the ledger?".
+    """
+    configured: list[dict] = []
+    reachable: list[dict] = []
+    unreachable: list[dict] = []
+    errors: list[dict] = []
+
+    ollama_url, _ = resolve_ollama_base_url()
+    configured.append({
+        "id": "ollama_default",
+        "host": ollama_url,
+        "endpoint": f"{ollama_url.rstrip('/')}/api/tags",
+        "endpoint_type": "ollama",
+    })
+
+    configured.append({
+        "id": "openai_compat_default",
+        "host": OPENAI_COMPAT_BASE,
+        "endpoint": f"{OPENAI_COMPAT_BASE.rstrip('/')}/v1/models",
+        "endpoint_type": "openai_compat",
+    })
+
+    for url, label in _MTP_ENDPOINTS:
+        slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "mtp"
+        endpoint = url if url.endswith("/models") else f"{url.rstrip('/')}/models"
+        configured.append({
+            "id": f"mtp_{slug}",
+            "host": url,
+            "endpoint": endpoint,
+            "endpoint_type": "llama_cpp_mtp",
+        })
+
+    for cfg in configured:
+        ok, err = _probe_endpoint(cfg["endpoint"], probe_timeout)
+        if ok:
+            reachable.append({**cfg, "reachable": True})
+        else:
+            unreachable.append({**cfg, "reachable": False, "error": err})
+            errors.append({"id": cfg["id"], "error": err})
+
+    return {
+        "schema_version": PROBE_REPORT_SCHEMA_VERSION,
+        "worker_pool_dry_run_enabled": True,
+        "configured_workers": configured,
+        "reachable_workers": reachable,
+        "unreachable_workers": unreachable,
+        "probe_errors": errors,
+        "routing_changed": False,
+        "ledger_stamped": False,
+        "probed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def run_ollama_list() -> CheckResult:
     try:
         output = subprocess.check_output(["ollama", "list"], text=True, stderr=subprocess.DEVNULL)
@@ -298,7 +386,37 @@ def print_section(title: str):
     print(f"{'='*60}")
 
 
-def main():
+def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Local LLM environment health check.",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--probe-workers",
+        action="store_true",
+        help="Also run a diagnostic worker-pool dry-run probe. "
+             "Does not change routing, dispatch tasks, or write to the "
+             "call ledger.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="With --probe-workers, emit the probe report as a single "
+             "JSON object on stdout instead of the human-readable health "
+             "check. Without --probe-workers, this flag is a no-op for "
+             "P4-B.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None):
+    args = _parse_cli_args(argv)
+
+    if args.probe_workers and args.json:
+        report = build_probe_report()
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0
+
     print_section("Local LLM Environment Health Check")
     print(f"  Time: {datetime.now(timezone.utc).isoformat()}")
     print(f"  CWD:  {os.getcwd()}")
@@ -386,6 +504,19 @@ def main():
         if not cli_result.ok and not api_result.ok:
             print("  CRITICAL: No LLM backend reachable.")
             print("  Start Ollama: ollama serve")
+
+    if args.probe_workers:
+        report = build_probe_report()
+        print_section("Worker Pool Dry-Run Probe (diagnostic only)")
+        print(f"  schema_version:    {report['schema_version']}")
+        print(f"  configured:        {len(report['configured_workers'])}")
+        print(f"  reachable:         {len(report['reachable_workers'])}")
+        print(f"  unreachable:       {len(report['unreachable_workers'])}")
+        for w in report["unreachable_workers"]:
+            print(f"    - {w['id']} ({w['endpoint']}): {w['error']}")
+        print(f"  routing_changed:   {report['routing_changed']}")
+        print(f"  ledger_stamped:    {report['ledger_stamped']}")
+        print("  Note: probe is advisory; routing and ledger are unchanged.")
 
     return 0 if all_ok else 1
 
