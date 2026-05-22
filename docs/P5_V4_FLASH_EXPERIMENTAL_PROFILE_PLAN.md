@@ -536,4 +536,4 @@ this document's §2 (hard boundary) and §4 (explicit non-goals).
 
 **VERSION remains `0.9.7`.** HEAD carries no tag. No release cut.
 
-*Last updated: P5-D closeout, HEAD `99855ed`. P5-A audit baseline was `533e7b9`.*
+*P5 chain commits: P5-A `9a42207` → P5-B `99855ed` → P5-D `4976c1c`. P5-A audit baseline was `533e7b9`. VERSION `0.9.7`, no tag, no release.*
