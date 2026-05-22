@@ -2,6 +2,24 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Runtime Reliability / Observability P6-A + P6-A.1: read-only audit +
+  docs-only boundary lock-in. P6-A inspected 17 files across 4 layers
+  (worker, MCP server, hook/gate, observability) and identified 6
+  CRITICAL, 6 HIGH, 8 MEDIUM, and 5 LOW findings. Key themes: silent
+  failure is the default across ledger/gate-state/health-store;
+  subprocess timeout is systematically misreported as
+  `worker_failed_no_output` in all 6 `_wrap_worker_call`-routed tools;
+  `last_timeout` in health_store is never cleared after later success.
+  P6-A.1 creates `docs/P6_RUNTIME_RELIABILITY_OBSERVABILITY_AUDIT.md`
+  with full findings table, cross-component themes, and P6-B1 as the
+  smallest next implementation slice: fix timeout propagation (C1),
+  connect timeout to health-store penalty, clear stale `last_timeout`
+  after success (H2), plus focused regression tests. Explicitly defers
+  C2–C6, all other HIGH items, and all MEDIUM items. **P6-B1 is NOT
+  authorized by P6-A.1** and requires separate approval.
+  `PROJECT_STATUS.md` adds P6-A / P6-A.1 / P6-B1 rows. No `tools/**` /
+  `tests/**` / `VERSION` / tag changes. VERSION remains `0.9.7`; HEAD
+  carries no tag; no release.
 - V4-Flash Experimental Profile P5-D: docs/status closeout for the
   P5 chain. **P5 chain closed** (P5-A → P5-B → P5-D; P5-C
   explicitly deferred / not authorized). P5 core objective
