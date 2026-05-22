@@ -2,6 +2,21 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Runtime Reliability / Observability P6-B1 + P6-B1.1 + P6-B1.2:
+  timeout observability fix + test hygiene + docs closeout. P6-B1
+  (`4fcd83a`) fixes C1 + H2: subprocess timeout in `_wrap_worker_call`
+  now produces `error_type="timeout"` instead of `worker_failed_no_output`
+  (both streaming and non-streaming paths); new `_extract_profile_from_cmd`
+  helper for health-store attribution; `tools/health_store.py` now clears
+  stale `last_timeout` after subsequent success (was `setdefault`-locked);
+  non-timeout failure preserves `last_timeout`. 15 focused tests in
+  `tests/test_p6_timeout_observability.py`; 354 regression passed.
+  P6-B1.1 (`a5637ee`) removes the fragile working-tree-diff boundary test
+  and `_P6_B1_ALLOWED` exemption from `tests/test_p5_v4_flash_experimental.py`;
+  15 static P5 invariant tests retained. P6-B1.2 (this entry) docs closeout:
+  records completed slices, defers C2–C6/H3–H6/M1–M8, notes P6-B2
+  (call_ledger observability) as recommended but not authorized. No
+  router / worker / ledger / hooks / VERSION / tag changes.
 - Runtime Reliability / Observability P6-A + P6-A.1: read-only audit +
   docs-only boundary lock-in. P6-A inspected 17 files across 4 layers
   (worker, MCP server, hook/gate, observability) and identified 6

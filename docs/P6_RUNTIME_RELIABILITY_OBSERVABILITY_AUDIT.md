@@ -256,6 +256,58 @@ P6-B1 fixes the **timeout observability chain** only:
 
 ---
 
-*P6-A audit conducted at HEAD `563e284`. P6-A.1 docs-only lock-in.
-P6-B1 is NOT authorized by this document and requires separate
-approval.*
+*P6-A audit conducted at HEAD `563e284`. P6-A.1 docs-only lock-in.*
+
+---
+
+## 11. Resolution / Closeout (recorded at P6-B1.2)
+
+P6-B1 (`4fcd83a`) implemented the timeout observability slice:
+
+- **C1 fixed**: `_wrap_worker_call` (both streaming and non-streaming paths)
+  detects subprocess timeout before `coerce_failure_response` via
+  `"timed out" in result["stderr"].lower()` and returns
+  `error_type="timeout"` instead of `worker_failed_no_output`.
+- **Health-store penalty connected**: `_update_model_health` is called
+  with `error_type="timeout"` even when the worker produces no payload.
+  Profile name is extracted from the worker command line via new
+  `_extract_profile_from_cmd` helper.
+- **H2 fixed**: `tools/health_store.py` now clears `last_timeout` on
+  subsequent success (`ok=True`). Previously `setdefault` locked the
+  stale value indefinitely. Non-timeout failure preserves `last_timeout`.
+- **Tests**: `tests/test_p6_timeout_observability.py` (15 tests) +
+  updated `tests/test_health_store.py` (split obsolete test into two).
+  Full regression: 354 passed across 7 suites.
+
+P6-B1.1 (`a5637ee`) test hygiene:
+- Removed fragile working-tree-diff boundary test and broad
+  `_P6_B1_ALLOWED` exemption from `tests/test_p5_v4_flash_experimental.py`.
+- 15 static P5 invariant tests retained.
+
+### Remaining P6 findings — explicitly deferred
+
+| ID | Finding | Reason |
+|----|---------|--------|
+| C2 | Streaming JSON double-serialization | Requires redesign of `run_subprocess_streaming` return contract |
+| C3/C4 | Gate state save/load silent failure | Hook protocol limitation; broader design needed |
+| C5/C6 | Auto-worker / audit event observability | Separate sub-systems; not timeout-observability |
+| H1 | `run_git()` no diagnostic context | Separate concern |
+| H3/H4 | Auto-worker collect/results TOCTOU | Separate sub-system |
+| H5 | `_MTP_ENDPOINTS` hardcoded | Separate feature |
+| H6 | `classify_error` string heuristic brittleness | Broader rewrite; C1 fix addressed only timeout path |
+| M1–M8 | Ledger/local_check/doctor items | Separate concerns |
+
+### P6-B2 — recommended but NOT authorized
+
+Recommended next slice: **call_ledger observability** — corrupt JSONL
+line count/reporting (M1/M2 from P6-A). Smallest viable change:
+`read_records()` exposes skip count; `call_ledger_cli.py` reports it.
+Requires separate approval.
+
+### Boundaries reaffirmed
+
+- No router / worker / ledger schema / hooks changes in any P6-B slice.
+- MCP tool count = 9. P4 probe invariants unchanged.
+- VERSION = `0.9.7`. No tag, no release.
+
+*Last updated: P6-B1.2 closeout, HEAD `a5637ee`. P6-A audit baseline was `563e284`.*
