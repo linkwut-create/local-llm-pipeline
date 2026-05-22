@@ -1017,3 +1017,140 @@ def test_cli_by_mcp_tool_old_records_none_bucket(clean_env, ledger_path, capsys)
     # (fallback_key="tool_name" in CLI, so actually all records are covered)
     total = sum(g["calls"] for g in data.values())
     assert total == 6
+
+
+# ---------------------------------------------------------------------------
+# P6-B2-A: read_records_with_diagnostics
+# ---------------------------------------------------------------------------
+
+
+def test_diagnostics_missing_file_returns_empty(clean_env, ledger_path):
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert result["records"] == []
+    assert result["total_lines"] == 0
+    assert result["empty_lines"] == 0
+    assert result["malformed_json_lines"] == 0
+    assert result["non_dict_lines"] == 0
+    assert result["skipped_lines"] == 0
+    assert result["errors"] == []
+
+
+def test_diagnostics_all_valid_records(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        '{"task_type": "a", "success": true}',
+        '{"task_type": "b", "success": false}',
+        '{"task_type": "c", "success": true}',
+    ]
+    ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert len(result["records"]) == 3
+    assert result["total_lines"] == 3
+    assert result["empty_lines"] == 0
+    assert result["malformed_json_lines"] == 0
+    assert result["non_dict_lines"] == 0
+    assert result["skipped_lines"] == 0
+    assert result["errors"] == []
+
+
+def test_diagnostics_skips_malformed_json(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        '{"task_type": "good", "success": true}\n'
+        'this is not json\n'
+        '\n'
+        '{"task_type": "good2", "success": false}\n',
+        encoding="utf-8",
+    )
+
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert len(result["records"]) == 2
+    assert result["total_lines"] == 4
+    assert result["empty_lines"] == 1
+    assert result["malformed_json_lines"] == 1
+    assert result["non_dict_lines"] == 0
+    assert result["skipped_lines"] == 2
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["line_number"] == 2
+    assert "snippet" in result["errors"][0]
+
+
+def test_diagnostics_skips_non_dict_json(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        '{"task_type": "good", "success": true}\n'
+        '[1, 2, 3]\n'
+        '"just a string"\n'
+        '42\n'
+        '{"task_type": "good2", "success": false}\n',
+        encoding="utf-8",
+    )
+
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert len(result["records"]) == 2
+    assert result["total_lines"] == 5
+    assert result["empty_lines"] == 0
+    assert result["malformed_json_lines"] == 0
+    assert result["non_dict_lines"] == 3
+    assert result["skipped_lines"] == 3
+    assert len(result["errors"]) == 3
+    assert result["errors"][0]["error"]  # each has an error message
+
+
+def test_diagnostics_records_match_read_records(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        '{"task_type": "a", "success": true}\n'
+        'bad line\n'
+        '\n'
+        '{"task_type": "b", "success": false}\n',
+        encoding="utf-8",
+    )
+
+    diag = call_ledger.read_records_with_diagnostics(ledger_path)
+    plain = call_ledger.read_records(ledger_path)
+    assert diag["records"] == plain
+    assert len(plain) == 2
+
+
+def test_diagnostics_errors_bounded(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for i in range(50):
+        lines.append("not-json-line-%d" % i)
+    ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert result["total_lines"] == 50
+    assert result["malformed_json_lines"] == 50
+    assert result["skipped_lines"] == 50
+    assert len(result["records"]) == 0
+    # Errors bounded to 20
+    assert len(result["errors"]) == 20
+
+
+def test_diagnostics_mixed_valid_and_skipped(clean_env, ledger_path):
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        '{"task_type": "a"}\n'
+        '\n'
+        'garbage\n'
+        '{"task_type": "b"}\n'
+        'true\n'
+        '{"task_type": "c"}\n',
+        encoding="utf-8",
+    )
+
+    result = call_ledger.read_records_with_diagnostics(ledger_path)
+    assert len(result["records"]) == 3
+    assert result["total_lines"] == 6
+    assert result["empty_lines"] == 1
+    assert result["malformed_json_lines"] == 1
+    assert result["non_dict_lines"] == 1  # true
+    assert result["skipped_lines"] == 3
+    # skipped = empty + malformed + non_dict
+    assert result["skipped_lines"] == (
+        result["empty_lines"] + result["malformed_json_lines"] +
+        result["non_dict_lines"]
+    )

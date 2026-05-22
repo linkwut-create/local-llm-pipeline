@@ -347,6 +347,77 @@ def read_records(path: Path | None = None) -> list[dict[str, Any]]:
     return out
 
 
+_MAX_DIAGNOSTIC_ERRORS = 20  # Bound error details to avoid unbounded memory.
+
+
+def read_records_with_diagnostics(
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Read ledger records with skip-count diagnostics.
+
+    Returns a dict with:
+      - records: list of valid dict records (same as read_records)
+      - total_lines: physical lines in the file
+      - empty_lines: blank/whitespace-only lines
+      - malformed_json_lines: lines that failed json.loads
+      - non_dict_lines: valid JSON values that are not dicts
+      - skipped_lines: empty_lines + malformed_json_lines + non_dict_lines
+      - errors: list of {line_number, error, snippet} (max 20)
+
+    Missing file returns empty records and zero counts.
+    Existing read_records() behavior is unchanged.
+    """
+    target = _resolve_path(path)
+    result: dict[str, Any] = {
+        "records": [],
+        "total_lines": 0,
+        "empty_lines": 0,
+        "malformed_json_lines": 0,
+        "non_dict_lines": 0,
+        "skipped_lines": 0,
+        "errors": [],
+    }
+    if not target.exists():
+        return result
+    try:
+        with open(target, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                result["total_lines"] += 1
+                line = raw.strip()
+                if not line:
+                    result["empty_lines"] += 1
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    result["malformed_json_lines"] += 1
+                    if len(result["errors"]) < _MAX_DIAGNOSTIC_ERRORS:
+                        result["errors"].append({
+                            "line_number": result["total_lines"],
+                            "error": str(exc)[:200],
+                            "snippet": raw.strip()[:120],
+                        })
+                    continue
+                if isinstance(obj, dict):
+                    result["records"].append(obj)
+                else:
+                    result["non_dict_lines"] += 1
+                    if len(result["errors"]) < _MAX_DIAGNOSTIC_ERRORS:
+                        result["errors"].append({
+                            "line_number": result["total_lines"],
+                            "error": f"expected dict, got {type(obj).__name__}",
+                            "snippet": raw.strip()[:120],
+                        })
+        result["skipped_lines"] = (
+            result["empty_lines"]
+            + result["malformed_json_lines"]
+            + result["non_dict_lines"]
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _zero_summary() -> dict[str, Any]:
     return {
         "calls": 0,
