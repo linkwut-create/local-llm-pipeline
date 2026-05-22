@@ -159,12 +159,22 @@ def test_all_current_profiles_are_local_only():
         )
 
 
-def test_no_profile_marked_experimental_yet():
+def test_exactly_one_experimental_profile():
+    """P5-B: v4_flash_local_experimental is the sole experimental profile.
+    It must derive experimental=true with correct policy fields."""
     profiles = load_profiles()["profiles"]
     experimental = [name for name in profiles if derive_policy(name)["experimental"]]
-    assert experimental == [], (
-        f"no profile should derive experimental=true in P1-A, got: {experimental}"
+    assert experimental == ["v4_flash_local_experimental"], (
+        f"expected only v4_flash_local_experimental as experimental, got: {experimental}"
     )
+    p = derive_policy("v4_flash_local_experimental")
+    assert p["experimental"] is True
+    assert p["auto_allowed"] is False
+    assert p["requires_escalation_reason"] is True
+    assert p["debate_allowed"] is True
+    assert p["default_review_necessity"] == "recommended"
+    assert p["commit_gate_allowed"] is False
+    assert p["local_only"] is True
 
 
 # --- derivation rules (synthetic inputs) ---

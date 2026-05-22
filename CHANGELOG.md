@@ -2,6 +2,25 @@
 
 ## Unreleased (post-v0.9.7)
 
+- V4-Flash Experimental Profile P5-B: minimal implementation slice.
+  Adds `v4_flash_local_experimental` profile to
+  `tools/local_llm_profiles.json` (`model=v4-flash`,
+  `risk_level="experimental"`, manual invocation only — no task
+  default points to it, router does not auto-select it). Adds
+  `"experimental"` to `tools/validate_configs.py::VALID_RISK_LEVELS`
+  (Option A alignment — `tools/profile_policy.py:33` already
+  accepted it). Updates `tests/test_profile_policy.py`
+  `test_no_profile_marked_experimental_yet` →
+  `test_exactly_one_experimental_profile`. New
+  `tests/test_p5_v4_flash_experimental.py` (16 tests) covering
+  profile shape, validation acceptance, policy derivation, router
+  non-auto-selection, explicit override, MCP tool count, P4 probe
+  invariants, ledger schema compatibility, and the
+  `provider=tongyi` stale reference removal. Stale-doc
+  reconciliation: `docs/MCP_COST_DISCIPLINE_PLAN.md:367`
+  `provider=tongyi` → `provider=auto-detected`. No router / MCP
+  server / worker / ledger / hook / VERSION / tag changes.
+  VERSION remains `0.9.7`; HEAD carries no tag; no release.
 - V4-Flash Experimental Profile P5-A: read-only audit + boundary
   lock-in. Adds `docs/P5_V4_FLASH_EXPERIMENTAL_PROFILE_PLAN.md`
   recording: P5's hard boundary as a single profile-entry change

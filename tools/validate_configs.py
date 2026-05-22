@@ -19,7 +19,7 @@ SCRIPT_DIR = Path(__file__).parent
 PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 
-VALID_RISK_LEVELS = {"low", "medium", "medium-high", "high"}
+VALID_RISK_LEVELS = {"low", "medium", "medium-high", "high", "experimental"}
 
 DRAFT_TASKS = {"draft-fix", "draft-feature", "draft-refactor", "suggest-improvements"}
 

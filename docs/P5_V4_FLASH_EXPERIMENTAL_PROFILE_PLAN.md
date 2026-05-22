@@ -1,9 +1,10 @@
 # P5 V4-Flash Local Experimental Profile — Plan
 
-**Status:** P5-A (read-only audit + boundary lock-in). Implementation
-slice P5-B has **not** been approved.
+**Status:** P5-B implemented (Option A minimal slice). Implementation
+based from HEAD `9a42207` (`docs: plan P5 V4-Flash experimental
+profile`), `git describe v0.9.7-31-g9a42207`.
 
-**Baseline at audit time:** HEAD `533e7b9` (`docs: close out P4 worker
+**P5-A baseline at audit time:** HEAD `533e7b9` (`docs: close out P4 worker
 pool dry-run`), `git describe v0.9.7-30-g533e7b9`, VERSION `0.9.7`, no
 tag at HEAD, working tree clean. P3 chain closed; P4 chain closed
 (P4-C deferred); P5 is the next runway.
@@ -446,4 +447,45 @@ to the human** instead of routing around them:
 
 ---
 
-*Last updated: P5-A, HEAD `533e7b9` baseline.*
+*Last updated: P5-B, HEAD `9a42207` baseline. P5-A audit baseline was `533e7b9`.*
+
+---
+
+## 9. Resolution / Implementation (recorded at P5-B)
+
+P5-B implemented the Option A slice from §5:
+
+**Profile entry**: `v4_flash_local_experimental` added to
+`tools/local_llm_profiles.json` with `risk_level="experimental"`,
+`_local_only=true`, and manual-only constraints. No task default
+points to it; router does not auto-select it.
+
+**Config alignment**: `tools/validate_configs.py::VALID_RISK_LEVELS`
+now includes `"experimental"`, resolving the latent divergence with
+`tools/profile_policy.py` which already accepted it.
+
+**Policy derivation** (unchanged — the profile_policy.py machinery
+was already data-ready):
+- `experimental` = True
+- `auto_allowed` = False
+- `requires_escalation_reason` = True
+- `debate_allowed` = True
+- `default_review_necessity` = `"recommended"`
+- `commit_gate_allowed` = False
+- `local_only` = True
+
+**Tests**: `tests/test_p5_v4_flash_experimental.py` (16 tests) and
+`tests/test_profile_policy.py` updated
+(`test_no_profile_marked_experimental_yet` →
+`test_exactly_one_experimental_profile`).
+
+**Stale doc**: `docs/MCP_COST_DISCIPLINE_PLAN.md:367`
+`provider=tongyi` → `provider=auto-detected`.
+
+**Hard boundaries preserved**: No changes to router, MCP server,
+worker, call ledger, hooks, CLAUDE.md, mcp-task-policy.md, VERSION,
+or tags. MCP tool count = 9. P4 probe invariants unchanged.
+VERSION = 0.9.7. HEAD carries no tag. No release.
+
+P5-C (`_env` wiring, model warmup, per-profile `_provider` hint)
+remains **not authorized**. P5-D (chain closeout) remains optional.

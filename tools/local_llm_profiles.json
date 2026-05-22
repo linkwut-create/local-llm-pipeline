@@ -504,6 +504,27 @@
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
       "_acceleration": "mtp (pending upstream llama.cpp)"
     },
+    "v4_flash_local_experimental": {
+      "model": "v4-flash",
+      "_strengths": [
+        "heavy-audit",
+        "experimental",
+        "low-frequency"
+      ],
+      "temperature": 0.1,
+      "max_chars": 160000,
+      "max_output_chars": 6000,
+      "use_for": [
+        "release-risk-review",
+        "deep-code-review",
+        "architecture-review",
+        "debate-architecture-review"
+      ],
+      "risk_level": "experimental",
+      "_local_only": true,
+      "_constraints": "Manual invocation only. Not a default for any task. Requires explicit profile override. Model weights/binary must be provisioned separately.",
+      "_community_reputation": "Reserved local experimental profile. Provider is auto-detected from LOCAL_LLM_BASE_URL / LOCAL_LLM_PROVIDER; no tongyi provider is introduced."
+    },
     "embedding": {
       "model": "nomic-embed-text-v2-moe:latest",
       "temperature": 0.0,
