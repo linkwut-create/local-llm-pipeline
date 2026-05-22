@@ -83,17 +83,34 @@ and explicit commit gate review.
 
 ## Escalation Rules
 
-These rules determine when to upgrade from default to stronger model/profile:
+These rules determine when to upgrade from default to stronger model/profile.
 
-| Trigger | Action |
-|---------|--------|
-| `local_summarize_file` returns `confidence=low` | Re-run with `smart_summary` |
-| `local_review_diff` returns `uncertain_points` > 3 | Re-run with `diff_reviewer` or `deep_reviewer` |
-| Diff touches `tools/local_llm_mcp_server.py` | Minimum `diff_reviewer`. Consider `local_debate_review_diff`. |
-| Diff touches commit gate, hook, or router logic | Must use `local_debate_review_diff` (fast mode minimum). |
-| Diff touches safety policy, blocked paths, security boundaries | Must use `local_debate_review_diff` or explicit `deep_reviewer`. |
-| Pre-release / tag / publish | Must use `release_auditor`. |
-| CJK / Unicode content in diff | `commit_reviewer` is sufficient (UTF-8 fix verified). No upgrade needed. |
+P3 narrowed the runtime auto-escalation in `_check_quality_escalation`
+(Path C — post-call quality signals). Quality-signal upgrades are now
+**controller-driven manual decisions** by default, not automatic runtime
+hops. The legacy auto-escalation behavior remains restorable via env
+knobs (truthy: `true` / `1` / `yes` / `on`, case-insensitive). Path A
+(pre-call starting-profile routing), Path B (`call_review_diff`
+volume-based auto-debate), and Path D (`mcp_gate.py` hook-layer
+advisory) are unchanged by P3.
+
+| Trigger | Default behavior | Opt-in restore / controller action |
+|---------|------------------|------------------------------------|
+| `local_summarize_file` returns `confidence=low` | No auto-escalation. Controller decides whether to re-run with `smart_summary`. | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` restores legacy auto-escalation. |
+| `local_review_diff` returns `uncertain_points` > 3 | No auto-escalation. Controller decides whether to re-run with `diff_reviewer` / `deep_reviewer`. | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` restores legacy auto-escalation. |
+| Worker `error_type == "timeout"` | Downgrades to a lighter model (unchanged by P3). | n/a — downgrade, not strong-model escalation. |
+| Diff touches `tools/local_llm_mcp_server.py` | Minimum `diff_reviewer`. Consider `local_debate_review_diff`. | n/a (controller policy) |
+| Diff touches commit gate, hook, or router logic | Must use `local_debate_review_diff` (fast mode minimum). | n/a |
+| Diff touches safety policy, blocked paths, security boundaries | Must use `local_debate_review_diff` or explicit `deep_reviewer`. | n/a |
+| Pre-release / tag / publish | Must use `release_auditor`. | n/a |
+| CJK / Unicode content in diff | `commit_reviewer` is sufficient (UTF-8 fix verified). No upgrade needed. | n/a |
+
+The ledger `escalation_trigger` value space is unchanged
+(`timeout` / `low_confidence` / `uncertain_points` / `unknown`); only
+the *frequency* of `low_confidence` and `uncertain_points` labels
+changes once the knobs are OFF. `escalation_reason` remains a free-form
+string — there is no strict enum, no `structural_risk` runtime trigger,
+and no `escalate=true` / `user_requested` MCP parameter.
 
 ## Prohibition Rules (Hard Stops)
 

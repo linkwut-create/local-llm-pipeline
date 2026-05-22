@@ -169,14 +169,30 @@ MCP Usage Matrix
 
 #### Escalation Rules
 
-| Trigger | Action |
-|---------|--------|
-| `summarize` returns `confidence=low` | Upgrade to `smart_summary` |
-| `review` returns `uncertain_points` > 3 | Upgrade to `diff_reviewer` or `deep_reviewer` |
-| Diff touches MCP server, commit gate, router | Debate or deep review mandatory |
-| Pre-release / tag / publish | `release_auditor` mandatory |
-| MCP tool timeout | Retry with smaller input or faster model; record failure |
-| Reasoning model timeout | Fall back to code_worker; record deviation |
+P3 narrowed the runtime auto-escalation chain: `confidence=="low"` and
+`len(uncertain_points) > 3` no longer auto-escalate to a stronger model
+by default. Both legacy behaviors remain restorable via env knobs
+(truthy: `true` / `1` / `yes` / `on`, case-insensitive). The `timeout`
+path still downgrades unconditionally — note this is a downgrade to a
+lighter model, not a strong-model escalation, so it doesn't inflate cost.
+
+| Trigger | Default | Opt-in restore / controller action |
+|---------|---------|------------------------------------|
+| `summarize` returns `confidence=low` | No auto-escalation. Controller may manually re-run with `smart_summary` if the flagged area matters. | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` restores legacy auto-escalation. |
+| `review` returns `uncertain_points` > 3 | No auto-escalation. Controller may manually re-run with `diff_reviewer` / `deep_reviewer` if the uncertain points are material. | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` restores legacy auto-escalation. |
+| Worker `error_type == "timeout"` | Downgrades to a lighter model (unchanged). | n/a — downgrade, not escalation. |
+| Diff touches MCP server, commit gate, router | Debate or deep review mandatory (controller policy, not runtime). | n/a |
+| Pre-release / tag / publish | `release_auditor` mandatory (controller policy). | n/a |
+| MCP tool timeout | Retry with smaller input or faster model; record failure. | n/a |
+| Reasoning model timeout | Fall back to code_worker; record deviation. | n/a |
+
+The ledger `escalation_trigger` value space is unchanged
+(`timeout` / `low_confidence` / `uncertain_points` / `unknown`); only
+the *frequency* of `low_confidence` and `uncertain_points` labels
+changes once the knobs are OFF. `escalation_reason` remains a
+free-form string — there is no strict enum, no `structural_risk`
+runtime trigger, and no `escalate=true` / `user_requested` MCP
+parameter.
 
 #### Prohibition Rules (Hard Stops)
 

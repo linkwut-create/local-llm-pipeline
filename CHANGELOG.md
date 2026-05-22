@@ -2,6 +2,28 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-D: policy-doc final alignment with the
+  narrowed P3 runtime. `CLAUDE.md` "Escalation Rules" and
+  `docs/mcp-task-policy.md` "Escalation Rules" rewritten so the
+  controller-facing rules match what `_check_quality_escalation`
+  actually does after P3-C1 / P3-C2: `confidence=="low"` and
+  `len(uncertain_points) > 3` no longer auto-escalate to a stronger
+  model by default; legacy auto-escalation is opt-in via
+  `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` and
+  `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` (truthy values: `true` /
+  `1` / `yes` / `on`, case-insensitive). The `timeout` branch is
+  re-clarified as an unconditional **downgrade** to a lighter model,
+  not a strong-model escalation, so it doesn't inflate cost. Both
+  docs now state explicitly that there is no strict
+  `escalation_reason` enum, no `structural_risk` runtime trigger, and
+  no `escalate=true` / `user_requested` MCP parameter; the ledger
+  `escalation_trigger` value space remains
+  (`timeout` / `low_confidence` / `uncertain_points` / `unknown`).
+  `PROJECT_STATUS.md` flips P3-D from `Not started` → `Done`; P3-C3
+  remains `Not started (optional)` and P3-E remains `Not started`. No
+  `tools/**` / `tests/**` / `tools/call_ledger.py` /
+  `tools/call_ledger_cli.py` / `tools/local_llm_profiles.json` /
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` / `VERSION` / tag changes.
 - MCP Cost Discipline P3-C2 docs/status closeout + handoff checkpoint:
   `PROJECT_STATUS.md` flips P3-C2 from `In review` → `Done (6669bae)`,
   adds an explicit P3-C2.1 row, and appends a "P3-C2 Handoff / Next
