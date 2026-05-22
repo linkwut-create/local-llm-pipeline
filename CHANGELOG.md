@@ -2,6 +2,20 @@
 
 ## Unreleased (post-v0.9.7)
 
+- V4-Flash Experimental Profile P5-D: docs/status closeout for the
+  P5 chain. **P5 chain closed** (P5-A → P5-B → P5-D; P5-C
+  explicitly deferred / not authorized). P5 core objective
+  reaffirmed: `v4_flash_local_experimental` profile exists as
+  manual-only experimental with full policy boundary; 16 focused
+  tests; no router / MCP server / worker / ledger / P4 probe /
+  tasks.json changes anywhere in the P5 chain. P5-C (`_env` wiring,
+  model warmup, provider hint) remains not authorized — each would
+  require a separately approved plan. `PROJECT_STATUS.md` flips
+  P5-D from `Not started` → `Done`. `docs/P5_V4_FLASH_EXPERIMENTAL_PROFILE_PLAN.md`
+  updated with §10 closeout section restating the completed chain,
+  deferred items, and unchanged boundaries. No `tools/**` /
+  `tests/**` / `VERSION` / tag / release changes. VERSION remains
+  `0.9.7`; HEAD carries no tag; no release.
 - V4-Flash Experimental Profile P5-B: minimal implementation slice.
   Adds `v4_flash_local_experimental` profile to
   `tools/local_llm_profiles.json` (`model=v4-flash`,

@@ -489,3 +489,51 @@ VERSION = 0.9.7. HEAD carries no tag. No release.
 
 P5-C (`_env` wiring, model warmup, per-profile `_provider` hint)
 remains **not authorized**. P5-D (chain closeout) remains optional.
+
+---
+
+## 10. Resolution / Closeout (recorded at P5-D)
+
+**P5 chain closed** — P5-A (audit, `9a42207`) → P5-B (implementation,
+`99855ed`) → P5-D (this closeout).
+
+**P5 core objective met**: `v4_flash_local_experimental` has been added
+as a manual-only experimental profile. Operator-visible state:
+
+- Profile exists in `tools/local_llm_profiles.json` with
+  `risk_level="experimental"`, `_local_only=true`.
+- `tools/validate_configs.py::VALID_RISK_LEVELS` includes
+  `"experimental"` — now aligned with `profile_policy.py`.
+- Policy derivation: experimental=true, auto_allowed=false,
+  requires_escalation_reason=true, debate_allowed=true,
+  default_review_necessity="recommended", commit_gate_allowed=false,
+  local_only=true.
+- No task default points to `v4_flash_local_experimental`.
+- Router does not auto-select it; explicit `--profile` override works.
+- MCP tool count = 9. P4 probe invariants unchanged.
+- `provider=tongyi` stale reference removed from
+  `docs/MCP_COST_DISCIPLINE_PLAN.md`.
+- 16 focused tests in `tests/test_p5_v4_flash_experimental.py`.
+
+**P5-C explicitly deferred / not authorized.** `_env` wiring, model
+warmup helper, and per-profile `_provider` hint are all out of P5's
+scope — each would require a separately approved plan that re-cites
+this document's §2 (hard boundary) and §4 (explicit non-goals).
+
+**Boundaries reaffirmed across the entire P5 chain**:
+
+- No changes to: `tools/local_llm_router.py`,
+  `tools/local_llm_mcp_server.py`, `tools/local_llm_worker.py`,
+  `tools/local_llm_check.py`, `tools/call_ledger.py`,
+  `tools/call_ledger_cli.py`, `tools/local_llm_tasks.json`,
+  `tools/profile_policy.py`, `tools/health_store.py`,
+  `tools/claude_hooks/`, `CLAUDE.md`, `docs/mcp-task-policy.md`,
+  `VERSION`, `pyproject.toml`, or any tag/release.
+- No new MCP tool or parameter was added.
+- No provider support was added (worker still knows only `"ollama"`
+  and `"openai-compatible"`).
+- Ledger schema unchanged. P4 probe unchanged.
+
+**VERSION remains `0.9.7`.** HEAD carries no tag. No release cut.
+
+*Last updated: P5-D closeout, HEAD `99855ed`. P5-A audit baseline was `533e7b9`.*
