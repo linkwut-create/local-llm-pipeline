@@ -683,8 +683,17 @@ def _check_quality_escalation(payload: dict, current_profile: str, task: str,
             return target
         return None
 
-    # Many uncertain points → escalate
-    if uncertain_count > 3:
+    # Many uncertain points → escalate.
+    # MCP Cost Discipline P3-C2: default OFF. Legacy "always escalate on
+    # uncertain_points > 3" behavior is restorable via the env knob
+    # LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true (see
+    # docs/MCP_COST_DISCIPLINE_PLAN.md §4.2). Together with the P3-C1
+    # gate on the confidence=="low" branch, this completes the P3 core
+    # objective: neither quality signal auto-triggers a strong-model
+    # invocation by default. timeout downgrade is intentionally still
+    # ungated (it moves to a lighter model, not a heavier one).
+    if uncertain_count > 3 and _parse_env_flag(
+            _ENV_AUTO_ESCALATE_ON_UNCERTAIN, default=False):
         target = _next_untried(idx, 1)
         if target:
             # If CJK detected and target is not CJK-capable, look further
@@ -1157,13 +1166,19 @@ def _build_ledger_extra_env(
 #   low_confidence → confidence == "low"
 #   uncertain_points → len(uncertain_points) > 3
 #
-# MCP Cost Discipline P3-C1: the low_confidence branch is gated behind
-# LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE so the returned trigger label
-# matches the branch in _check_quality_escalation that actually fired.
-# When the knob is OFF and a payload has both `confidence=="low"` and
-# `uncertain_points > 3`, escalation fires via the uncertain_points
-# branch and this helper now correctly reports "uncertain_points"
-# instead of the stale "low_confidence" label.
+# MCP Cost Discipline P3-C1 / P3-C2: each quality-signal branch is
+# gated behind its own env knob so the returned trigger label matches
+# the branch in `_check_quality_escalation` that would actually fire:
+#   - `low_confidence`   ← `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE`
+#   - `uncertain_points` ← `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN`
+# `timeout` is intentionally not gated (it downgrades to a lighter
+# model and does not cause cost inflation).
+#
+# Dual-signal payload semantics with both knobs OFF: this helper
+# returns `"unknown"`, matching the fact that `_check_quality_escalation`
+# returns `None` (no escalation fires). When only one knob is ON, the
+# label tracks the branch that did fire. When both are ON, low_confidence
+# wins (legacy ordering).
 def _derive_escalation_trigger(payload: dict) -> str:
     error_type = (payload.get("error_type") or "").lower()
     if error_type == "timeout":
@@ -1173,7 +1188,8 @@ def _derive_escalation_trigger(payload: dict) -> str:
             _ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE, default=False):
         return "low_confidence"
     uncertain_count = len(payload.get("uncertain_points") or [])
-    if uncertain_count > 3:
+    if uncertain_count > 3 and _parse_env_flag(
+            _ENV_AUTO_ESCALATE_ON_UNCERTAIN, default=False):
         return "uncertain_points"
     return "unknown"
 

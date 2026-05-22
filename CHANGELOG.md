@@ -2,6 +2,49 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-C2: second (and final core) behavioral flip in
+  the auto-escalation chain. `_check_quality_escalation` in
+  `tools/local_llm_mcp_server.py` now gates the `uncertain_points > 3`
+  branch behind `_parse_env_flag(_ENV_AUTO_ESCALATE_ON_UNCERTAIN,
+  default=False)`. Default behavior: a worker payload with
+  `len(uncertain_points) > 3` alone no longer auto-escalates. Legacy
+  behavior is restorable by setting
+  `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` (truthy values: `1`,
+  `yes`, `on`, case-insensitive). Together with P3-C1's
+  `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` gate, this completes the
+  P3 core objective: neither quality signal auto-triggers a
+  strong-model invocation by default. `_derive_escalation_trigger`
+  gated in lock-step on the uncertain branch — when both knobs are OFF
+  and a payload carries both `confidence=="low"` and
+  `uncertain_points > 3`, the helper returns `"unknown"`, matching the
+  fact that `_check_quality_escalation` returns `None` (no escalation
+  fires). The `timeout` downgrade path remains unconditional and
+  unchanged. Path A (`_resolve_starting_profile` content-pattern
+  routing), Path B (volume-based auto-debate in `call_review_diff`),
+  and Path D (hook-layer `classify_diff_risk` advisory) all unchanged.
+  `tests/test_p3_env_knobs.py` expanded from 72 → 104 tests adding:
+  the P3-C2 default-OFF parametrize (unset / falsy / empty /
+  unrecognized → no escalation); the env-knob restore parametrize
+  (truthy → legacy escalation, plus chain-tier assertion); a threshold
+  guard (count of exactly 3 must not escalate even with knob ON); the
+  full 4-cell dual-signal matrix using a `_set_knobs` helper; refreshed
+  `_derive_escalation_trigger` per-knob coverage including empty
+  payload across the 4 knob combinations; a 16-cell
+  timeout-precedence matrix proving timeout wins regardless of either
+  knob; and explicit P3-C1 regression guards proving P3-C2 did not
+  re-enable low_confidence auto-escalation or break its env-knob
+  restore. The existing autouse fixtures in
+  `tests/test_mcp_escalation_ledger_env.py` and
+  `tests/test_layer4_quality.py::TestQualityEscalation` (both set
+  knobs to `"true"` at module/class scope, added in P3-C1) carry
+  through unchanged. P2 ledger contract preserved: `escalation_trigger`
+  value space unchanged (`timeout` / `low_confidence` /
+  `uncertain_points` / `unknown`), only the *frequency* of
+  `low_confidence` and `uncertain_points` labels changes; ledger schema
+  / CLI subcommand surface untouched. No `tools/call_ledger.py` /
+  `tools/call_ledger_cli.py` / `tools/local_llm_profiles.json` /
+  `CLAUDE.md` / `docs/mcp-task-policy.md` /
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` / `VERSION` / tag changes.
 - MCP Cost Discipline P3-C1: first behavioral flip in the
   auto-escalation chain. `_check_quality_escalation` in
   `tools/local_llm_mcp_server.py` now gates the `confidence=="low"`
