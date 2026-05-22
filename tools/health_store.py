@@ -126,8 +126,8 @@ def record_invocation(
 
         if error_type == "timeout":
             h["last_timeout"] = now
-        else:
-            h.setdefault("last_timeout", None)
+        if ok:
+            h["last_timeout"] = None
 
         if ok:
             h["consecutive_failures"] = 0

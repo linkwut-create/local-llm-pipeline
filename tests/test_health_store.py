@@ -148,15 +148,25 @@ def test_timeout_sets_last_timeout(tmp_path):
     assert load_profile_health("x", path=p)["last_timeout"] == _today()
 
 
-def test_non_timeout_does_not_overwrite_existing_last_timeout(tmp_path):
-    """A previous timeout's date must survive subsequent non-timeout
-    invocations (so operators can see when the last timeout was)."""
+def test_success_clears_stale_last_timeout(tmp_path):
+    """P6-B1: success after a timeout must clear stale last_timeout
+    so operators don't see a months-old timeout as current."""
+    p = tmp_path / "health.json"
+    # Timeout sets last_timeout
+    record_invocation("x", ok=False, elapsed_s=60.0, error_type="timeout", path=p)
+    assert load_profile_health("x", path=p)["last_timeout"] is not None
+    # Success clears stale last_timeout
+    record_invocation("x", ok=True, elapsed_s=1.0, path=p)
+    assert load_profile_health("x", path=p)["last_timeout"] is None
+
+
+def test_non_timeout_failure_preserves_last_timeout(tmp_path):
+    """P6-B1: non-timeout failure after a timeout must preserve
+    last_timeout — only success clears it."""
     p = tmp_path / "health.json"
     record_invocation("x", ok=False, elapsed_s=60.0, error_type="timeout", path=p)
     pinned = load_profile_health("x", path=p)["last_timeout"]
-    # Subsequent ok=True non-timeout calls
-    record_invocation("x", ok=True, elapsed_s=1.0, path=p)
-    record_invocation("x", ok=True, elapsed_s=1.0, path=p)
+    # Non-timeout failure: preserved
     record_invocation("x", ok=False, elapsed_s=1.0, error_type="other", path=p)
     assert load_profile_health("x", path=p)["last_timeout"] == pinned
 

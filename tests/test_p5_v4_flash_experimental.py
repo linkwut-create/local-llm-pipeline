@@ -235,9 +235,13 @@ FORBIDDEN = [
     "health_store.py",
 ]
 
+# P6-B1 intentionally modifies these; exempt from P5-B boundary check.
+_P6_B1_ALLOWED = {"tools/local_llm_mcp_server.py", "tools/health_store.py"}
+
 
 def test_forbidden_files_not_in_diff():
-    """P5-B must not change routing/escalation/worker/ledger files."""
+    """P5-B must not change routing/escalation/worker/ledger files.
+    Files explicitly allowed by a later phase (e.g. P6-B1) are exempt."""
     import subprocess  # noqa: E402
 
     result = subprocess.run(
@@ -245,9 +249,11 @@ def test_forbidden_files_not_in_diff():
         capture_output=True, text=True, timeout=10,
         cwd=str(Path(__file__).parent.parent),
     )
-    changed = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    changed = set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
     for forbidden in FORBIDDEN:
         full = f"tools/{forbidden}"
+        if full in _P6_B1_ALLOWED:
+            continue
         assert full not in changed, (
-            f"forbidden file changed in P5-B: {full}"
+            f"forbidden file changed: {full}"
         )

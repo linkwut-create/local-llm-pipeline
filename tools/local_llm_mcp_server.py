@@ -571,6 +571,18 @@ def _update_model_health(profile_name: str, ok: bool, elapsed_s: float,
     record_invocation(profile_name, ok=ok, elapsed_s=elapsed_s,
                       error_type=error_type)
 
+
+def _extract_profile_from_cmd(cmd: list[str]) -> str:
+    """Extract the profile name from a worker subprocess command line.
+
+    Returns "" if --profile is not found in the argument list.
+    """
+    for i, arg in enumerate(cmd):
+        if arg == "--profile" and i + 1 < len(cmd):
+            return cmd[i + 1]
+    return ""
+
+
 _MAX_ESCALATION_DEPTH = 2  # Allow up to 2 escalation hops (3 total invocations). Safe with _tried_profiles loop prevention.
 
 
@@ -1678,6 +1690,22 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
                 elapsed=result["elapsed_seconds"],
                 request_id=request_id,
             )
+        # P6-B1: detect subprocess timeout before coercing to generic failure.
+        # Worker-killed-by-timeout produces no JSON output; stderr carries the
+        # "timed out" signal that coerce_failure_response would otherwise discard.
+        if payload is None and "timed out" in result.get("stderr", "").lower():
+            _update_model_health(
+                _extract_profile_from_cmd(cmd), ok=False,
+                elapsed_s=result.get("elapsed_seconds", 0),
+                error_type="timeout",
+            )
+            return build_error_response(
+                tool=tool, error_type="timeout",
+                error=result.get("stderr", "").strip()[:500],
+                suggestion="try a smaller input, a faster profile, or increase timeout",
+                elapsed=result.get("elapsed_seconds", 0),
+                request_id=request_id,
+            )
         return coerce_failure_response(tool, payload, result.get("stderr", ""),
                                        result["elapsed_seconds"], request_id)
 
@@ -1795,6 +1823,20 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
 
         return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
 
+    # P6-B1: detect subprocess timeout before coercing to generic failure.
+    if payload is None and "timed out" in result.get("stderr", "").lower():
+        _update_model_health(
+            _extract_profile_from_cmd(cmd), ok=False,
+            elapsed_s=result.get("elapsed_seconds", 0),
+            error_type="timeout",
+        )
+        return build_error_response(
+            tool=tool, error_type="timeout",
+            error=result.get("stderr", "").strip()[:500],
+            suggestion="try a smaller input, a faster profile, or increase timeout",
+            elapsed=result.get("elapsed_seconds", 0),
+            request_id=request_id,
+        )
     return coerce_failure_response(tool, payload, result["stderr"], result["elapsed_seconds"], request_id)
 
 
