@@ -2,6 +2,27 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-E: docs closeout for the P3 chain. Flips
+  `PROJECT_STATUS.md` P3-E from `Not started` → `Done`, records P3 as
+  closed (P3-A → P3-A.1 → P3-B → P3-C1 → P3-C2 → P3-C2.1 → P3-D →
+  P3-E), reaffirms the P3 core objective (`confidence=="low"` and
+  `len(uncertain_points) > 3` no longer auto-escalate by default;
+  legacy restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` /
+  `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN`), and explicitly skips/defers
+  optional P3-C3 (`review_necessity="user-forced"` ledger stamp) —
+  not required for the P3 core objective, may be revived only under a
+  separately approved plan. Adds a "Resolution (recorded at P3-E)"
+  paragraph to the historical "P3-C2 Handoff / Next Window Notes"
+  block so future readers know Path B (skip P3-C3) was taken.
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` §10 P3 row and §13.5 P3 bullet
+  minimally updated to reflect chain completion. No
+  `structural_risk` runtime trigger, no `escalate=true` /
+  `user_requested` MCP parameter, no `tools/**` / `tests/**` /
+  `CLAUDE.md` / `docs/mcp-task-policy.md` / `tools/call_ledger.py` /
+  `tools/call_ledger_cli.py` / `tools/local_llm_profiles.json` /
+  `VERSION` / tag changes. VERSION remains `0.9.7`; HEAD carries no
+  tag; no release. Next runway: P4 (worker pool dry-run) or, if
+  explicitly approved, P3-C3.
 - MCP Cost Discipline P3-D: policy-doc final alignment with the
   narrowed P3 runtime. `CLAUDE.md` "Escalation Rules" and
   `docs/mcp-task-policy.md` "Escalation Rules" rewritten so the

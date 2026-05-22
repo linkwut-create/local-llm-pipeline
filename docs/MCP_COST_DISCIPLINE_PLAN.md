@@ -362,7 +362,7 @@ This plan does **not** address:
 | **P0** | Docs policy (this document). Approve. | 1 (this file) | none |
 | **P1** | Profile/policy metadata. Add `_cost_discipline` fields to `local_llm_profiles.json` (e.g., `_max_per_phase`, `_allowed_triggers`). Schema-additive only. | `local_llm_profiles.json` | low |
 | **P2** | Ledger escalation fields. Worker `_emit_ledger` populates `extra.escalation_reason` etc. **Additive to JSONL schema — no migration.** | `call_ledger.py`, `local_llm_worker.py` | low |
-| **P3** | Auto-upgrade restriction. Narrow `_check_quality_escalation` (Path C in §4.3) so `confidence=="low"` and `uncertain_points > 3` no longer auto-escalate by default; both restorable via env knobs. `timeout` downgrade kept. Optional P3-C3: stamp `review_necessity="user-forced"` in the ledger when an MCP call carries an explicit `profile` override. **Does not** add a `structural_risk` runtime trigger or a new `escalate=` MCP parameter — both deferred outside P3 (§13.5). Sub-phase split: P3-A (audit), P3-A.1 (this commit, docs reconciliation), P3-B (helpers + env-knob plumbing), P3-C1, P3-C2, P3-C3 (optional), P3-D (CLAUDE.md alignment), P3-E (docs closeout). | `tools/local_llm_mcp_server.py`, `tests/test_mcp_escalation_ledger_env.py`, `tests/test_layer4_quality.py`, `CLAUDE.md`, `docs/mcp-task-policy.md` (P3-D only) | **medium** — behavioral change |
+| **P3** | **Closed.** Auto-upgrade restriction landed: `_check_quality_escalation` (Path C in §4.3) was narrowed so `confidence=="low"` and `uncertain_points > 3` no longer auto-escalate by default; both restorable via env knobs (`LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` / `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN`). `timeout` downgrade kept. Optional P3-C3 (`review_necessity="user-forced"` ledger stamp) was **skipped / deferred** — not required for the P3 core objective. Sub-phase status: P3-A (audit, no code), P3-A.1 `3dde552` (docs reconciliation), P3-B `8fa0904` (helpers + env-knob plumbing), P3-C1 `8b85a88`, P3-C2 `6669bae`, P3-C2.1 `cb9076c` (handoff), P3-D `a2e6daf` (CLAUDE.md / `docs/mcp-task-policy.md` alignment), P3-E (this commit, chain closeout). No `structural_risk` runtime trigger and no `escalate=` MCP parameter were introduced — both remain deferred outside P3 (§13.5). | `tools/local_llm_mcp_server.py`, `tests/test_p3_env_knobs.py`, `tests/test_mcp_escalation_ledger_env.py`, `tests/test_layer4_quality.py`, `CLAUDE.md`, `docs/mcp-task-policy.md` (P3-D only) | **medium** — behavioral change (now landed) |
 | **P4** | Worker pool dry-run. `local_check` probes AI Max 2 (when available). No routing changes. | `local_llm_check.py`, profiles | low |
 | **P5** | V4-Flash local experimental profile. Add profile entry in `local_llm_profiles.json`. Manual invocation only. Ledger records provider=tongyi, model=v4-flash. | `local_llm_profiles.json` | low |
 
@@ -539,15 +539,19 @@ CLI surfaces them. No VERSION bump, no tag, no release.
 
 ### 13.5 Out-of-scope follow-ups (still open after P2)
 
-- **P3** (audit + docs reconciliation in progress; implementation not
-  started): Auto-upgrade restriction. Narrow `_check_quality_escalation`
-  (Path C in §4.3) so `confidence=="low"` and `uncertain_points > 3` no
-  longer auto-escalate by default; both restorable via env knobs.
-  `timeout` downgrade unchanged. Optional `review_necessity="user-forced"`
-  stamping. **Does not** add a `structural_risk` runtime trigger or a new
-  `escalate=` MCP parameter; both deferred to separate phases. See §4 for
-  the reconciled spec and §10 for the sub-phase split. Behavioral change —
-  P3-B/C sub-phases each require their own debate review per §5.
+- **P3** (**closed** — P3-A through P3-E landed): Auto-upgrade
+  restriction shipped. `_check_quality_escalation` (Path C in §4.3) was
+  narrowed so `confidence=="low"` and `uncertain_points > 3` no longer
+  auto-escalate by default; both restorable via env knobs
+  (`LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` /
+  `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN`, truthy values `true` / `1` /
+  `yes` / `on`, case-insensitive). `timeout` downgrade unchanged.
+  Optional `review_necessity="user-forced"` stamping (P3-C3) was
+  **skipped / deferred** — additive only, not required for the P3 core
+  objective; may be revived under a separately approved plan. **Did
+  not** add a `structural_risk` runtime trigger or a new `escalate=`
+  MCP parameter; both remain deferred to separate phases. See §4 for
+  the reconciled spec and §10 for the sub-phase commits.
 - **P4** (not started): Worker pool dry-run. `local_check` probes a
   second worker host (AI Max 2) when available. Ledger already records
   `worker_id` in `extra` for future use.

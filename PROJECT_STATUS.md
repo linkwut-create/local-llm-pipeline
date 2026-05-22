@@ -29,7 +29,7 @@
 | P3-C2.1 | Done (this entry) | Docs/status closeout. `PROJECT_STATUS.md` flip of P3-C2 from In review → Done. No code / test / `VERSION` / tag changes. VERSION remains `0.9.7`, HEAD carries no tag, no release cut. |
 | P3-C3 | Not started (optional) | Stamp `review_necessity="user-forced"` when MCP call carries explicit `profile` override. Additive only. Decision deferred: P3 core objective is already met without P3-C3; it remains optional, not blocking P3-D / P3-E. |
 | P3-D | Done (this entry) | Policy-doc final alignment with the narrowed P3 runtime. `CLAUDE.md` Escalation Rules table and `docs/mcp-task-policy.md` §Escalation Rules rewritten: `confidence=="low"` and `uncertain_points > 3` no longer auto-escalate by default; legacy behavior is opt-in via `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` / `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN` (truthy `true`/`1`/`yes`/`on`, case-insensitive); `timeout` clarified as a downgrade (not strong-model escalation); explicit non-claims that `structural_risk` runtime trigger, `escalate=true` / `user_requested` MCP parameter, and a strict `escalation_reason` enum exist. Ledger `escalation_trigger` value space (`timeout` / `low_confidence` / `uncertain_points` / `unknown`) reaffirmed. No runtime / test / `tools/**` / profile / ledger / `VERSION` / tag changes. P3-C3 remains optional/deferred. |
-| P3-E | Not started | Docs closeout for P3 chain. |
+| P3-E | Done (this entry) | Docs closeout for the P3 cost-discipline chain. **P3 chain closed** (P3-A → P3-A.1 → P3-B → P3-C1 → P3-C2 → P3-C2.1 → P3-D → P3-E). P3 core objective met: `confidence=="low"` and `len(uncertain_points) > 3` no longer auto-escalate by default; both legacy behaviors restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE` / `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN` (truthy `true`/`1`/`yes`/`on`, case-insensitive). `timeout` downgrade remains unconditional (a *downgrade*, not strong-model escalation). Path A / Path B / Path D unchanged; ledger schema and CLI surface unchanged; `escalation_trigger` value space (`timeout` / `low_confidence` / `uncertain_points` / `unknown`) unchanged; `escalation_reason` remains free-form string. P3-C3 (`review_necessity="user-forced"` ledger stamp) explicitly **skipped / deferred** — optional, additive, not required for the P3 core objective; may be revived as a separately approved phase. No `structural_risk` runtime trigger and no `escalate=true` / `user_requested` MCP parameter were introduced. **Next runway: P4 (worker pool dry-run)** or, if explicitly approved, P3-C3. No `tools/**` / `tests/**` / `CLAUDE.md` / `docs/mcp-task-policy.md` / `tools/call_ledger.py` / `tools/call_ledger_cli.py` / `tools/local_llm_profiles.json` / `VERSION` / tag changes. VERSION remains `0.9.7`. HEAD carries no tag. No release. |
 | P4 | Not started | Worker pool dry-run. |
 | P5 | Not started | V4-Flash local experimental profile. |
 
@@ -311,3 +311,19 @@ Do **not** do any of the following without an explicit new plan:
 - Bump `VERSION` away from `0.9.7`.
 - Create a tag at HEAD.
 - Cut a release.
+
+### Resolution (recorded at P3-E)
+
+Path **B** of the two recommended next-window paths above was taken:
+**P3-C3 skipped**, **P3-D** completed in commit `a2e6daf` (policy-doc
+alignment in `CLAUDE.md` and `docs/mcp-task-policy.md`), and **P3-E**
+completed in this commit (chain closeout). The "Not started" rows for
+P3-D and P3-E in the table above are preserved as a historical
+snapshot at P3-C2 handoff; the current state is reflected in the main
+MCP Cost Discipline table at the top of this file. None of the
+explicit prohibitions above were violated: `VERSION` stayed at
+`0.9.7`, no tag was created, no release was cut, ledger code/CLI/
+schema were not touched, and no `structural_risk` runtime trigger or
+`escalate=true` / `user_requested` MCP parameter was added. P3-C3
+remains optional and may be revived only under a separately approved
+plan.
