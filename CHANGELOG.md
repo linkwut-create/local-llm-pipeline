@@ -2,6 +2,35 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Hook silent-failure diagnostics P7-B.1 verification + P7-C phase
+  closeout. **P7 chain closed** (P7-A → P7-B → P7-B.1 → P7-C).
+  P7-B.1 (read-only, no commit) verified that the P7-B commit
+  `d0ae7fd` touched only the 9 allowed files (3 under
+  `tools/claude_hooks/`, 3 hook tests, 3 docs/status), produced zero
+  diff against the forbidden-files guard, and that the substance of
+  all five items (C3, C4, C5/C6, M4, M5/M6) is recorded across
+  `PROJECT_STATUS.md`, `CHANGELOG.md`, and
+  `docs/P6_RUNTIME_RELIABILITY_OBSERVABILITY_AUDIT.md` §13. The only
+  observed gap was a stale audit-doc footer phrase ("HEAD pending
+  commit") which is back-filled with `d0ae7fd` as part of this
+  P7-C closeout — no separate docs-only churn commit was filed.
+  **P7 phase result:** five previously-silent failure modes are now
+  structured-event observable while every caller-visible behavior is
+  preserved bit-for-bit — `state_load_failed` /
+  `state_save_failed` to `hook-events.jsonl`; auto-worker
+  spawn/log-write failures to `.local_llm_out/auto/_spawn_failures.log`
+  (self-truncating at 1 MB); three additive `mcp_doctor` auto-worker
+  checks; `mcp_shape_unknown` on unrecognized MCP `tool_response`
+  shapes (4 reasons). **Explicitly frozen / deferred at P7-C:**
+  C2 (streaming double-serialization), H6 (`classify_error` rewrite),
+  P6-B2-C (`record_call()` write-failure propagation), M3 (ledger
+  rotation), M7 (cost-estimate accuracy), P6-B3-B/H5 (MTP endpoint
+  config), P5-C. **Possible future directions, none authorized:**
+  P6-B2-C design-only planning; P6-B3-B design-only planning;
+  P7-D streaming contract correction; release prep. **No release at
+  P7-C:** VERSION remains `0.9.7`; HEAD carries no tag; no release;
+  no zip. No `tools/**` / `tests/**` / `VERSION` / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / tag / release changes in P7-C.
 - Hook silent-failure diagnostics bundle P7-A + P7-B. P7-A (audit at
   baseline `9d8af1d`) grouped remaining P6 deferred items by risk +
   subsystem + compatibility impact across 8 source files, recommending

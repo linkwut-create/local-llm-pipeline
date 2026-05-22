@@ -574,4 +574,90 @@ of Groups C/D for this slice.
 - **P7-D streaming contract correction (C2)** — only if explicitly
   approved; high blast radius across all 8 worker-backed MCP tools.
 
-*Last updated: P7-B bundle, HEAD pending commit. P6-A audit baseline `563e284`; P6-B3 audit baseline `3680464`; P7-A audit baseline `9d8af1d`.*
+*P7-B bundle landed at `d0ae7fd`; superseded for ongoing work by P7-B.1 verification and P7-C closeout below.*
+
+---
+
+## 14. P7-B.1 verification + P7-C phase closeout
+
+### 14.1 P7-B.1 — read-only post-commit verification (no commit)
+
+After P7-B landed at `d0ae7fd`, a read-only verification pass
+confirmed:
+
+- HEAD commit touched only the 9 allowed files
+  (`tools/claude_hooks/{mcp_gate,mcp_auto_worker,mcp_doctor}.py`,
+  `tests/test_mcp_{gate_boundary,auto_worker,doctor}.py`,
+  `PROJECT_STATUS.md`, `CHANGELOG.md`, and this audit document).
+- Zero diff against the P7-B forbidden-files guard (every file in
+  §13.4 above is byte-identical between `d0ae7fd` and `9d8af1d`).
+- All five P7-B items (C3, C4, C5/C6, M4, M5/M6) are substantively
+  recorded in `PROJECT_STATUS.md` row 56, the CHANGELOG Unreleased
+  entry, and §13.2 above.
+- Diagnostics-only contract recorded in all three docs; the
+  bit-for-bit return-value invariants are in §13.3 above.
+- Deferred items (C2, H6, P6-B2-C, M3, M7, P6-B3-B/H5, P5-C) are
+  reaffirmed in all three docs and §13.5 above.
+- VERSION `0.9.7`, no tag, no zip, no release.
+
+Only one cosmetic gap was observed at verification time: the previous
+footer of §13 said "HEAD pending commit" — accurate at write time,
+stale post-commit. Per policy this was not fixed by a standalone
+docs-only churn commit; instead it is back-filled in §14.4 below as
+part of P7-C.
+
+**P7-B.1 produced no commit.**
+
+### 14.2 P7-C — P7 phase closeout
+
+**P7 chain closed** (P7-A → P7-B → P7-B.1 → P7-C).
+
+| Finding | Status | Slice | Commit |
+|---------|--------|-------|--------|
+| C3 — `load_state` silent on `JSONDecodeError` / read failure | Fixed (diagnostic) | P7-B | `d0ae7fd` |
+| C4 — `save_state` silent on write/permission/encoding failure | Fixed (diagnostic) | P7-B | `d0ae7fd` |
+| C5/C6 — 4 spawn / log-write paths in `mcp_auto_worker.py` silent on `Popen` / `OSError` | Fixed (diagnostic) | P7-B | `d0ae7fd` |
+| M4 — `mcp_doctor.run_checks` did not inspect `.local_llm_out/auto/` | Fixed (3 additive checks) | P7-B | `d0ae7fd` |
+| M5 — `_extract_read_info` silently returns `(None, None)` on unknown shapes | Fixed (diagnostic, behavior preserved) | P7-B | `d0ae7fd` |
+| M6 — `review_tool_succeeded` silently returns `False` on unknown shapes | Fixed (diagnostic, behavior preserved) | P7-B | `d0ae7fd` |
+
+### 14.3 Items remaining deferred after P7-C
+
+| Item | Reason |
+|------|--------|
+| C2 | Streaming double-serialization — fixing changes the `stdout` field's contract for every worker-backed MCP tool. |
+| H6 | `classify_error` substring matching — fixing shifts ledger `error_type` distribution. |
+| P6-B2-C | `record_call()` write-failure propagation — explicit "must never crash the call" design intent. |
+| M3 | Ledger rotation — no archive layout decided. |
+| M7 | Cost-estimate accuracy — needs LAN-vs-local distinguisher. |
+| P6-B3-B / H5 | MTP endpoint hardcoding — pure display-only today; fixing introduces a config surface. |
+| P5-C | `_env` wiring / model warmup / per-profile provider hint. |
+
+### 14.4 Footer back-fill (audit cosmetic)
+
+The previous §13 footer line "*Last updated: P7-B bundle, HEAD pending
+commit. …*" was accurate before commit but stale afterwards. P7-B
+landed at `d0ae7fd`, recorded here so any future reader can match the
+P7-B implementation slice to its commit hash without consulting
+`git log`.
+
+### 14.5 Release status
+
+- VERSION remains `0.9.7`.
+- HEAD carries no tag.
+- No release. No zip.
+
+### 14.6 Possible future directions (none authorized by P7-C)
+
+- **P6-B2-C design-only planning** — propose a caller-side
+  write-failure propagation strategy without implementation.
+- **P6-B3-B design-only planning** — propose an MTP endpoint
+  configuration surface without implementation.
+- **P7-D streaming contract correction (C2)** — only with explicit
+  approval; high blast radius across all worker-backed MCP tools.
+- **Release prep** — only with explicit approval; would include
+  VERSION bump, tag, and zip.
+
+Each requires a separately approved plan; none are started by P7-C.
+
+*Last updated: P7-C closeout. P6-A audit baseline `563e284`; P6-B3 audit baseline `3680464`; P7-A audit baseline `9d8af1d`; P7-B implementation at `d0ae7fd`.*
