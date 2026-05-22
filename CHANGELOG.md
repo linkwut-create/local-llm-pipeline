@@ -2,6 +2,31 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Worker Pool Dry-Run P4-A: read-only audit + boundary lock-in. Adds
+  `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` recording: P4's hard
+  boundary as a probe-only diagnostic (no scheduler, no daemon, no
+  multi-host dispatch, no routing change, no ledger schema change,
+  no profile mutation); the current architecture findings
+  (`tools/local_llm_check.py:28` `_MTP_ENDPOINTS` already probes
+  three llama.cpp MTP endpoints; `call_local_check`
+  (`tools/local_llm_mcp_server.py:1926`) returns stdout/stderr only;
+  no per-profile host field; `worker_id` / `host` allowlisted in
+  `KNOWN_EXTRA_KEYS` but never stamped today); explicit non-goals;
+  the smallest viable P4-B slice (`--probe-workers --json` flag in
+  `tools/local_llm_check.py`, default path byte-identical, no MCP /
+  router / ledger / profile touches); the proposed structured probe
+  payload shape with `routing_changed=false` and
+  `ledger_stamped=false` baked in; a 9-item test plan for P4-B; a
+  risk list; and explicit stop conditions that escalate to human
+  review if scope creeps toward scheduling. `PROJECT_STATUS.md`
+  splits P4 into P4-A (Done) / P4-B (Not started) / P4-C (optional) /
+  P4-D (optional, closeout). **P4-B is not authorized by P4-A** and
+  requires separate approval. No `tools/**` / `tests/**` /
+  `tools/local_llm_profiles.json` / `tools/call_ledger.py` /
+  `tools/call_ledger_cli.py` / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / `docs/MCP_COST_DISCIPLINE_PLAN.md` /
+  `VERSION` / tag changes. VERSION remains `0.9.7`; HEAD carries no
+  tag; no release.
 - MCP Cost Discipline P3-E: docs closeout for the P3 chain. Flips
   `PROJECT_STATUS.md` P3-E from `Not started` → `Done`, records P3 as
   closed (P3-A → P3-A.1 → P3-B → P3-C1 → P3-C2 → P3-C2.1 → P3-D →
