@@ -2,6 +2,21 @@
 
 ## Unreleased (post-v0.9.7)
 
+- MCP Cost Discipline P3-C2 docs/status closeout + handoff checkpoint:
+  `PROJECT_STATUS.md` flips P3-C2 from `In review` → `Done (6669bae)`,
+  adds an explicit P3-C2.1 row, and appends a "P3-C2 Handoff / Next
+  Window Notes" section recording the clean baseline (HEAD `6669bae`,
+  `git describe v0.9.7-24-g6669bae`, VERSION `0.9.7`, no tag, no
+  release), the P3-A → P3-C2 progress summary, the P3 core-objective
+  completion statement, the remaining not-started items (P3-C3
+  optional, P3-D, P3-E), the two recommended next-window paths
+  (continue with P3-C3 vs skip to P3-D/P3-E), and explicit
+  prohibitions for the next window (no `structural_risk` runtime
+  trigger, no `escalate=true` / `user_requested` MCP parameter, no
+  `call_ledger.py` / `call_ledger_cli.py` edits, no VERSION bump, no
+  tag, no release). No runtime / test / `VERSION` changes; no
+  `tools/**` / `tests/**` / `CLAUDE.md` / `docs/mcp-task-policy.md` /
+  `docs/MCP_COST_DISCIPLINE_PLAN.md` edits.
 - MCP Cost Discipline P3-C2: second (and final core) behavioral flip in
   the auto-escalation chain. `_check_quality_escalation` in
   `tools/local_llm_mcp_server.py` now gates the `uncertain_points > 3`

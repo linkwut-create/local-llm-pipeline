@@ -25,8 +25,9 @@
 | P3-A.1 | Done (`3dde552`) | Docs-only reconciliation of `docs/MCP_COST_DISCIPLINE_PLAN.md` §1.1, §4 (rewritten as §4.1–§4.5), §10 P3 row, and §13.5 to match runtime at HEAD `e8a5315`. Narrowed P3 scope: P3 modifies Path C only; `structural_risk` runtime trigger and `user_requested` MCP parameter both deferred outside P3. No runtime / test / VERSION changes. |
 | P3-B | Done (`8fa0904`) | Env knob helper + constants in `tools/local_llm_mcp_server.py`: `_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE`, `_ENV_AUTO_ESCALATE_ON_UNCERTAIN`, `_parse_env_flag(name, default=False)`. Plumbing only — no behavioral wiring. New `tests/test_p3_env_knobs.py` (49 tests) covered parser semantics and runtime-invariance. |
 | P3-C1 | Done (`8b85a88`) | First behavioral flip: `confidence=="low"` auto-escalation default OFF; legacy restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true`. `_derive_escalation_trigger` gated in lock-step. `uncertain_points > 3` and `timeout` untouched. |
-| P3-C2 | In review | Second behavioral flip: `len(uncertain_points) > 3` auto-escalation now default OFF in `_check_quality_escalation`; legacy behavior restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true`. `_derive_escalation_trigger` gated in lock-step so the helper returns `"uncertain_points"` only when that knob is truthy; with both knobs OFF a dual-signal payload (`confidence=="low"` AND `uncertain_points > 3`) yields `result=None` and `trigger="unknown"`, matching the fact that no branch fires. P3 core objective met: neither quality signal auto-triggers strong-model invocation by default. `timeout` downgrade unchanged; Path A / Path B / Path D unchanged; ledger schema and CLI unchanged. `tests/test_p3_env_knobs.py` expanded to 104 tests adding the P3-C2 default-OFF parametrize, env-knob restore parametrize, threshold-guard (count==3 does not escalate), full 4-cell dual-signal matrix (`_set_knobs` helper), refreshed `_derive_escalation_trigger` per-knob coverage, 16-cell timeout-precedence matrix, and explicit P3-C1 regression guards. Existing autouse fixtures in `tests/test_mcp_escalation_ledger_env.py` and `tests/test_layer4_quality.py::TestQualityEscalation` (set both knobs `true`) carry through unchanged — no further test-file edits needed. No `call_ledger.py` / `call_ledger_cli.py` / `local_llm_profiles.json` / `CLAUDE.md` / `docs/mcp-task-policy.md` / `VERSION` / tag changes. |
-| P3-C3 | Not started (optional) | Stamp `review_necessity="user-forced"` when MCP call carries explicit `profile` override. Additive only. |
+| P3-C2 | Done (`6669bae`) | Second behavioral flip: `len(uncertain_points) > 3` auto-escalation default OFF in `_check_quality_escalation`; legacy restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true`. `_derive_escalation_trigger` gated in lock-step. With both knobs OFF, dual-signal payload (`confidence=="low"` AND `uncertain_points > 3`) yields `result=None` and `trigger="unknown"`. **P3 core objective complete: neither quality signal auto-triggers strong-model invocation by default.** `timeout` downgrade unchanged; Path A / Path B / Path D unchanged; ledger schema and CLI unchanged. `tests/test_p3_env_knobs.py` 72 → 104 tests. No `call_ledger.py` / `call_ledger_cli.py` / `local_llm_profiles.json` / `CLAUDE.md` / `docs/mcp-task-policy.md` / `VERSION` / tag changes. |
+| P3-C2.1 | Done (this entry) | Docs/status closeout. `PROJECT_STATUS.md` flip of P3-C2 from In review → Done. No code / test / `VERSION` / tag changes. VERSION remains `0.9.7`, HEAD carries no tag, no release cut. |
+| P3-C3 | Not started (optional) | Stamp `review_necessity="user-forced"` when MCP call carries explicit `profile` override. Additive only. Decision deferred: P3 core objective is already met without P3-C3; it remains optional, not blocking P3-D / P3-E. |
 | P3-D | Not started | CLAUDE.md + `docs/mcp-task-policy.md` final alignment with the narrowed runtime. |
 | P3-E | Not started | Docs closeout for P3 chain. |
 | P4 | Not started | Worker pool dry-run. |
@@ -254,3 +255,59 @@ Development focus returns to local-translator-agent.
 - Context Budget
 - Codex / Claude / external direct API call recording
 - Cross-project ledger aggregation tooling
+
+## P3-C2 Handoff / Next Window Notes
+
+### Clean baseline at handoff
+
+- HEAD = `6669bae` (P3-C2 source commit) + this docs/status closeout
+- `git describe --tags --dirty` = `v0.9.7-24-g6669bae` at the source commit
+- VERSION = `0.9.7` (unchanged across the entire P3 chain)
+- No tag at HEAD
+- No release cut
+- Working tree clean after this docs commit
+
+### P3 progress summary
+
+| Phase | Commit | Outcome |
+|-------|--------|---------|
+| P3-A | (audit, no code) | Identified four escalation-shaped paths (A/B/C/D) and three spec/runtime mismatches in `docs/MCP_COST_DISCIPLINE_PLAN.md` §4. |
+| P3-A.1 | `3dde552` | Docs-only reconciliation. Narrowed P3 scope: P3 modifies Path C only. `structural_risk` and `user_requested` deferred outside P3. |
+| P3-B | `8fa0904` | Plumbing only: `_ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE`, `_ENV_AUTO_ESCALATE_ON_UNCERTAIN`, `_parse_env_flag(name, default=False)`. No behavioral wiring. |
+| P3-C1 | `8b85a88` | First behavioral flip: `confidence=="low"` default OFF; legacy restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true`. `_derive_escalation_trigger` gated in lock-step. |
+| P3-C2 | `6669bae` | Second behavioral flip: `uncertain_points > 3` default OFF; legacy restorable via `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true`. `_derive_escalation_trigger` gated in lock-step. |
+
+### P3 core objective — complete
+
+- `confidence=="low"` no longer auto-triggers strong-model escalation by default.
+- `len(uncertain_points) > 3` no longer auto-triggers strong-model escalation by default.
+- Both legacy behaviors are restorable via their respective env knobs (truthy values: `true` / `1` / `yes` / `on`, case-insensitive).
+- `timeout` downgrade remains unconditional (it moves to a lighter model, not a heavier one — no cost inflation).
+- Path A (`_resolve_starting_profile` content-pattern routing), Path B (volume-based auto-debate in `call_review_diff`), Path D (hook-layer `classify_diff_risk` advisory) all unchanged.
+- Call ledger schema and CLI surface unchanged. `escalation_trigger` value space unchanged (`timeout` / `low_confidence` / `uncertain_points` / `unknown`); only the *frequency* of `low_confidence` and `uncertain_points` labels changes.
+- Test coverage: `tests/test_p3_env_knobs.py` 49 → 72 → 104 tests across P3-B → P3-C1 → P3-C2.
+
+### Not started
+
+| Item | Status | Description |
+|------|--------|-------------|
+| P3-C3 | Optional, not started | Stamp `review_necessity="user-forced"` when an MCP call carries an explicit `profile` override. Additive only — does not affect default escalation behavior. |
+| P3-D | Not started | CLAUDE.md + `docs/mcp-task-policy.md` final alignment with the narrowed runtime. |
+| P3-E | Not started | Docs closeout for the full P3 chain. |
+
+### Recommended next-window paths
+
+**A. Continue with optional feature work:** Evaluate whether P3-C3 (`review_necessity="user-forced"`) is worth shipping. It is additive (ledger-only, no behavioral change) and would close the loop on "user-forced model overrides should be visible in the ledger." If yes, run P3-C3 → P3-D → P3-E. If the value is unclear, skip P3-C3.
+
+**B. Close out P3 without P3-C3:** P3 core objective is met. Skip P3-C3 and run P3-D (policy doc alignment) → P3-E (chain closeout). This is the lower-risk path if you want to free the runway for P4 (worker pool dry-run) or other work.
+
+### Explicit prohibitions for the next window
+
+Do **not** do any of the following without an explicit new plan:
+
+- Introduce a `structural_risk` runtime trigger (deferred outside P3 in P3-A.1).
+- Add an `escalate=true` / `user_requested` MCP parameter (deferred outside P3 in P3-A.1).
+- Modify `tools/call_ledger.py` or `tools/call_ledger_cli.py` (ledger schema / CLI are frozen for the P3 chain).
+- Bump `VERSION` away from `0.9.7`.
+- Create a tag at HEAD.
+- Cut a release.
