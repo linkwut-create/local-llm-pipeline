@@ -405,4 +405,64 @@ explicitly deferred under that name from the P6-B3 audit.
 - MCP tool count = 9. P4 probe invariants unchanged.
 - VERSION = `0.9.7`. No tag, no release.
 
-*Last updated: P6-B3-A.1 closeout, HEAD `bfe537e`. P6-A audit baseline was `563e284`; P6-B3 audit baseline was `3680464`.*
+---
+
+## 12. P6 phase closeout (recorded at P6-C)
+
+**P6 chain closed.** Sequence:
+P6-A → P6-A.1 → P6-B1 → P6-B1.1 → P6-B1.2 → P6-B2-A → P6-B2-B →
+P6-B2-D → P6-B3 → P6-B3-A → P6-B3-A.1 → P6-C.
+
+### 12.1 Phase result — what P6 actually fixed
+
+| Finding | Status | Slice | Commit |
+|---------|--------|-------|--------|
+| C1 — subprocess timeout misclassified as `worker_failed_no_output` in `_wrap_worker_call` (streaming + non-streaming) | Fixed | P6-B1 | `4fcd83a` |
+| H2 — `health_store.last_timeout` never cleared after later success | Fixed | P6-B1 | `4fcd83a` |
+| M1 — `read_records()` silently skips corrupt JSONL lines, no count exposed | Fixed (signal source) | P6-B2-A | `ec74898` |
+| M2 — operator has no visibility into ledger read skips | Fixed (CLI surface) | P6-B2-B | `63693c7` |
+| M8 — `run_ollama_list()` subprocess unbounded, health check can wedge | Fixed | P6-B3-A | `bfe537e` |
+
+Plus three docs/status closeouts (P6-B1.2 / P6-B2-D / P6-B3-A.1) and
+one test hygiene cleanup (P6-B1.1, `a5637ee`).
+
+### 12.2 Explicitly frozen / deferred at P6-C
+
+| Item | Reason for deferral |
+|------|---------------------|
+| P6-B2-C | Write-failure propagation — `record_call()` return ignored by `_emit_ledger` and `_emit_debate_round_ledger`. Requires separate caller-side propagation design. |
+| P6-B3-B (= H5) | MTP endpoint hardcoding — would introduce a configuration surface (env var? CLI flag? auto-detection?). Out of scope for reliability fixes. |
+| C2 | Streaming JSON double-serialization — requires `run_subprocess_streaming` return contract redesign. |
+| C3 / C4 | Gate state save/load silent failure — hook protocol limitation; broader design needed. |
+| C5 / C6 | Auto-worker and audit event observability — separate sub-systems. |
+| H1 | `run_git()` has no diagnostic context — separate concern. |
+| H3 / H4 | Auto-worker collect/results TOCTOU — separate sub-system. |
+| H6 | `classify_error` string-heuristic brittleness — broader rewrite; C1 fix only addressed the timeout path. |
+| M3 | `call_ledger` file size management / rotation. |
+| M4 | `mcp_doctor` auto-worker diagnostics. |
+| M5 | `mcp_gate::_extract_read_info` MCP-format fragility. |
+| M6 | `mcp_gate::review_tool_succeeded` format-change false negatives. |
+| M7 | `call_ledger::estimate_cost_cny` LAN-proxy classification. |
+| P5-C | `_env` wiring / model warmup / per-profile provider hint. |
+
+### 12.3 Release status
+
+- VERSION remains `0.9.7`.
+- HEAD carries no tag.
+- No release. No zip.
+
+### 12.4 Possible future directions (none authorized by P6-C)
+
+- **P7** — read-only audit of remaining hook/gate observability surfaces
+  (C3/C4/C5/C6, M4/M5/M6) following the same audit-first / smallest-slice
+  pattern used in P3-A / P4-A / P5-A / P6-A.
+- **P6-B2-C design-only planning** — propose a caller-side
+  write-failure propagation strategy without implementation.
+- **P6-B3-B design-only planning** — propose an MTP endpoint
+  configuration surface design without implementation.
+- **Release prep** — only if explicitly approved; would include
+  VERSION bump, tag, and zip.
+
+Each requires a separately approved plan; none are started by P6-C.
+
+*Last updated: P6-C closeout, HEAD pending commit. P6-A audit baseline `563e284`; P6-B3 audit baseline `3680464`.*

@@ -2,6 +2,29 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Runtime Reliability / Observability P6-C: phase closeout. **P6 chain
+  closed** (P6-A → P6-A.1 → P6-B1 → P6-B1.1 → P6-B1.2 → P6-B2-A →
+  P6-B2-B → P6-B2-D → P6-B3 → P6-B3-A → P6-B3-A.1 → P6-C). P6 phase
+  result: subprocess timeout in `_wrap_worker_call` now produces
+  `error_type="timeout"` and reaches the health-store penalty path
+  (C1 + H2); `health_store.last_timeout` is cleared on subsequent
+  success; `tools/call_ledger.py::read_records_with_diagnostics()`
+  exposes corrupt/skipped JSONL line counts (M1/M2);
+  `call_ledger_cli.py --diagnostics` makes those diagnostics
+  operator-visible; `tools/local_llm_check.py::run_ollama_list()` is
+  bounded by a 30s subprocess timeout (M8) — health check can no
+  longer wedge on a stalled ollama CLI. **Explicitly frozen /
+  deferred:** P6-B2-C (write-failure propagation), P6-B3-B (MTP
+  endpoint hardcoding / configuration surface, same item as H5), C2
+  (streaming double-serialization), C3/C4 (gate state persistence),
+  C5/C6 (auto-worker / audit event observability), H1, H3/H4, H6,
+  M3–M7, P5-C. **No release**: VERSION remains `0.9.7`; HEAD carries
+  no tag; no release; no zip. **Possible future directions, none
+  authorized by P6-C:** P7 read-only audit of remaining hook/gate
+  observability; P6-B2-C design-only planning; P6-B3-B design-only
+  planning; release prep — each requires a separately approved plan.
+  No `tools/**` / `tests/**` / `VERSION` / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / tag / release changes in P6-C.
 - Runtime Reliability / Observability P6-B3 + P6-B3-A + P6-B3-A.1: local
   check timeout fix + docs closeout. P6-B3 (audit, baseline `3680464`)
   identified unbounded `subprocess.check_output(["ollama", "list"])` in
