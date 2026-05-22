@@ -2,6 +2,46 @@
 
 ## Unreleased (post-v0.9.7)
 
+- V4-Flash Experimental Profile P5-A: read-only audit + boundary
+  lock-in. Adds `docs/P5_V4_FLASH_EXPERIMENTAL_PROFILE_PLAN.md`
+  recording: P5's hard boundary as a single profile-entry change
+  (no routing change, no new MCP tool/parameter, no new provider,
+  no `tasks.json` default change, no P3 escalation wiring, no P4
+  probe wiring, no ledger schema change, no worker pool, no model
+  provisioning); the current architecture findings
+  (`tools/validate_configs.py:22` does not include `"experimental"`
+  in its `VALID_RISK_LEVELS` set while `tools/profile_policy.py:33`
+  does — a latent divergence P5-B must reconcile; profile schema
+  required fields are `model` / `risk_level` / `use_for`; policy
+  derivation in `_derive_experimental` / `_derive_auto_allowed` /
+  `_derive_default_review_necessity` already covers experimental
+  profiles correctly, so the policy machinery is data-ready; router
+  accepts `--profile` override; 8 of the 9 worker-backed MCP tools
+  already accept a `profile` parameter; worker only knows
+  `"ollama"` and `"openai-compatible"` providers — there is no
+  `"tongyi"` provider and the `MCP_COST_DISCIPLINE_PLAN.md:367`
+  reference to `provider=tongyi` is stale); explicit non-goals; the
+  smallest viable P5-B slice (Option A — one profile entry in
+  `tools/local_llm_profiles.json` named `v4_flash_local_experimental`
+  with `risk_level="experimental"` + a one-line allowlist alignment
+  in `tools/validate_configs.py`; Option B — same profile entry
+  with `risk_level="high"` and the latent divergence left in
+  place); an 11-item test plan; a 9-row risk list; and 8 stop
+  conditions that escalate to human review if scope creeps toward
+  routing/escalation/worker-pool/new-provider behavior.
+  `PROJECT_STATUS.md` splits the original `P5 | Not started` row
+  into P5-A (Done) / P5-B (Not started) / P5-C (optional) / P5-D
+  (optional, closeout). **P5-B is not authorized by P5-A** and
+  requires separate approval. No `tools/**` / `tests/**` /
+  `tools/local_llm_profiles.json` / `tools/validate_configs.py` /
+  `tools/local_llm_router.py` / `tools/local_llm_mcp_server.py` /
+  `tools/local_llm_worker.py` / `tools/local_llm_check.py` /
+  `tools/call_ledger.py` / `tools/call_ledger_cli.py` /
+  `tools/local_llm_tasks.json` / `tools/profile_policy.py` /
+  `tools/health_store.py` / `tools/claude_hooks/` / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / `docs/MCP_COST_DISCIPLINE_PLAN.md` /
+  `VERSION` / tag changes in P5-A. VERSION remains `0.9.7`; HEAD
+  carries no tag; no release.
 - Worker Pool Dry-Run P4-D: docs/status closeout for the P4 chain.
   Flips `PROJECT_STATUS.md` P4-D from `Not started, optional` →
   `Done` and records P4 as closed (P4-A → P4-B → P4-D), with P4-C
