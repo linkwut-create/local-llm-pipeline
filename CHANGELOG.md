@@ -2,6 +2,31 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Runtime Reliability / Observability P6-B3 + P6-B3-A + P6-B3-A.1: local
+  check timeout fix + docs closeout. P6-B3 (audit, baseline `3680464`)
+  identified unbounded `subprocess.check_output(["ollama", "list"])` in
+  `tools/local_llm_check.py::run_ollama_list()` (M8): the health check
+  itself hangs indefinitely if the ollama CLI blocks. P6-B3-A
+  (`bfe537e`) bounds the subprocess: signature becomes
+  `run_ollama_list(timeout: int = 30)`; uses
+  `subprocess.run([...], capture_output=True, text=True, timeout=timeout)`;
+  `TimeoutExpired` returns a failed `CheckResult` with
+  `"ollama list timed out after 30s"`; `FileNotFoundError` returns
+  `"ollama binary not found"`; nonzero exit surfaces stderr. Sole caller
+  (`build_probe_report()`) passes no argument — default 30s applies,
+  fully backward compatible. 4 new tests in `tests/test_check.py` (ok,
+  timeout, missing binary, nonzero exit) → 10 passed; P4/P5/P6/call_ledger
+  regression 180 passed. `docs/P6_RUNTIME_RELIABILITY_OBSERVABILITY_AUDIT.md`
+  M8 row marked CLOSED. P6-B3-A.1 (this entry) docs closeout: records
+  the audit baseline and `bfe537e` landing, defers P6-B3-B (MTP endpoint
+  hardcoding / false-positive risk — no `LOCAL_LLM_MTP_ENDPOINTS`, no
+  `--skip-mtp`, no host auto-detection), reaffirms deferral of P6-B2-C,
+  C2, C3/C4, C5/C6, H1/H3/H4/H6, M3–M7, P5-C. No MTP endpoint config,
+  no `all_ok` change, no P4 probe contract change,
+  no `recommend_profiles()` change, no router / worker / MCP server /
+  ledger / health_store / hooks / profile / task / `CLAUDE.md` /
+  `docs/mcp-task-policy.md` / `VERSION` / tag / release changes.
+  VERSION remains `0.9.7`; HEAD carries no tag; no release.
 - Runtime Reliability / Observability P6-B2-A + P6-B2-B + P6-B2-D:
   call ledger read diagnostics + CLI reporting + docs closeout.
   P6-B2-A (`ec74898`) adds `read_records_with_diagnostics()` to

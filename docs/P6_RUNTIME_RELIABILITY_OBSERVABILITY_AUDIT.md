@@ -324,10 +324,85 @@ Write-failure propagation: `record_call()` return value ignored by
 worker (`_emit_ledger`) and debate (`_emit_debate_round_ledger`).
 Requires separate design. Not authorized.
 
+### P6-B3 — read-only audit of `local_llm_check` (baseline `3680464`)
+
+Audit re-scoped `tools/local_llm_check.py` for blocking subprocess
+calls. Re-confirmed M8: `run_ollama_list()` uses
+`subprocess.check_output(["ollama", "list"], …)` with no `timeout=`
+kwarg, so if the ollama CLI hangs (network stall, broken pipe,
+upstream daemon deadlock) the health check itself wedges, and any
+caller — including `build_probe_report()` and the auto-invocation
+SessionStart `local_check` — blocks indefinitely.
+
+Recommended smallest viable slice: **P6-B3-A — timeout-only fix on
+`run_ollama_list()`**, with explicit deferral of MTP endpoint
+hardcoding, `all_ok` semantics, P4 probe contract changes, and
+`recommend_profiles()` silent-failure cleanup.
+
+### P6-B3-A (completed `bfe537e`): bounded `ollama list` subprocess
+
+- `tools/local_llm_check.py::run_ollama_list()` signature changes from
+  `()` to `(timeout: int = 30)`.
+- Replaces `subprocess.check_output(["ollama", "list"], text=True,
+  stderr=subprocess.DEVNULL)` with
+  `subprocess.run(["ollama", "list"], capture_output=True, text=True,
+  timeout=timeout)`.
+- `TimeoutExpired` → `CheckResult("ollama_list", False,
+  "ollama list timed out after 30s")`.
+- `FileNotFoundError` → `CheckResult("ollama_list", False,
+  "ollama binary not found")`.
+- Nonzero exit → `CheckResult("ollama_list", False,
+  "ollama list failed: <stderr or exit code>")`.
+- Existing parse path (skip header, take first whitespace token per
+  line) and the trailing `except Exception` fallback are preserved.
+- Sole caller (`build_probe_report()` at `local_llm_check.py:447`)
+  uses no argument — default 30s applies, fully backward compatible.
+- 4 new tests in `tests/test_check.py` (ok / timeout / missing binary /
+  nonzero exit) → 10 passed for the file.
+- Regression: 180 passed across `tests/test_p4_worker_pool_dry_run.py`,
+  `tests/test_p5_v4_flash_experimental.py`,
+  `tests/test_p6_timeout_observability.py`, `tests/test_call_ledger.py`.
+- M8 row above marked **CLOSED (P6-B3-A)**.
+
+### P6-B3-B (deferred / not authorized)
+
+MTP endpoint hardcoding / false-positive risk
+(`tools/local_llm_check.py::_MTP_ENDPOINTS` pinned to one host).
+Unreachable endpoints inflate failure counts for environments that do
+not run MTP. Out of scope for P6-B3. Requires a separate design
+covering: configuration surface (env var? CLI flag? auto-detection?),
+interaction with `build_probe_report()` schema and `all_ok` semantics,
+and the boundary against turning a reliability fix into a
+configuration-system expansion. Specifically excluded from this slice:
+
+- No `LOCAL_LLM_MTP_ENDPOINTS` environment variable.
+- No `--skip-mtp` CLI flag.
+- No host auto-detection.
+
+### Remaining P6 findings — explicitly deferred (reaffirmed at P6-B3-A.1)
+
+- P6-B2-C — write-failure propagation (`record_call()` return ignored).
+- C2 — streaming JSON double-serialization.
+- C3 / C4 — gate state save/load silent failure.
+- C5 / C6 — auto-worker and audit event observability.
+- H1 — `run_git()` no diagnostic context.
+- H3 / H4 — auto-worker collect/results TOCTOU.
+- H6 — `classify_error` string heuristic brittleness.
+- M3 — `call_ledger` file size management / rotation.
+- M4 — `mcp_doctor` auto-worker diagnostics.
+- M5 — `mcp_gate::_extract_read_info` MCP-format fragility.
+- M6 — `mcp_gate::review_tool_succeeded` format-change false negatives.
+- M7 — `call_ledger::estimate_cost_cny` LAN-proxy classification.
+- P5-C — `_env` wiring / model warmup / per-profile provider hint.
+
+H5 (MTP endpoint hardcoding) is **the same item as P6-B3-B** above —
+explicitly deferred under that name from the P6-B3 audit.
+
 ### Boundaries reaffirmed
 
 - No router / worker / ledger schema / hooks changes in any P6-B slice.
+- No MTP endpoint configuration surface anywhere in P6-B3.
 - MCP tool count = 9. P4 probe invariants unchanged.
 - VERSION = `0.9.7`. No tag, no release.
 
-*Last updated: P6-B2-D closeout, HEAD `63693c7`. P6-A audit baseline was `563e284`.*
+*Last updated: P6-B3-A.1 closeout, HEAD `bfe537e`. P6-A audit baseline was `563e284`; P6-B3 audit baseline was `3680464`.*
