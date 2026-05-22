@@ -304,10 +304,30 @@ line count/reporting (M1/M2 from P6-A). Smallest viable change:
 `read_records()` exposes skip count; `call_ledger_cli.py` reports it.
 Requires separate approval.
 
+### P6-B2-A (completed `ec74898`): read diagnostics signal source
+
+Added `read_records_with_diagnostics()` to `tools/call_ledger.py`. Returns
+`{records, total_lines, empty_lines, malformed_json_lines, non_dict_lines,
+skipped_lines, errors}`. Errors bounded to 20 entries.
+`read_records()` unchanged. 8 focused tests. 217 passed regression.
+
+### P6-B2-B (completed `63693c7`): CLI operator-visible reporting
+
+Added `--diagnostics` flag to `call_ledger_cli.py`. `summary` command
+displays skipped/corrupt line counts and error examples. JSON output
+wraps summary + diagnostics in combined object with `_diagnostics`
+sub-key. Default output unchanged without flag. 5 CLI tests. 222 passed.
+
+### P6-B2-C (deferred / not authorized)
+
+Write-failure propagation: `record_call()` return value ignored by
+worker (`_emit_ledger`) and debate (`_emit_debate_round_ledger`).
+Requires separate design. Not authorized.
+
 ### Boundaries reaffirmed
 
 - No router / worker / ledger schema / hooks changes in any P6-B slice.
 - MCP tool count = 9. P4 probe invariants unchanged.
 - VERSION = `0.9.7`. No tag, no release.
 
-*Last updated: P6-B1.2 closeout, HEAD `a5637ee`. P6-A audit baseline was `563e284`.*
+*Last updated: P6-B2-D closeout, HEAD `63693c7`. P6-A audit baseline was `563e284`.*

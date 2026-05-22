@@ -2,6 +2,20 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Runtime Reliability / Observability P6-B2-A + P6-B2-B + P6-B2-D:
+  call ledger read diagnostics + CLI reporting + docs closeout.
+  P6-B2-A (`ec74898`) adds `read_records_with_diagnostics()` to
+  `tools/call_ledger.py` — returns `{records, total_lines, empty_lines,
+  malformed_json_lines, non_dict_lines, skipped_lines, errors}` with
+  errors bounded to 20; `read_records()` unchanged (backward compatible).
+  P6-B2-B (`63693c7`) adds `--diagnostics` flag to `call_ledger_cli.py`;
+  `summary` command displays skipped/corrupt line counts and error
+  examples; JSON output wraps summary + diagnostics in combined object
+  with `_diagnostics` sub-key; default output unchanged without flag.
+  P6-B2-D (this entry) docs closeout: records both slices, defers
+  P6-B2-C (write-failure propagation) and remaining P6 items (C2–C6,
+  H3–H6, M3–M8). 222 tests passed. No `call_ledger.py` schema change,
+  no `VERSION` / worker / MCP server / router changes.
 - Runtime Reliability / Observability P6-B1 + P6-B1.1 + P6-B1.2:
   timeout observability fix + test hygiene + docs closeout. P6-B1
   (`4fcd83a`) fixes C1 + H2: subprocess timeout in `_wrap_worker_call`
