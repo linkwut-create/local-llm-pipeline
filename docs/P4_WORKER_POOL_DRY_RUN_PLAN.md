@@ -291,9 +291,9 @@ files.
 | Sub-phase | Status | Scope |
 |-----------|--------|-------|
 | **P4-A** | Done | Read-only audit + boundary lock-in. Docs-only. No runtime / test / profile / ledger / VERSION / tag changes. |
-| **P4-B** | **Done** (this entry) | Smallest viable implementation slice per §5 shipped: `--probe-workers` / `--json` flags + `build_probe_report()` + `PROBE_REPORT_SCHEMA_VERSION = 1` in `tools/local_llm_check.py`; 32 new tests in `tests/test_p4_worker_pool_dry_run.py`. Default invocation unchanged. MCP `call_local_check` contract unchanged. `routing_changed` / `ledger_stamped` literal `False`. |
-| **P4-C** | Not started, optional | Configurable worker list (env var / JSON). Only after P4-B has been used and a real configuration need has emerged. |
-| **P4-D** | Not started, optional | Docs/status closeout for P4 chain (mirrors P3-E pattern). |
+| **P4-B** | Done | Smallest viable implementation slice per §5 shipped: `--probe-workers` / `--json` flags + `build_probe_report()` + `PROBE_REPORT_SCHEMA_VERSION = 1` in `tools/local_llm_check.py`; 32 new tests in `tests/test_p4_worker_pool_dry_run.py`. Default invocation unchanged. MCP `call_local_check` contract unchanged. `routing_changed` / `ledger_stamped` literal `False`. |
+| **P4-C** | **Skipped / deferred (optional)** | Configurable worker list (env var / JSON). Not required for the P4 core objective ("probe-only diagnostic, no scheduling"). May be revived only under a separately approved plan that re-cites §2 / §4 / §6 / §8. |
+| **P4-D** | **Done** (this entry) | Docs/status closeout for the P4 chain. See §7.2 below. |
 
 ### 7.1 P4-B landed surface (recap)
 
@@ -317,6 +317,72 @@ files.
 
 P4-B did not authorize P4-C. Any P4-C work (env var / JSON
 configuration surface) must re-cite this §2 / §4 / §6 set verbatim.
+
+### 7.2 Resolution / Closeout (recorded at P4-D)
+
+**P4 chain is closed.** Final state:
+
+| Sub-phase | Outcome |
+|-----------|---------|
+| P4-A | Done (`212428e`) — read-only audit and boundary lock-in. |
+| P4-B | Done (`1e68dc3`) — CLI-opt-in JSON probe surface in `tools/local_llm_check.py`. |
+| P4-C | Skipped / deferred — configurable worker list is **not** required for the P4 core objective. |
+| P4-D | Done (this entry) — docs/status closeout. |
+
+What landed (from P4-B, recapped here for the close-out reader):
+
+- `tools/local_llm_check.py --probe-workers --json` emits a single
+  JSON object with `PROBE_REPORT_SCHEMA_VERSION = 1` and the
+  contract shape from §5.2.
+- `--probe-workers` alone appends a human-readable "Worker Pool
+  Dry-Run Probe (diagnostic only)" section to the existing health
+  check.
+- `--json` alone is a no-op for probing.
+- Default invocation (no flags) is byte-equivalent (modulo
+  timestamps) to the pre-P4-B build.
+- 32 tests in `tests/test_p4_worker_pool_dry_run.py` pin the shape,
+  the reachability bucketing, the four CLI flag combinations, the
+  literal-`False` invariants for `routing_changed` and
+  `ledger_stamped`, and source-level "no router / no ledger" guards.
+
+The hard boundary established in §2 and §4 was **not** breached
+anywhere in the P4 chain. Throughout P4-A → P4-B → P4-D, none of
+the following entered the codebase:
+
+- A worker pool runtime, queue, scheduler, daemon, or persistent
+  background worker.
+- Any automatic multi-host execution / cross-machine task dispatch.
+- Subprocess-based remote execution against a second host.
+- New ledger schema fields. `worker_id` / `host` remain allowlisted
+  in `KNOWN_EXTRA_KEYS` but are still **not stamped** by any call
+  site.
+- Routing changes. `_resolve_starting_profile`,
+  `is_profile_healthy`, `tools/local_llm_router.py`, and Path A /
+  Path B / Path D (from `docs/MCP_COST_DISCIPLINE_PLAN.md` §4.3)
+  were not touched.
+- MCP `call_local_check` contract changes. It still shells out and
+  returns `{stdout, stderr}`. The structured probe surface remains
+  CLI-only.
+- Profile mutations. `tools/local_llm_profiles.json` is unchanged.
+- Cross-machine tensor parallelism or unified VRAM.
+- V4-Flash local runtime provisioning.
+- `VERSION` bumps, tags, or release cuts.
+
+Why P4-C was skipped: the P4 core deliverable is a structured,
+diagnostic-only probe surface that an operator can read. P4-B
+already provides this. A configurable worker list would introduce
+new config semantics (env var or JSON), worker-identity conventions,
+precedence rules vs. existing `LOCAL_LLM_BASE_URL` / `OLLAMA_HOST`
+resolution, and a likely pull toward stamping `worker_id` in the
+ledger — all of which are exactly the "scheduling footprint"
+non-goals §2 forbids. Until a concrete operational need for a
+second worker host appears, P4-C remains optional.
+
+**Next runway: P5 (V4-Flash local experimental profile)**, starting
+from a P5-A read-only audit (mirroring the P3-A / P4-A pattern). If
+a real worker-pool configuration need surfaces before P5, P4-C may
+be revived — but it requires a separately approved plan that
+re-cites §2 / §4 / §6 / §8 verbatim.
 
 ## 8. Stop conditions
 

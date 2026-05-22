@@ -2,6 +2,35 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Worker Pool Dry-Run P4-D: docs/status closeout for the P4 chain.
+  Flips `PROJECT_STATUS.md` P4-D from `Not started, optional` →
+  `Done` and records P4 as closed (P4-A → P4-B → P4-D), with P4-C
+  (`configurable worker list`) explicitly **skipped / deferred** —
+  not required for the P4 core objective ("probe-only diagnostic,
+  no scheduling"); may be revived only under a separately approved
+  plan that re-cites the boundary contract in
+  `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` §2 / §4 / §6 / §8. P4 core
+  objective reaffirmed: `tools/local_llm_check.py --probe-workers
+  --json` emits a structured diagnostic report
+  (`PROBE_REPORT_SCHEMA_VERSION = 1`) reusing existing endpoint
+  sources only; default invocation behavior preserved; MCP
+  `call_local_check` contract unchanged; `routing_changed` and
+  `ledger_stamped` baked in as the literal boolean `False`. Adds a
+  "Resolution / Closeout (recorded at P4-D)" section to
+  `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` documenting the closed
+  state, the explicit P4-C deferral, and the unchanged hard
+  boundary (no scheduler, no daemon, no queue loop, no background
+  worker, no automatic multi-host execution, no router changes, no
+  MCP contract change, no ledger stamping, no profile mutation).
+  P5 (V4-Flash local experimental profile) is the next runway,
+  starting from a P5-A read-only audit. No `tools/**` / `tests/**`
+  / `tools/local_llm_check.py` / `tools/local_llm_mcp_server.py` /
+  `tools/local_llm_router.py` / `tools/call_ledger.py` /
+  `tools/call_ledger_cli.py` / `tools/local_llm_profiles.json` /
+  `tools/local_llm_worker.py` / `tools/health_store.py` /
+  `tools/claude_hooks/` / `CLAUDE.md` / `docs/mcp-task-policy.md`
+  / `docs/MCP_COST_DISCIPLINE_PLAN.md` / `VERSION` / tag changes.
+  VERSION remains `0.9.7`; HEAD carries no tag; no release.
 - Worker Pool Dry-Run P4-B: smallest viable implementation slice per
   `docs/P4_WORKER_POOL_DRY_RUN_PLAN.md` §5. Adds two opt-in CLI flags
   to `tools/local_llm_check.py`:
