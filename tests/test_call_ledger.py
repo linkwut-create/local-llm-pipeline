@@ -1154,3 +1154,100 @@ def test_diagnostics_mixed_valid_and_skipped(clean_env, ledger_path):
         result["empty_lines"] + result["malformed_json_lines"] +
         result["non_dict_lines"]
     )
+
+
+# ---------------------------------------------------------------------------
+# P6-B2-B: CLI --diagnostics
+# ---------------------------------------------------------------------------
+
+
+def _seed_dirty_ledger(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        '{"task_type": "review", "success": true, "project": "p", '
+        '"input_tokens": 100, "output_tokens": 50, "total_tokens": 150, '
+        '"duration_ms": 1000, "estimated_cost_cny": 0.0, '
+        '"timestamp": "2026-01-01T00:00:00Z"}\n'
+        'this is corrupt\n'
+        '\n'
+        '{"task_type": "summarize", "success": true, "project": "p", '
+        '"input_tokens": 200, "output_tokens": 80, "total_tokens": 280, '
+        '"duration_ms": 500, "estimated_cost_cny": 0.0, '
+        '"timestamp": "2026-01-02T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+
+def test_cli_summary_without_diagnostics_is_backward_compatible(
+    clean_env, ledger_path, capsys,
+):
+    _seed_dirty_ledger(ledger_path)
+    rc = call_ledger_cli.main(
+        ["--path", str(ledger_path), "--format", "table", "summary"],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "calls:" in out
+    assert "diagnostics" not in out.lower()
+
+
+def test_cli_summary_with_diagnostics_shows_skipped_counts(
+    clean_env, ledger_path, capsys,
+):
+    _seed_dirty_ledger(ledger_path)
+    rc = call_ledger_cli.main(
+        ["--path", str(ledger_path), "--format", "table",
+         "--diagnostics", "summary"],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "ledger diagnostics" in out.lower()
+    assert "skipped:" in out
+    assert "malformed JSON:" in out
+    assert "empty:" in out
+
+
+def test_cli_summary_with_diagnostics_json_output(
+    clean_env, ledger_path, capsys,
+):
+    _seed_dirty_ledger(ledger_path)
+    rc = call_ledger_cli.main(
+        ["--path", str(ledger_path), "--format", "json",
+         "--diagnostics", "summary"],
+    )
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    # Combined JSON: summary fields + _diagnostics sub-object
+    assert data["calls"] == 2
+    diag = data["_diagnostics"]
+    assert diag["total_lines"] == 4
+    assert diag["skipped_lines"] == 2
+    assert diag["malformed_json_lines"] == 1
+    assert diag["empty_lines"] == 1
+
+
+def test_cli_summary_with_diagnostics_handles_missing_file(
+    clean_env, ledger_path, capsys,
+):
+    # ledger_path does not exist yet
+    rc = call_ledger_cli.main(
+        ["--path", str(ledger_path), "--format", "table",
+         "--diagnostics", "summary"],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "total lines:        0" in out
+
+
+def test_cli_diagnostics_does_not_affect_other_commands(
+    clean_env, ledger_path, capsys,
+):
+    _seed_dirty_ledger(ledger_path)
+    rc = call_ledger_cli.main(
+        ["--path", str(ledger_path), "--format", "table",
+         "--diagnostics", "recent", "--limit", "1"],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    # recent currently doesn't show diagnostics, but should still work
+    assert "OK" in out or "FAIL" in out

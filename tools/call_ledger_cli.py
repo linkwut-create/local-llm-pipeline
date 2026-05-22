@@ -27,6 +27,7 @@ from call_ledger import (
     group_by,
     group_by_extra,
     read_records,
+    read_records_with_diagnostics,
     recent,
     summarize,
 )
@@ -164,7 +165,59 @@ def _print_debates(records: list[dict], fmt: str) -> None:
         )
 
 
+def _print_diagnostics(diag: dict, fmt: str) -> None:
+    """Print ledger read diagnostics (--diagnostics flag)."""
+    if fmt == "json":
+        out = {
+            "total_lines": diag["total_lines"],
+            "skipped_lines": diag["skipped_lines"],
+            "empty_lines": diag["empty_lines"],
+            "malformed_json_lines": diag["malformed_json_lines"],
+            "non_dict_lines": diag["non_dict_lines"],
+            "errors_count": len(diag["errors"]),
+        }
+        if diag["errors"]:
+            out["error_examples"] = diag["errors"][:5]
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return
+    print("--- ledger diagnostics ---")
+    print(f"total lines:        {diag['total_lines']}")
+    print(f"  valid records:    {len(diag['records'])}")
+    print(f"  skipped:          {diag['skipped_lines']}")
+    if diag["empty_lines"]:
+        print(f"    empty:          {diag['empty_lines']}")
+    if diag["malformed_json_lines"]:
+        print(f"    malformed JSON: {diag['malformed_json_lines']}")
+    if diag["non_dict_lines"]:
+        print(f"    non-dict JSON:  {diag['non_dict_lines']}")
+    if diag["errors"]:
+        print(f"errors:             {len(diag['errors'])} (showing first 5)")
+        for err in diag["errors"][:5]:
+            print(f"  line {err['line_number']}: {err['error']}")
+    print()
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
+    if getattr(args, "diagnostics", False):
+        diag = read_records_with_diagnostics(_resolve_path(args.path))
+        summary = summarize(diag["records"])
+        if args.format == "json":
+            combined = dict(summary)
+            combined["_diagnostics"] = {
+                "total_lines": diag["total_lines"],
+                "skipped_lines": diag["skipped_lines"],
+                "empty_lines": diag["empty_lines"],
+                "malformed_json_lines": diag["malformed_json_lines"],
+                "non_dict_lines": diag["non_dict_lines"],
+                "errors_count": len(diag["errors"]),
+            }
+            if diag["errors"]:
+                combined["_diagnostics"]["error_examples"] = diag["errors"][:5]
+            print(json.dumps(combined, ensure_ascii=False, indent=2))
+        else:
+            _print_summary(summary, args.format)
+            _print_diagnostics(diag, args.format)
+        return 0
     records = read_records(_resolve_path(args.path))
     _print_summary(summarize(records), args.format)
     return 0
@@ -239,6 +292,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"path to ledger file (default: {LEDGER_FILE})")
     p.add_argument("--format", choices=("table", "json"), default="table",
                    help="output format (default: table)")
+    p.add_argument("--diagnostics", action="store_true", default=False,
+                   help="show ledger read diagnostics (skipped/corrupt lines)")
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("summary", help="show aggregate totals").set_defaults(func=cmd_summary)
