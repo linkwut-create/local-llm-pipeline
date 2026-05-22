@@ -465,4 +465,113 @@ one test hygiene cleanup (P6-B1.1, `a5637ee`).
 
 Each requires a separately approved plan; none are started by P6-C.
 
-*Last updated: P6-C closeout, HEAD pending commit. P6-A audit baseline `563e284`; P6-B3 audit baseline `3680464`.*
+*P6 closeout reference; superseded for ongoing work by P7-A audit and P7-B bundle below.*
+
+---
+
+## 13. P7-A grouped audit + P7-B bundled implementation
+
+### 13.1 P7-A audit (baseline `9d8af1d`)
+
+Read-only audit of every P6-deferred item, grouped by risk +
+subsystem + compatibility impact. Inspected 8 source files:
+`tools/claude_hooks/{mcp_gate,mcp_auto_worker,mcp_doctor}.py`,
+`tools/local_llm_mcp_server.py`, `tools/local_llm_check.py`,
+`tools/call_ledger.py`, `tools/local_llm_worker.py`,
+`tools/local_llm_debate.py`.
+
+**Group A — hook silent persistence (diagnostics-friendly, no behavior change):**
+C3 (`load_state` swallow), C4 (`save_state` swallow), C5/C6 (4 spawn
+paths in `mcp_auto_worker.py` swallow), M4 (doctor never inspects
+`.local_llm_out/auto/`).
+
+**Group B — MCP response parsing visibility (diagnostics-only sliver):**
+M5 (`_extract_read_info` silently returns `(None, None)` on unknown
+shapes), M6 (`review_tool_succeeded` silently returns False).
+
+**Group C — runtime contract changes (isolated, deferred):**
+C2 (`stdout=json.dumps(output, …)` at `mcp_server.py:1417` — fixing
+breaks all 8 worker-backed MCP tool callers), H6 (`classify_error`
+substring ordering is load-bearing — shifts ledger `error_type`
+distribution).
+
+**Group D–H — design-surface items (postponed long-term):**
+P6-B2-C (`record_call()` write-failure propagation — explicit design
+intent against), M3 (ledger rotation — no `MAX_LEDGER_SIZE` constant
+exists), M7 (`estimate_cost_cny` LAN-proxy classification — LAN at
+`193.168.2.2` looks "local" by IP), P6-B3-B/H5 (`_MTP_ENDPOINTS`
+hardcoded — **note: MTP results are display-only, NOT folded into
+`all_ok` at `local_llm_check.py:508`**).
+
+**Group I — feature carryover (on-demand only):** P5-C.
+
+**Verdict:** bundle Group A + Group B sliver + M4 as **P7-B
+"Hook silent-failure diagnostics"** — all share the
+"log silent failure, return same value" pattern. Reject any bundling
+of Groups C/D for this slice.
+
+### 13.2 P7-B bundled implementation
+
+| # | Item | File | Mechanism |
+|---|------|------|-----------|
+| 1 | C3 — state load failure visible | `tools/claude_hooks/mcp_gate.py::load_state` | On `except`, `log_event(config_dir, {"event":"state_load_failed", "error_type":…, "error":…})`. Return value (`_STATE_DEFAULTS`) unchanged. |
+| 2 | C4 — state save failure visible | `tools/claude_hooks/mcp_gate.py::save_state` | On `except`, `log_event(config_dir, {"event":"state_save_failed", …})`. Return value unchanged. |
+| 3 | C5/C6 — spawn failure visible | `tools/claude_hooks/mcp_auto_worker.py` (4 spawn paths) | New `_record_spawn_failure(repo_root, fn, cmd, error)` helper writes one JSONL line per failure to `.local_llm_out/auto/_spawn_failures.log`. Self-truncates at 1 MB. Helper itself swallows all exceptions. Fire-and-forget preserved. |
+| 4 | M4 — doctor auto-worker checks | `tools/claude_hooks/mcp_doctor.py::run_checks` | 3 additive checks: `auto_dir_present` (WARN on missing, OK on present), `auto_results_count` (OK / WARN at >50), `spawn_failures_log` (OK absent/empty, WARN non-empty, FAIL >1 MB). No existing-check semantics changed. |
+| 5 | M5/M6 — unknown MCP shape warning | `tools/claude_hooks/mcp_gate.py::_extract_read_info`, `review_tool_succeeded` | Add optional `config_dir` parameter (default `None`). On unrecognized non-empty `tool_response`, call new `_log_mcp_shape_unknown(config_dir, payload, reason=…)`. Reasons: `no_known_read_shape` / `empty_text_from_nonempty_response` / `text_not_json` / `result_not_dict`. Return values preserved bit-for-bit. Legacy callers (no `config_dir`) remain purely passive. |
+
+### 13.3 Behavior preservation contract (P7-B invariants)
+
+- `load_state(config_dir)` returns the same dict for the same input
+  state file content (corrupt → defaults).
+- `save_state(config_dir, state)` has no return value and writes the
+  same bytes on success; on failure it remains silent to its caller.
+- `spawn_background` / `spawn_local_check` / `spawn_summarize_file` /
+  `spawn_review_diff` remain fire-and-forget. Failures do not raise.
+- `_extract_read_info(payload)` (no `config_dir`) returns the exact
+  same `(file_path, num_lines)` tuple as before.
+- `review_tool_succeeded(payload)` (no `config_dir`) returns the exact
+  same bool as before.
+- `mcp_doctor.run_checks` adds three new check entries to the results
+  list; existing entries are unmodified in count, name, and status
+  semantics.
+- No new MCP tool, no new CLI flag, no `VERSION` bump, no tag, no
+  release.
+
+### 13.4 Forbidden files (zero diff)
+
+`tools/local_llm_mcp_server.py`, `tools/local_llm_worker.py`,
+`tools/local_llm_debate.py`, `tools/local_llm_router.py`,
+`tools/call_ledger.py`, `tools/call_ledger_cli.py`,
+`tools/health_store.py`, `tools/local_llm_check.py`,
+`tools/local_llm_profiles.json`, `tools/local_llm_tasks.json`,
+`CLAUDE.md`, `docs/mcp-task-policy.md`, `VERSION`.
+
+### 13.5 Items remaining deferred after P7-B
+
+| Item | Reason |
+|------|--------|
+| C2 | Streaming double-serialization — fixing changes the `stdout` field's contract for every MCP tool that consumes it. |
+| H6 | `classify_error` substring matching — fixing shifts ledger `error_type` distribution. |
+| P6-B2-C | Write-failure propagation — has explicit "must never crash the call" design intent. |
+| M3 | Ledger rotation — no archive layout decided. |
+| M7 | Cost-estimate accuracy — needs LAN-vs-local distinguisher. |
+| P6-B3-B / H5 | MTP endpoint hardcoding — pure display-only today; fixing introduces config surface. |
+| P5-C | Feature carryover — only on demand. |
+
+### 13.6 Release status
+
+- VERSION remains `0.9.7`.
+- HEAD carries no tag.
+- No release. No zip.
+
+### 13.7 Possible future directions (none authorized by P7-B)
+
+- **P7-C closeout** — docs-only retrospective entry once P7-B is
+  observed in production for some time.
+- **P6-B2-C / P6-B3-B design-only planning** — produce a proposal
+  document, no code.
+- **P7-D streaming contract correction (C2)** — only if explicitly
+  approved; high blast radius across all 8 worker-backed MCP tools.
+
+*Last updated: P7-B bundle, HEAD pending commit. P6-A audit baseline `563e284`; P6-B3 audit baseline `3680464`; P7-A audit baseline `9d8af1d`.*

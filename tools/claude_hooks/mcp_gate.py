@@ -201,7 +201,7 @@ def _extract_mcp_response_text(resp) -> str:
     return ""
 
 
-def review_tool_succeeded(payload: dict) -> bool:
+def review_tool_succeeded(payload: dict, config_dir: str | None = None) -> bool:
     """Return True only if the MCP review tool call clearly succeeded.
 
     Handles both MCP array format [{"type": "text", "text": "..."}] and
@@ -209,15 +209,30 @@ def review_tool_succeeded(payload: dict) -> bool:
 
     Returns True when ok is truthy AND no error is present.
     Case-insensitive on error_type and keyword checks.
+
+    P7-B M6: when ``config_dir`` is supplied, an ``mcp_shape_unknown``
+    diagnostic event is emitted on the "non-empty response but no
+    recognizable shape" path. Return value is unchanged.
     """
-    text = _extract_mcp_response_text(payload.get("tool_response"))
+    resp = payload.get("tool_response")
+    text = _extract_mcp_response_text(resp)
     if not text:
+        if config_dir and resp not in (None, "", [], {}):
+            _log_mcp_shape_unknown(
+                config_dir, payload, reason="empty_text_from_nonempty_response")
         return False
     try:
         result = json.loads(text)
     except (json.JSONDecodeError, TypeError):
+        if config_dir:
+            _log_mcp_shape_unknown(
+                config_dir, payload, reason="text_not_json")
         return False
     if not isinstance(result, dict):
+        if config_dir:
+            _log_mcp_shape_unknown(
+                config_dir, payload, reason="result_not_dict",
+                result_type=type(result).__name__)
         return False
     # Explicit ok=false → failure
     if result.get("ok") is False:
@@ -486,7 +501,38 @@ def recommend_mcp_action(risk: str, touched_files: list[str] | None = None,
     return actions
 
 
-def _extract_read_info(payload: dict) -> tuple[str | None, int | None]:
+def _log_mcp_shape_unknown(config_dir: str, payload: dict, *,
+                           reason: str, **extra) -> None:
+    """P7-B M5/M6: emit a diagnostic when an MCP tool_response is non-empty
+    but no recognized shape matched. Best-effort; never raises.
+
+    Behavior of the calling parser is unchanged — this only records that an
+    unrecognized shape was seen so operators can notice format drift.
+    """
+    try:
+        resp = payload.get("tool_response")
+        if isinstance(resp, list):
+            shape_summary = f"list[{len(resp)}]"
+        elif isinstance(resp, dict):
+            shape_summary = "dict:" + ",".join(sorted(resp.keys()))[:120]
+        elif resp is None:
+            shape_summary = "none"
+        else:
+            shape_summary = type(resp).__name__
+        evt = {
+            "event": "mcp_shape_unknown",
+            "tool_name": payload.get("tool_name", ""),
+            "reason": reason,
+            "shape_summary": shape_summary,
+        }
+        evt.update(extra)
+        log_event(config_dir, evt)
+    except Exception:
+        pass
+
+
+def _extract_read_info(payload: dict,
+                       config_dir: str | None = None) -> tuple[str | None, int | None]:
     """Extract (file_path, num_lines) from a Read tool PostToolUse payload.
 
     Handles multiple response formats:
@@ -495,18 +541,24 @@ def _extract_read_info(payload: dict) -> tuple[str | None, int | None]:
     - {"type":"text","file":{"filePath":"...","content":"...","numLines":N}}
     - {"file":{"content":"...","numLines":N}}
     Returns (file_path, num_lines) where num_lines may be None if unknown.
+
+    P7-B M5: when ``config_dir`` is supplied, an ``mcp_shape_unknown``
+    diagnostic event is emitted on the "non-empty response but no
+    recognizable shape" path. Return value is unchanged.
     """
     resp = payload.get("tool_response", {})
     file_path = str(payload.get("tool_input", {}).get("file_path", ""))
 
     num_lines = None
     content = ""
+    recognized_shape = False
 
     # Normalize to a flat dict if it's a list (MCP array format)
     if isinstance(resp, list):
         for item in resp:
             if isinstance(item, dict):
                 if item.get("type") == "text":
+                    recognized_shape = True
                     content = item.get("text", "")
                     # Also check for nested file info
                     if "file" in item:
@@ -523,16 +575,27 @@ def _extract_read_info(payload: dict) -> tuple[str | None, int | None]:
         if "file" in resp:
             fi = resp["file"]
             if isinstance(fi, dict):
+                recognized_shape = True
                 file_path = fi.get("filePath", file_path)
                 if "numLines" in fi:
                     num_lines = fi["numLines"]
                 content = fi.get("content", content)
-        if "text" in resp and not content:
-            content = resp.get("text", "")
+        if "text" in resp:
+            recognized_shape = True
+            if not content:
+                content = resp.get("text", "")
 
     # Compute num_lines from content if not explicitly provided
     if num_lines is None and content:
         num_lines = content.count("\n")
+
+    if (
+        config_dir
+        and not recognized_shape
+        and resp not in (None, "", [], {})
+    ):
+        _log_mcp_shape_unknown(
+            config_dir, payload, reason="no_known_read_shape")
 
     return file_path if file_path else None, num_lines
 
@@ -561,8 +624,18 @@ def load_state(config_dir: str) -> dict:
             raw = json.loads(sf.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 state.update(raw)
-    except Exception:
-        pass
+    except Exception as e:
+        # P7-B C3: previously silent. Emit a diagnostic event so operators
+        # can see when state load fails. Behavior unchanged: still return
+        # the defaults dict the caller has always received.
+        try:
+            log_event(config_dir, {
+                "event": "state_load_failed",
+                "error_type": type(e).__name__,
+                "error": str(e)[:500],
+            })
+        except Exception:
+            pass
     return state
 
 
@@ -570,8 +643,18 @@ def save_state(config_dir: str, state: dict):
     try:
         _state_file_path(config_dir).write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        # P7-B C4: previously silent. Emit a diagnostic event so disk-full,
+        # permission, or encoding failures become visible. Return value
+        # unchanged.
+        try:
+            log_event(config_dir, {
+                "event": "state_save_failed",
+                "error_type": type(e).__name__,
+                "error": str(e)[:500],
+            })
+        except Exception:
+            pass
 
 
 MAX_LOG_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -806,7 +889,7 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         if repo_root:
             _ensure_repo_state(state, repo_root)
 
-        if review_tool_succeeded(payload):
+        if review_tool_succeeded(payload, config_dir):
             state["diff_reviewed"] = True
             state["dirty_since_review"] = False
             state["reviewed_at"] = datetime.now(timezone.utc).isoformat()
@@ -901,7 +984,7 @@ def handle_post_tooluse(config_dir: str, payload: dict):
 
     # --- Read tool: large-file detection (Phase 3E.1: fixed parsing) ---
     if name == "Read":
-        file_path, num_lines = _extract_read_info(payload)
+        file_path, num_lines = _extract_read_info(payload, config_dir)
         if file_path and num_lines is not None and num_lines > 300:
             state = load_state(config_dir)
             needs = state.get("needs_summarize", [])
@@ -931,7 +1014,7 @@ def handle_post_tooluse(config_dir: str, payload: dict):
         mcp_calls = state.get("mcp_calls", {})
         mcp_calls[name] = True
         mcp_calls["_last_mcp_ts"] = datetime.now(timezone.utc).isoformat()
-        if not review_tool_succeeded(payload):
+        if not review_tool_succeeded(payload, config_dir):
             mcp_calls["_last_mcp_failed"] = True
             mcp_calls["_last_mcp_error_ts"] = datetime.now(timezone.utc).isoformat()
         else:

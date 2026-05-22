@@ -22,6 +22,46 @@ SCRIPT_DIR = Path(__file__).parent.parent
 _ROUTER_PATH = SCRIPT_DIR / "local_llm_router.py"
 _CHECK_PATH = SCRIPT_DIR / "local_llm_check.py"
 
+_SPAWN_FAILURES_FILE = "_spawn_failures.log"
+_SPAWN_FAILURES_MAX_BYTES = 1024 * 1024  # 1 MB before truncation
+
+
+def _record_spawn_failure(repo_root: str | None, fn: str, cmd: list[str] | None,
+                          error: BaseException) -> None:
+    """P7-B C5/C6: record an otherwise-silent spawn or log-write failure.
+
+    Best-effort. Never raises. Never blocks. Truncates the log to keep it
+    bounded; the doctor surfaces oversize/non-empty files as warnings.
+    """
+    try:
+        auto_dir = auto_output_dir(repo_root)
+        log_path = auto_dir / _SPAWN_FAILURES_FILE
+        # Truncate if oversize, so an unbounded failure stream cannot wedge
+        # the disk. The doctor will already have warned by then.
+        try:
+            if log_path.exists() and log_path.stat().st_size > _SPAWN_FAILURES_MAX_BYTES:
+                log_path.unlink()
+        except OSError:
+            pass
+        ts = datetime.now(timezone.utc).isoformat()
+        cmd_basename = ""
+        if cmd:
+            try:
+                cmd_basename = Path(cmd[1] if len(cmd) > 1 else cmd[0]).name
+            except Exception:
+                cmd_basename = ""
+        entry = {
+            "ts": ts,
+            "fn": fn,
+            "cmd_basename": cmd_basename,
+            "error_type": type(error).__name__,
+            "error": str(error)[:500],
+        }
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
 
 # MCP Cost Discipline P2-C1.2: stamp auto-hook worker subprocesses with the
 # LOCAL_LLM_LEDGER_EXTRA channel (P2-C1.0 worker read-side; P2-C1.1 MCP-server
@@ -111,8 +151,8 @@ def spawn_background(cmd: list[str], env: dict | None = None,
                 subprocess.Popen(cmd, **kwargs)
         else:
             subprocess.Popen(cmd, **kwargs)
-    except Exception:
-        pass
+    except Exception as e:
+        _record_spawn_failure(cwd, "spawn_background", cmd, e)
 
 
 def spawn_local_check(config_dir: str, repo_root: str | None = None):
@@ -124,8 +164,8 @@ def spawn_local_check(config_dir: str, repo_root: str | None = None):
     try:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"[{ts}] spawn_local_check\n")
-    except OSError:
-        pass
+    except OSError as e:
+        _record_spawn_failure(repo_root, "spawn_local_check.preamble_log", None, e)
 
     cmd = [
         sys.executable,
@@ -148,8 +188,8 @@ def spawn_local_check(config_dir: str, repo_root: str | None = None):
                 cwd=repo_root,
                 env=env,
             )
-    except Exception:
-        pass
+    except Exception as e:
+        _record_spawn_failure(repo_root, "spawn_local_check", cmd, e)
 
 
 def spawn_summarize_file(config_dir: str, file_path: str,
@@ -166,8 +206,8 @@ def spawn_summarize_file(config_dir: str, file_path: str,
     try:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"[{ts}] spawn_summarize_file {file_path}\n")
-    except OSError:
-        pass
+    except OSError as e:
+        _record_spawn_failure(repo_root, "spawn_summarize_file.log_write", None, e)
 
     # Prefer llama.cpp for fast background tasks — router falls back to Ollama
     cmd = [
@@ -199,14 +239,15 @@ def spawn_review_diff(config_dir: str, diff_text: str,
     stdin_path = auto_dir / f"{ts}_review_stdin.txt"
     try:
         stdin_path.write_text(diff_text, encoding="utf-8")
-    except OSError:
+    except OSError as e:
+        _record_spawn_failure(repo_root, "spawn_review_diff.stdin_write", None, e)
         return
 
     try:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"[{ts}] spawn_review_diff ({len(diff_text)} chars)\n")
-    except OSError:
-        pass
+    except OSError as e:
+        _record_spawn_failure(repo_root, "spawn_review_diff.log_write", None, e)
 
     # P2-C1.2: the router does not accept `--commit_gate` as a CLI flag, so
     # the previous passthrough was a no-op (and on stricter argparse builds it

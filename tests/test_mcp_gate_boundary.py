@@ -320,3 +320,167 @@ def test_extract_git_c_path_windows():
     """extract_git_c_path should handle Windows paths."""
     path = gate.extract_git_c_path("git -C C:\\Users\\Zero\\repo commit -m test")
     assert path == "C:\\Users\\Zero\\repo"
+
+
+# ---------------------------------------------------------------------------
+# P7-B C3/C4 — state load/save diagnostic logging
+# ---------------------------------------------------------------------------
+
+def _read_log_events(config_dir: str) -> list[dict]:
+    log_path = Path(config_dir) / "hook-events.jsonl"
+    if not log_path.exists():
+        return []
+    events = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def test_load_state_returns_defaults_on_corrupt_json():
+    """Corrupt state.json => load_state returns defaults (behavior unchanged)."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        (Path(config_dir) / "state.json").write_text(
+            "{not valid json", encoding="utf-8")
+        state = gate.load_state(config_dir)
+        assert state == dict(gate._STATE_DEFAULTS)
+
+
+def test_load_state_logs_diagnostic_on_corrupt_json():
+    """P7-B C3: corrupt state.json => state_load_failed event is logged."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        (Path(config_dir) / "state.json").write_text(
+            "{not valid json", encoding="utf-8")
+        gate.load_state(config_dir)
+        events = _read_log_events(config_dir)
+        load_failed = [e for e in events if e.get("event") == "state_load_failed"]
+        assert len(load_failed) == 1
+        assert load_failed[0].get("error_type") in (
+            "JSONDecodeError", "ValueError")
+
+
+def test_load_state_no_event_on_missing_file():
+    """No file => no diagnostic event (file simply doesn't exist yet)."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate.load_state(config_dir)
+        events = _read_log_events(config_dir)
+        assert [e for e in events if e.get("event") == "state_load_failed"] == []
+
+
+def test_save_state_logs_diagnostic_on_write_failure():
+    """P7-B C4: save_state failure => state_save_failed event is logged."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        # Point state file to a directory path so write_text raises.
+        broken_state_path = Path(config_dir) / "state.json"
+        broken_state_path.mkdir()  # now writing to it as a file will fail
+        # save_state must still not raise.
+        gate.save_state(config_dir, {"foo": "bar"})
+        events = _read_log_events(config_dir)
+        save_failed = [e for e in events if e.get("event") == "state_save_failed"]
+        assert len(save_failed) >= 1
+        assert "error_type" in save_failed[0]
+
+
+# ---------------------------------------------------------------------------
+# P7-B M5/M6 — unknown MCP response shape warning
+# ---------------------------------------------------------------------------
+
+def test_extract_read_info_known_shape_no_event():
+    """Recognized list-of-text shape => no shape_unknown event."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/tmp/x.py"},
+            "tool_response": [{"type": "text", "text": "line1\nline2\n"}],
+        }
+        fp, nl = gate._extract_read_info(payload, config_dir)
+        assert fp == "/tmp/x.py"
+        assert nl == 2
+        events = _read_log_events(config_dir)
+        assert [e for e in events if e.get("event") == "mcp_shape_unknown"] == []
+
+
+def test_extract_read_info_unknown_shape_logs_event_and_preserves_return():
+    """P7-B M5: unknown shape => same return + mcp_shape_unknown event."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/tmp/x.py"},
+            # Non-empty but unrecognized: a dict with unrelated keys
+            "tool_response": {"unrelated": "value", "weird": 42},
+        }
+        fp, nl = gate._extract_read_info(payload, config_dir)
+        # Same as before: file_path comes from tool_input, num_lines unknown
+        assert fp == "/tmp/x.py"
+        assert nl is None
+        events = _read_log_events(config_dir)
+        unknown = [e for e in events if e.get("event") == "mcp_shape_unknown"]
+        assert len(unknown) == 1
+        assert unknown[0].get("reason") == "no_known_read_shape"
+        assert unknown[0].get("tool_name") == "Read"
+
+
+def test_extract_read_info_no_config_dir_does_not_log():
+    """Without config_dir, helper stays purely passive (legacy callers)."""
+    payload = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": "/tmp/x.py"},
+        "tool_response": {"unrelated": "value"},
+    }
+    fp, nl = gate._extract_read_info(payload)
+    assert fp == "/tmp/x.py"
+    assert nl is None
+
+
+def test_review_tool_succeeded_text_not_json_logs_event():
+    """P7-B M6: non-JSON text in response => same False + diagnostic."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        payload = {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": [{"type": "text", "text": "not json at all"}],
+        }
+        assert gate.review_tool_succeeded(payload, config_dir) is False
+        events = _read_log_events(config_dir)
+        unknown = [e for e in events if e.get("event") == "mcp_shape_unknown"]
+        assert len(unknown) == 1
+        assert unknown[0].get("reason") == "text_not_json"
+
+
+def test_review_tool_succeeded_result_not_dict_logs_event():
+    """P7-B M6: JSON result is not a dict => same False + diagnostic."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        payload = {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": [{"type": "text", "text": "[1, 2, 3]"}],
+        }
+        assert gate.review_tool_succeeded(payload, config_dir) is False
+        events = _read_log_events(config_dir)
+        unknown = [e for e in events if e.get("event") == "mcp_shape_unknown"]
+        assert len(unknown) == 1
+        assert unknown[0].get("reason") == "result_not_dict"
+
+
+def test_review_tool_succeeded_known_success_no_event():
+    """Recognized successful payload => no shape_unknown."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        payload = {
+            "tool_name": "mcp__local-llm__local_review_diff",
+            "tool_response": [{"type": "text", "text": '{"ok": true}'}],
+        }
+        assert gate.review_tool_succeeded(payload, config_dir) is True
+        events = _read_log_events(config_dir)
+        assert [e for e in events if e.get("event") == "mcp_shape_unknown"] == []
+
+
+def test_review_tool_succeeded_legacy_signature_still_works():
+    """Calling without config_dir must continue to work (compat)."""
+    payload = {
+        "tool_name": "mcp__local-llm__local_review_diff",
+        "tool_response": [{"type": "text", "text": '{"ok": true}'}],
+    }
+    assert gate.review_tool_succeeded(payload) is True

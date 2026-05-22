@@ -2,6 +2,47 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Hook silent-failure diagnostics bundle P7-A + P7-B. P7-A (audit at
+  baseline `9d8af1d`) grouped remaining P6 deferred items by risk +
+  subsystem + compatibility impact across 8 source files, recommending
+  a bundled diagnostics-only slice. P7-B implements the recommendation:
+  **(C3)** `mcp_gate.load_state` emits `state_load_failed` event via
+  the existing `log_event(config_dir, …)` sink on `JSONDecodeError` /
+  read failure, return value (the `_STATE_DEFAULTS` dict) is unchanged.
+  **(C4)** `mcp_gate.save_state` emits `state_save_failed` on write
+  failure, return value unchanged. **(C5/C6)** `mcp_auto_worker`
+  introduces a bounded `_record_spawn_failure()` helper (JSONL,
+  self-truncating at 1 MB, fire-and-forget, nested `except: pass`)
+  and wires it into all 4 spawn paths — `spawn_background`,
+  `spawn_local_check` (preamble log + Popen), `spawn_summarize_file`
+  (log write), `spawn_review_diff` (stdin write + log write). Failures
+  land in `.local_llm_out/auto/_spawn_failures.log`. Fire-and-forget
+  semantics preserved. **(M4)** `mcp_doctor.run_checks` adds 3 additive
+  checks: `auto_dir_present` (WARN on missing, OK on present),
+  `auto_results_count` (OK/WARN at >50), `spawn_failures_log` (OK
+  absent/empty, WARN non-empty, FAIL >1 MB). No existing-check
+  semantics changed. **(M5/M6)** `_extract_read_info` and
+  `review_tool_succeeded` accept an optional `config_dir` parameter
+  (default `None` — legacy callers continue to work passively); on
+  unrecognized non-empty `tool_response` shape, log
+  `mcp_shape_unknown` with one of four reasons
+  (`no_known_read_shape` / `empty_text_from_nonempty_response` /
+  `text_not_json` / `result_not_dict`). Return values preserved
+  bit-for-bit. New helper `_log_mcp_shape_unknown` swallows its own
+  failures. **All five items are diagnostics-only — no business
+  behavior change anywhere.** 20 new tests added: 12 in
+  `tests/test_mcp_gate_boundary.py`, 4 in `tests/test_mcp_auto_worker.py`,
+  7 in `tests/test_mcp_doctor.py`. Hook regression 115 passed;
+  P4/P5/P6/call_ledger/check/stop_hook regression 321 passed.
+  **Explicitly NOT in this slice:** C2 (streaming
+  double-serialization), H6 (`classify_error` rewrite), P6-B2-C
+  (`record_call()` write-failure propagation), M3 (ledger rotation),
+  M7 (cost-estimate accuracy), P6-B3-B/H5 (MTP endpoint config),
+  P5-C. Forbidden files (zero diff against): `local_llm_mcp_server.py`,
+  `local_llm_worker.py`, `local_llm_debate.py`, `local_llm_router.py`,
+  `call_ledger*.py`, `health_store.py`, `local_llm_check.py`,
+  `local_llm_profiles.json`, `local_llm_tasks.json`, `CLAUDE.md`,
+  `docs/mcp-task-policy.md`, `VERSION`. No tag, no release.
 - Runtime Reliability / Observability P6-C: phase closeout. **P6 chain
   closed** (P6-A → P6-A.1 → P6-B1 → P6-B1.1 → P6-B1.2 → P6-B2-A →
   P6-B2-B → P6-B2-D → P6-B3 → P6-B3-A → P6-B3-A.1 → P6-C). P6 phase

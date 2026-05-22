@@ -387,3 +387,74 @@ class TestStaleSessionFix:
             updated = json.loads(state_path.read_text(encoding="utf-8"))
             assert updated["_auto_worker_count"] == 0
             assert updated["_auto_spawned"] == {}
+
+
+# ---------------------------------------------------------------------------
+# P7-B M4 — auto-worker observability checks
+# ---------------------------------------------------------------------------
+
+class TestAutoWorkerObservability:
+    def _find(self, results, check):
+        return [r for r in results if r["check"] == check]
+
+    def test_auto_dir_missing_is_warn_not_fail(self, healthy_dirs):
+        """No .local_llm_out/auto/ => WARN, never FAIL."""
+        repo, config = healthy_dirs
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "auto_dir_present")
+        assert found and found[0]["status"] == "WARN"
+
+    def test_auto_dir_present_passes(self, healthy_dirs):
+        repo, config = healthy_dirs
+        (repo / ".local_llm_out" / "auto").mkdir(parents=True)
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "auto_dir_present")
+        assert found and found[0]["status"] == "OK"
+
+    def test_auto_results_count_ok_when_below_threshold(self, healthy_dirs):
+        repo, config = healthy_dirs
+        auto_dir = repo / ".local_llm_out" / "auto"
+        auto_dir.mkdir(parents=True)
+        for i in range(5):
+            (auto_dir / f"r{i}.json").write_text("{}", encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "auto_results_count")
+        assert found and found[0]["status"] == "OK"
+
+    def test_auto_results_count_warns_above_50(self, healthy_dirs):
+        repo, config = healthy_dirs
+        auto_dir = repo / ".local_llm_out" / "auto"
+        auto_dir.mkdir(parents=True)
+        for i in range(60):
+            (auto_dir / f"r{i:03d}.json").write_text("{}", encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "auto_results_count")
+        assert found and found[0]["status"] == "WARN"
+
+    def test_spawn_failures_log_absent_passes(self, healthy_dirs):
+        repo, config = healthy_dirs
+        (repo / ".local_llm_out" / "auto").mkdir(parents=True)
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "spawn_failures_log")
+        assert found and found[0]["status"] == "OK"
+
+    def test_spawn_failures_log_nonempty_warns(self, healthy_dirs):
+        repo, config = healthy_dirs
+        auto_dir = repo / ".local_llm_out" / "auto"
+        auto_dir.mkdir(parents=True)
+        (auto_dir / "_spawn_failures.log").write_text(
+            '{"fn":"spawn_background","error":"boom"}\n',
+            encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "spawn_failures_log")
+        assert found and found[0]["status"] == "WARN"
+
+    def test_spawn_failures_log_oversize_fails(self, healthy_dirs):
+        repo, config = healthy_dirs
+        auto_dir = repo / ".local_llm_out" / "auto"
+        auto_dir.mkdir(parents=True)
+        (auto_dir / "_spawn_failures.log").write_text(
+            "x" * (1024 * 1024 + 1024), encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "spawn_failures_log")
+        assert found and found[0]["status"] == "FAIL"

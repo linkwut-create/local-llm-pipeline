@@ -267,3 +267,80 @@ class TestSpawnReviewDiff:
     def test_skips_empty_diff(self, mock_spawn, tmp_path):
         spawn_review_diff("fake_config", "   \n  ", str(tmp_path))
         assert not mock_spawn.called
+
+
+# ---------------------------------------------------------------------------
+# P7-B C5/C6 — spawn failure diagnostic log
+# ---------------------------------------------------------------------------
+
+def _read_failure_lines(tmp_path: Path) -> list[dict]:
+    p = tmp_path / ".local_llm_out" / "auto" / "_spawn_failures.log"
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+class TestSpawnFailureDiagnostics:
+    @patch("tools.claude_hooks.mcp_auto_worker.subprocess.Popen",
+           side_effect=OSError("fake popen failure"))
+    def test_spawn_background_failure_logs_entry(self, mock_popen, tmp_path):
+        """Popen raises => spawn_background still returns silently AND logs."""
+        spawn_background(
+            ["some_missing_binary", "arg"], cwd=str(tmp_path))
+        entries = _read_failure_lines(tmp_path)
+        assert len(entries) >= 1
+        entry = entries[-1]
+        assert entry["fn"] == "spawn_background"
+        assert entry["error_type"] == "OSError"
+        assert "fake popen failure" in entry["error"]
+
+    @patch("tools.claude_hooks.mcp_auto_worker.subprocess.Popen",
+           side_effect=OSError("local_check spawn boom"))
+    def test_spawn_local_check_failure_logs_entry(self, mock_popen, tmp_path):
+        spawn_local_check("fake_config", str(tmp_path))
+        entries = _read_failure_lines(tmp_path)
+        assert any(e["fn"] == "spawn_local_check" for e in entries)
+        for e in entries:
+            if e["fn"] == "spawn_local_check":
+                assert e["error_type"] == "OSError"
+                assert "local_check spawn boom" in e["error"]
+
+    def test_record_spawn_failure_truncates_oversize_log(self, tmp_path):
+        """Oversize _spawn_failures.log is truncated before appending."""
+        from tools.claude_hooks.mcp_auto_worker import (
+            _record_spawn_failure, _SPAWN_FAILURES_MAX_BYTES,
+        )
+        auto_dir = tmp_path / ".local_llm_out" / "auto"
+        auto_dir.mkdir(parents=True)
+        log_path = auto_dir / "_spawn_failures.log"
+        # Pre-seed an oversized log.
+        log_path.write_text(
+            "x" * (_SPAWN_FAILURES_MAX_BYTES + 1024), encoding="utf-8")
+        _record_spawn_failure(
+            str(tmp_path), "spawn_background", ["py", "thing.py"],
+            OSError("boom"))
+        # The pre-seed should have been deleted and replaced with a single
+        # JSON line.
+        assert log_path.exists()
+        content = log_path.read_text(encoding="utf-8")
+        assert len(content) < _SPAWN_FAILURES_MAX_BYTES
+        assert "boom" in content
+
+    def test_record_spawn_failure_never_raises(self, tmp_path, monkeypatch):
+        """Even when the dir is unreachable the helper must not raise."""
+        from tools.claude_hooks import mcp_auto_worker as aw
+        def _fail_dir(_repo_root=None):
+            raise OSError("disk gone")
+        monkeypatch.setattr(aw, "auto_output_dir", _fail_dir)
+        # Must not raise.
+        aw._record_spawn_failure(
+            str(tmp_path), "spawn_background", ["py"], OSError("x"))

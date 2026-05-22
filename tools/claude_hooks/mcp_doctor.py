@@ -431,6 +431,60 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
         fail("mcp_server_importable", f"Cannot import MCP server: {e}",
              "Check that tools/local_llm_mcp_server.py and its dependencies exist.")
 
+    # =================================================================
+    # 8. Auto-worker observability (P7-B M4)
+    # =================================================================
+    auto_dir = repo / ".local_llm_out" / "auto"
+    if auto_dir.is_dir():
+        ok("auto_dir_present", f"Auto-worker output dir present: {auto_dir}")
+
+        try:
+            result_files = [
+                p for p in auto_dir.iterdir()
+                if p.is_file() and p.suffix == ".json"
+            ]
+            count = len(result_files)
+            if count > 50:
+                warn("auto_results_count",
+                     f"{count} auto-worker result files accumulated",
+                     "Run `cleanup_auto_results` or delete stale .json files "
+                     f"under {auto_dir}.")
+            else:
+                ok("auto_results_count",
+                   f"{count} auto-worker result file(s)")
+        except OSError as e:
+            warn("auto_results_count", f"Could not enumerate auto results: {e}")
+
+        sf_log = auto_dir / "_spawn_failures.log"
+        if sf_log.is_file():
+            try:
+                sf_size = sf_log.stat().st_size
+            except OSError as e:
+                warn("spawn_failures_log",
+                     f"Could not stat _spawn_failures.log: {e}")
+            else:
+                if sf_size == 0:
+                    ok("spawn_failures_log",
+                       "_spawn_failures.log present but empty")
+                elif sf_size > 1024 * 1024:
+                    fail("spawn_failures_log",
+                         f"_spawn_failures.log is {sf_size/1024/1024:.1f} MB "
+                         f"— frequent spawn failures",
+                         f"Inspect {sf_log} for repeated failures, then truncate "
+                         "or delete it.")
+                else:
+                    warn("spawn_failures_log",
+                         f"_spawn_failures.log non-empty ({sf_size} bytes) "
+                         "— some background spawns have failed",
+                         f"Inspect {sf_log} to see what failed.")
+        else:
+            ok("spawn_failures_log",
+               "_spawn_failures.log absent — no recorded spawn failures")
+    else:
+        warn("auto_dir_present",
+             f"Auto-worker output dir not yet present: {auto_dir}",
+             "Normal for a fresh checkout; the first SessionStart will create it.")
+
     return results
 
 
