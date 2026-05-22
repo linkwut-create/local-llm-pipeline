@@ -265,9 +265,15 @@ def build_probe_report(probe_timeout: float = _PROBE_TIMEOUT_DEFAULT) -> dict:
     }
 
 
-def run_ollama_list() -> CheckResult:
+def run_ollama_list(timeout: int = 30) -> CheckResult:
     try:
-        output = subprocess.check_output(["ollama", "list"], text=True, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(
+            ["ollama", "list"], capture_output=True, text=True, timeout=timeout,
+        )
+        if proc.returncode != 0:
+            err = proc.stderr.strip() or f"exit code {proc.returncode}"
+            return CheckResult("ollama_list", False, f"ollama list failed: {err}")
+        output = proc.stdout
         lines = [l.strip() for l in output.strip().splitlines()[1:] if l.strip()]
         names = []
         for line in lines:
@@ -275,6 +281,10 @@ def run_ollama_list() -> CheckResult:
             if parts:
                 names.append(parts[0])
         return CheckResult("ollama_list", True, f"{len(names)} models via CLI", data=names)
+    except subprocess.TimeoutExpired:
+        return CheckResult("ollama_list", False, f"ollama list timed out after {timeout}s")
+    except FileNotFoundError:
+        return CheckResult("ollama_list", False, "ollama binary not found")
     except Exception as e:
         return CheckResult("ollama_list", False, f"ollama list failed: {e}")
 

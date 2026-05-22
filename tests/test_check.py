@@ -71,3 +71,50 @@ def test_check_ollama_not_reachable_reports_url():
             assert result.ok is False
             assert "192.168.2.2:99999" in result.detail
             assert "not reachable" in result.detail.lower()
+
+
+# --- P6-B3-A: run_ollama_list timeout ---
+
+
+def test_run_ollama_list_ok():
+    """run_ollama_list returns OK when subprocess succeeds."""
+    completed = MagicMock(
+        returncode=0,
+        stdout="NAME ID SIZE MODIFIED\nqwen3-coder:30b abc123 20GB 2 days ago\n",
+        stderr="",
+    )
+    with patch("local_llm_check.subprocess.run", return_value=completed):
+        result = chk.run_ollama_list()
+    assert result.ok is True
+    assert "1 models via CLI" in result.detail
+    assert result.data == ["qwen3-coder:30b"]
+
+
+def test_run_ollama_list_timeout():
+    """run_ollama_list returns failed CheckResult on timeout."""
+    import subprocess
+    with patch(
+        "local_llm_check.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["ollama", "list"], 30),
+    ):
+        result = chk.run_ollama_list()
+    assert result.ok is False
+    assert "timed out" in result.detail.lower()
+    assert "30s" in result.detail
+
+
+def test_run_ollama_list_binary_not_found():
+    """run_ollama_list returns failed CheckResult when ollama missing."""
+    with patch("local_llm_check.subprocess.run", side_effect=FileNotFoundError()):
+        result = chk.run_ollama_list()
+    assert result.ok is False
+    assert "not found" in result.detail.lower()
+
+
+def test_run_ollama_list_nonzero_exit():
+    """run_ollama_list reports failure on nonzero exit code."""
+    completed = MagicMock(returncode=1, stdout="", stderr="connection refused")
+    with patch("local_llm_check.subprocess.run", return_value=completed):
+        result = chk.run_ollama_list()
+    assert result.ok is False
+    assert "connection refused" in result.detail

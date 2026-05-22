@@ -101,7 +101,7 @@ Read-only inspection of 17 files across 4 layers:
 | M5 | `mcp_gate` | `_extract_read_info()` fragile to new MCP response formats — silent false negatives on large-file detection. |
 | M6 | `mcp_gate` | `review_tool_succeeded()` false-negative risk on format changes — commits blocked without warning. |
 | M7 | `call_ledger` | `estimate_cost_cny()` returns 0.0 for all local providers — paid API proxies on LAN classified as free. |
-| M8 | `local_llm_check` | `run_ollama_list()` subprocess has no timeout — hangs indefinitely if ollama CLI blocks. |
+| M8 | `local_llm_check` | `run_ollama_list()` subprocess has no timeout — hangs indefinitely if ollama CLI blocks. **CLOSED (P6-B3-A):** bounded to 30s via `subprocess.run(..., timeout=30)`; timeout, missing binary, and nonzero-exit each return a failed `CheckResult` instead of hanging or raising. |
 
 ### 4.4 LOW (5 items)
 
