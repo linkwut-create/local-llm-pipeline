@@ -31,6 +31,10 @@ CHARS_PER_TOKEN = 4
 _LOCAL_PROVIDERS = frozenset({"ollama", "llama.cpp", "llamacpp"})
 _LOCAL_HOST_HINTS = ("localhost", "127.0.0.1", "0.0.0.0", "192.168.", "10.", "::1")
 
+# M7 (v0.10.0-L): execution-location classification — distinguishes truly local
+# Ollama from LAN-proxy Ollama so cost confidence can be reported honestly.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 _FALSY = frozenset({"0", "false", "no", "off", "", "none"})
 
 # Privacy: fields that must never appear in a ledger record, even if a caller
@@ -147,6 +151,82 @@ def _is_local_provider(provider: str | None, base_url: str | None) -> bool:
     return False
 
 
+def _parse_url_host(base_url: str | None) -> str | None:
+    """Extract hostname from *base_url*, or ``None`` when unparseable."""
+    if not base_url:
+        return None
+    try:
+        from urllib.parse import urlparse
+        return urlparse(base_url).hostname
+    except Exception:
+        return None
+
+
+def _is_private_host(host: str) -> bool:
+    """Return ``True`` when *host* is a loopback, RFC-1918, or link-local address."""
+    if host in _LOCAL_HOSTS:
+        return True
+    if host.startswith("192.168.") or host.startswith("10."):
+        return True
+    if host.startswith("172."):
+        parts = host.split(".")
+        if len(parts) >= 2:
+            try:
+                second = int(parts[1])
+                if 16 <= second <= 31:
+                    return True
+            except (TypeError, ValueError):
+                pass
+    return False
+
+
+def classify_execution_location(provider: str | None, base_url: str | None) -> str:
+    """Classify where a model invocation executed.
+
+    Returns one of ``"local"``, ``"lan"``, ``"remote"``, ``"unknown"``.
+    """
+    if not provider and not base_url:
+        return "unknown"
+
+    host = _parse_url_host(base_url) if base_url else None
+    is_local_style = bool(provider and provider.lower() in _LOCAL_PROVIDERS)
+
+    if host in _LOCAL_HOSTS:
+        return "local" if is_local_style else "unknown"
+    if host and _is_private_host(host):
+        return "lan" if is_local_style else "unknown"
+    if host and not _is_private_host(host):
+        return "remote"
+    if not is_local_style and provider:
+        return "remote"
+    return "unknown"
+
+
+def classify_cost_confidence(
+    execution_location: str,
+    tokens_estimated: bool,
+    has_cost_rate: bool,
+) -> str:
+    """Derive a cost-confidence label from execution location and token source.
+
+    Returns one of ``"high"``, ``"medium"``, ``"low"``, ``"none"``.
+    """
+    if execution_location == "local":
+        return "high" if not tokens_estimated else "medium"
+    if execution_location == "lan":
+        return "medium" if not tokens_estimated else "low"
+    if execution_location == "remote":
+        return "medium" if has_cost_rate else "none"
+    return "none"
+
+
+def _has_cost_rate(model: str | None) -> bool:
+    """Return ``True`` when the configured cost table carries a rate for *model*."""
+    if not model:
+        return False
+    return model in _load_cost_table()
+
+
 def _load_cost_table() -> dict[str, dict[str, float]]:
     raw = os.environ.get("LOCAL_LLM_COST_TABLE")
     if not raw:
@@ -250,6 +330,13 @@ def build_record(*,
     else:
         cost = estimate_cost_cny(provider, base_url, model, input_tokens, output_tokens)
 
+    # M7 (v0.10.0-L): execution location and cost confidence — additive fields
+    # that distinguish truly-local Ollama from LAN-proxy Ollama without
+    # claiming exact dollar costs for LAN.
+    exec_loc = classify_execution_location(provider, base_url)
+    has_rate = _has_cost_rate(model)
+    confidence = classify_cost_confidence(exec_loc, tokens_estimated, has_rate)
+
     files = list(files_referenced) if files_referenced else []
 
     summary_text: str | None = None
@@ -282,6 +369,8 @@ def build_record(*,
         "total_tokens": int(input_tokens or 0) + int(output_tokens or 0),
         "tokens_estimated": tokens_estimated,
         "estimated_cost_cny": cost,
+        "execution_location": exec_loc,
+        "cost_confidence": confidence,
         "duration_ms": int(duration_ms or 0),
         "success": bool(success),
         "cache_hit": bool(cache_hit),
@@ -502,6 +591,23 @@ def group_by(records: Iterable[Mapping[str, Any]], key: str) -> dict[str, dict[s
         bucket_key = str(raw) if raw is not None and raw != "" else "<none>"
         buckets.setdefault(bucket_key, []).append(r)
     return {k: summarize(v) for k, v in buckets.items()}
+
+
+def breakdown_counts(records: Iterable[Mapping[str, Any]], key: str,
+                     default: str = "unknown") -> dict[str, int]:
+    """Count records by *key*. Missing/empty key → *default*.
+
+    Returns a plain ``{value: count}`` dict — no token/cost aggregation.
+    """
+    counts: dict[str, int] = {}
+    for r in records:
+        val = r.get(key)
+        if val is None or val == "":
+            val = default
+        else:
+            val = str(val)
+        counts[val] = counts.get(val, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def filter_failures(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:

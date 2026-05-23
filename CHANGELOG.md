@@ -54,9 +54,22 @@
   first: `requests.Timeout` → `timeout`, `requests.ConnectionError` →
   `backend_unreachable`.  4 new tests (connection-timed-out → backend_unreachable);
   generic "request timed out" regresses to `timeout`.  1261/1261 passed,
-  13/13 run_checks, commit-gate ok=true.  H6 chain closed.  Deferred:
-  M7 cost-estimate credibility, P6-B3-B/H5 MTP endpoint config, P5-C
-  V4-Flash polish.
+  13/13 run_checks, commit-gate ok=true.  H6 chain closed.
+- M7 cost-estimate credibility — execution-location classification
+  (v0.10.0-L).  Added `classify_execution_location()` →
+  `local`/`lan`/`remote`/`unknown` and `classify_cost_confidence()` →
+  `high`/`medium`/`low`/`none`.  Two additive top-level fields in
+  `build_record()`: `execution_location`, `cost_confidence`.  Does NOT
+  compute exact LAN dollar costs, does NOT expand `LOCAL_LLM_COST_TABLE`,
+  does NOT change `estimated_cost_cny` behavior.  Old records (missing the
+  new fields) are fully readable — CLI `summary` displays them as
+  `unknown`, CLI `by-location` groups them under `<none>`.  New
+  `breakdown_counts()` helper and `_print_breakdown()` in CLI.  32 new
+  tests (19 classification + 4 build_record + 2 breakdown_counts + 7 CLI).
+  1288/1288 passed, 13/13 run_checks.  Deferred: exact LAN dollar cost
+  accounting, `LOCAL_LLM_COST_TABLE` expansion, streaming cost passthrough
+  (v2-B), cache-tier estimation (v2-C).  Next remaining: P6-B3-B/H5 MTP
+  endpoint config, P5-C V4-Flash polish.
 
 ## v0.9.8 - 2026-05-23
 

@@ -462,4 +462,39 @@ plan.
   Commit-gate ok=true.
 - **Deferred**: M7 cost-estimate credibility, P6-B3-B/H5 MTP endpoint config,
   P5-C V4-Flash polish.  Next recommended: M7 cost-estimate credibility
-  read-only audit.  **Do not start M7 implementation without separate approval.**
+  read-only audit.  **Do not start M7 implementation without separate approval.**  **Resolved:
+  M7 completed v0.10.0-L; see below.**
+
+## M7 Cost-Estimate Credibility — Closeout
+
+- **Chain**: M7 read-only audit → v0.10.0-L.  M7 chain closed.
+- **Problem**: `_is_local_provider()` treated LAN-proxy Ollama (192.168.x.x,
+  10.x.x.x, 172.16-31.x.x) identically to localhost Ollama — all got
+  `estimated_cost_cny=0.0` with no indication that the cost was unknown for
+  the remote machine.
+- **Fix**: Added execution-location classification without changing any cost
+  computation.  Two new additive top-level fields in every ledger record:
+  `execution_location` (`local`/`lan`/`remote`/`unknown`) and
+  `cost_confidence` (`high`/`medium`/`low`/`none`).
+- **New functions**:
+  - `classify_execution_location(provider, base_url)` — hostname-based
+    classification with RFC-1918 private-IP detection
+  - `classify_cost_confidence(execution_location, tokens_estimated,
+    has_cost_rate)` — confidence derives from location + token source
+  - `breakdown_counts(records, key, default)` — lightweight count-only
+    grouping for CLI breakdown display
+- **CLI**: `summary` now displays execution-location and cost-confidence
+  breakdowns (both table and JSON modes).  New `by-location` subcommand
+  using `group_by(records, "execution_location")`.  Old records without
+  the new fields display as `unknown`/`none` — no crash, no migration.
+- **Contract preserved**: `estimated_cost_cny` unchanged.  `_is_local_provider`
+  unchanged.  `record_call()` unchanged.  Worker and debate call sites
+  unchanged — the new fields flow through `build_record()` automatically.
+  No `LOCAL_LLM_COST_TABLE` expansion.  No dollar cost estimation for LAN.
+  `base_url` storage unchanged.
+- **Tests**: 32 new tests.  1288/1288 full suite.  13/13 run_checks.
+  Commit-gate ok=true.
+- **Deferred**: exact LAN dollar cost accounting, cost-table expansion UI,
+  streaming cost passthrough (v2-B), cache-tier estimation (v2-C).
+  Next remaining: P6-B3-B/H5 MTP endpoint config, P5-C V4-Flash polish.
+  **Do not start H5/MTP or P5-C without separate approval.**

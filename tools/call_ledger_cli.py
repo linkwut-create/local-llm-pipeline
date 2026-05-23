@@ -21,6 +21,7 @@ from pathlib import Path
 
 from call_ledger import (
     LEDGER_FILE,
+    breakdown_counts,
     filter_debates,
     filter_escalations,
     filter_failures,
@@ -197,10 +198,24 @@ def _print_diagnostics(diag: dict, fmt: str) -> None:
     print()
 
 
+def _print_breakdown(records: list[dict], title: str, key: str,
+                    default: str, fmt: str) -> None:
+    """Print a compact key→count breakdown from *records*."""
+    if fmt == "json":
+        return  # breakdown is embedded in the JSON summary object
+    counts = breakdown_counts(records, key, default=default)
+    if not counts:
+        return
+    print(f"\n- {title}:")
+    for val, n in counts.items():
+        print(f"    {val:<12} {n}")
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
     if getattr(args, "diagnostics", False):
         diag = read_records_with_diagnostics(_resolve_path(args.path))
         summary = summarize(diag["records"])
+        records = diag["records"]
         if args.format == "json":
             combined = dict(summary)
             combined["_diagnostics"] = {
@@ -213,13 +228,34 @@ def cmd_summary(args: argparse.Namespace) -> int:
             }
             if diag["errors"]:
                 combined["_diagnostics"]["error_examples"] = diag["errors"][:5]
+            combined["_execution_location_breakdown"] = breakdown_counts(
+                records, "execution_location", default="unknown")
+            combined["_cost_confidence_breakdown"] = breakdown_counts(
+                records, "cost_confidence", default="unknown")
             print(json.dumps(combined, ensure_ascii=False, indent=2))
         else:
             _print_summary(summary, args.format)
+            _print_breakdown(records, "execution location", "execution_location",
+                             "unknown", args.format)
+            _print_breakdown(records, "cost confidence", "cost_confidence",
+                             "unknown", args.format)
             _print_diagnostics(diag, args.format)
         return 0
     records = read_records(_resolve_path(args.path))
-    _print_summary(summarize(records), args.format)
+    summary = summarize(records)
+    if args.format == "json":
+        combined = dict(summary)
+        combined["_execution_location_breakdown"] = breakdown_counts(
+            records, "execution_location", default="unknown")
+        combined["_cost_confidence_breakdown"] = breakdown_counts(
+            records, "cost_confidence", default="unknown")
+        print(json.dumps(combined, ensure_ascii=False, indent=2))
+    else:
+        _print_summary(summary, args.format)
+        _print_breakdown(records, "execution location", "execution_location",
+                         "unknown", args.format)
+        _print_breakdown(records, "cost confidence", "cost_confidence",
+                         "unknown", args.format)
     return 0
 
 
@@ -262,6 +298,12 @@ def cmd_by_mcp_tool(args: argparse.Namespace) -> int:
         group_by_extra(records, "mcp_tool_name", fallback_key="tool_name"),
         args.format,
     )
+    return 0
+
+
+def cmd_by_location(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    _print_groups(group_by(records, "execution_location"), args.format)
     return 0
 
 
@@ -343,6 +385,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("by-profile", help="totals grouped by profile").set_defaults(func=cmd_by_profile)
 
     sub.add_parser("by-mcp-tool", help="totals grouped by MCP tool name").set_defaults(func=cmd_by_mcp_tool)
+
+    sub.add_parser("by-location", help="totals grouped by execution_location").set_defaults(func=cmd_by_location)
 
     sp_esc = sub.add_parser("escalations", help="list auto-escalation records")
     sp_esc.add_argument("--limit", type=int, default=0,

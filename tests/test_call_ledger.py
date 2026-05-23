@@ -139,6 +139,232 @@ def test_cost_malformed_table_returns_none(clean_env, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# M7 (v0.10.0-L) — classify_execution_location / classify_cost_confidence
+# ---------------------------------------------------------------------------
+
+_EXEC_LOC = call_ledger.classify_execution_location
+_CONF = call_ledger.classify_cost_confidence
+
+
+class TestClassifyExecutionLocation:
+    """Unit tests for execution-location classification."""
+
+    def test_localhost_ollama_is_local(self):
+        assert _EXEC_LOC("ollama", "http://localhost:11434") == "local"
+        assert _EXEC_LOC("ollama", "http://127.0.0.1:11434") == "local"
+        assert _EXEC_LOC("ollama", "http://[::1]:11434") == "local"
+
+    def test_lan_ollama_is_lan(self):
+        assert _EXEC_LOC("ollama", "http://192.168.2.2:11434") == "lan"
+        assert _EXEC_LOC("ollama", "http://10.0.0.50:11434") == "lan"
+        assert _EXEC_LOC("ollama", "http://172.16.1.1:11434") == "lan"
+        assert _EXEC_LOC("ollama", "http://172.31.255.255:11434") == "lan"
+
+    def test_public_host_is_remote(self):
+        assert _EXEC_LOC("openai-compatible", "https://api.deepseek.com") == "remote"
+        assert _EXEC_LOC("ollama", "https://ollama.example.com") == "remote"
+        assert _EXEC_LOC("deepseek", "https://api.deepseek.com") == "remote"
+
+    def test_missing_provider_and_url_is_unknown(self):
+        assert _EXEC_LOC(None, None) == "unknown"
+
+    def test_ollama_without_host_is_unknown(self):
+        # ollama provider but no URL to check — can't determine
+        assert _EXEC_LOC("ollama", None) == "unknown"
+
+    def test_openai_compat_with_missing_url_is_remote(self):
+        assert _EXEC_LOC("openai-compatible", None) == "remote"
+
+    def test_llamacpp_localhost_is_local(self):
+        assert _EXEC_LOC("llama.cpp", "http://localhost:8080") == "local"
+
+    def test_172_16_edge(self):
+        # 172.16.0.0 is the first valid LAN address
+        assert _EXEC_LOC("ollama", "http://172.16.0.0:11434") == "lan"
+
+    def test_172_31_edge(self):
+        # 172.31.255.255 is the last valid LAN address
+        assert _EXEC_LOC("ollama", "http://172.31.255.255:11434") == "lan"
+
+    def test_172_32_is_remote(self):
+        # 172.32.0.1 is outside RFC 1918 — should be remote
+        assert _EXEC_LOC("ollama", "http://172.32.0.1:11434") == "remote"
+
+    def test_unparseable_url_ollama_is_unknown(self):
+        # entirely unparseable host but provider is ollama → unknown
+        assert _EXEC_LOC("ollama", "not-a-valid-url:::/") == "unknown"
+
+
+class TestClassifyCostConfidence:
+    """Unit tests for cost-confidence label derivation."""
+
+    def test_local_real_tokens_is_high(self):
+        assert _CONF("local", tokens_estimated=False, has_cost_rate=False) == "high"
+
+    def test_local_estimated_tokens_is_medium(self):
+        assert _CONF("local", tokens_estimated=True, has_cost_rate=False) == "medium"
+
+    def test_lan_real_tokens_is_medium(self):
+        assert _CONF("lan", tokens_estimated=False, has_cost_rate=False) == "medium"
+
+    def test_lan_estimated_tokens_is_low(self):
+        assert _CONF("lan", tokens_estimated=True, has_cost_rate=False) == "low"
+
+    def test_remote_with_rate_is_medium(self):
+        assert _CONF("remote", tokens_estimated=False, has_cost_rate=True) == "medium"
+
+    def test_remote_without_rate_is_none(self):
+        assert _CONF("remote", tokens_estimated=True, has_cost_rate=False) == "none"
+
+    def test_unknown_is_none(self):
+        assert _CONF("unknown", tokens_estimated=False, has_cost_rate=True) == "none"
+
+
+def test_build_record_includes_m7_fields(clean_env, monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_PROJECT", "test")
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t",
+        model="qwen3-coder:30b", provider="ollama",
+        base_url="http://localhost:11434",
+        input_chars=400, output_chars=200,
+        duration_ms=100, success=True,
+    )
+    assert rec["execution_location"] == "local"
+    assert rec["cost_confidence"] == "medium"  # tokens estimated
+
+
+def test_build_record_lan_fields(clean_env):
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t",
+        model="qwen3-coder:30b", provider="ollama",
+        base_url="http://192.168.2.2:11434",
+        input_tokens=1000, output_tokens=500,
+        duration_ms=100, success=True,
+    )
+    assert rec["execution_location"] == "lan"
+    assert rec["cost_confidence"] == "medium"  # real tokens, but LAN
+
+
+def test_build_record_missing_base_url_fields(clean_env):
+    rec = call_ledger.build_record(
+        task_type="x", tool_name="t",
+        model="qwen3-coder:30b", provider="ollama",
+        base_url=None,
+        input_chars=100, output_chars=50,
+        duration_ms=100, success=True,
+    )
+    assert rec["execution_location"] == "unknown"
+    assert rec["cost_confidence"] == "none"
+
+
+def test_breakdown_counts_basic():
+    records = [
+        {"execution_location": "local", "cost_confidence": "high"},
+        {"execution_location": "local", "cost_confidence": "medium"},
+        {"execution_location": "lan"},
+        {"execution_location": None},
+        {},
+    ]
+    loc = call_ledger.breakdown_counts(records, "execution_location")
+    assert loc == {"lan": 1, "local": 2, "unknown": 2}
+
+    conf = call_ledger.breakdown_counts(records, "cost_confidence")
+    assert conf == {"high": 1, "medium": 1, "unknown": 3}
+
+
+def test_breakdown_counts_empty():
+    assert call_ledger.breakdown_counts([], "execution_location") == {}
+
+
+# ---------------------------------------------------------------------------
+# M7 CLI tests
+# ---------------------------------------------------------------------------
+
+
+def _seed_m7_ledger(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        # Local call
+        fh.write(json.dumps({
+            "id": "l1", "timestamp": "2026-01-01T00:00:00Z",
+            "project": "p", "task_type": "review", "tool_name": "t",
+            "model": "qwen", "provider": "ollama",
+            "input_tokens": 100, "output_tokens": 50, "total_tokens": 150,
+            "duration_ms": 1000, "estimated_cost_cny": 0.0, "success": True,
+            "execution_location": "local", "cost_confidence": "high",
+        }) + "\n")
+        # LAN call
+        fh.write(json.dumps({
+            "id": "l2", "timestamp": "2026-01-02T00:00:00Z",
+            "project": "p", "task_type": "review", "tool_name": "t",
+            "model": "qwen", "provider": "ollama",
+            "input_tokens": 200, "output_tokens": 80, "total_tokens": 280,
+            "duration_ms": 2000, "estimated_cost_cny": 0.0, "success": True,
+            "execution_location": "lan", "cost_confidence": "low",
+        }) + "\n")
+        # Old record without M7 fields
+        fh.write(json.dumps({
+            "id": "old1", "timestamp": "2026-01-03T00:00:00Z",
+            "project": "p", "task_type": "summarize", "tool_name": "t",
+            "model": "gemma", "provider": "ollama",
+            "input_tokens": 50, "output_tokens": 25, "total_tokens": 75,
+            "duration_ms": 500, "estimated_cost_cny": 0.0, "success": True,
+        }) + "\n")
+
+
+def test_cli_summary_m7_breakdown_table(clean_env, ledger_path, capsys):
+    _seed_m7_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "summary"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "execution location" in out
+    assert "local" in out
+    assert "lan" in out
+    assert "unknown" in out
+    assert "cost confidence" in out
+    assert "high" in out
+    assert "low" in out
+
+
+def test_cli_summary_m7_json_includes_breakdowns(clean_env, ledger_path, capsys):
+    _seed_m7_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "summary"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["calls"] == 3
+    loc_bd = data["_execution_location_breakdown"]
+    assert loc_bd["local"] == 1
+    assert loc_bd["lan"] == 1
+    assert loc_bd["unknown"] == 1  # old record
+    conf_bd = data["_cost_confidence_breakdown"]
+    assert conf_bd["high"] == 1
+    assert conf_bd["low"] == 1
+    assert conf_bd["unknown"] == 1
+
+
+def test_cli_by_location_table(clean_env, ledger_path, capsys):
+    _seed_m7_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "by-location"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "local" in out
+    assert "lan" in out
+    assert "<none>" in out or "unknown" in out
+
+
+def test_cli_old_record_readable(clean_env, ledger_path):
+    """Old records without M7 fields must remain readable by read_records."""
+    _seed_m7_ledger(ledger_path)
+    records = call_ledger.read_records(ledger_path)
+    assert len(records) == 3
+    # The old record should have no execution_location
+    old = [r for r in records if r["id"] == "old1"]
+    assert len(old) == 1
+    assert "execution_location" not in old[0]
+
+
+# ---------------------------------------------------------------------------
 # build_record
 # ---------------------------------------------------------------------------
 
