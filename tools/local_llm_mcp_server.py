@@ -31,6 +31,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from local_llm_worker import is_blocked_path
 from health_store import load_profile_health, record_invocation
 
+# B1-C: preclassifier advisory integration (safe fallback)
+try:
+    from local_llm_preclassifier import classify_diff_risk_heuristic as _preclassify
+except Exception:
+    _preclassify = None  # preclassifier unavailable — debate path unchanged
+
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
 
@@ -2358,6 +2364,23 @@ def call_debate_review_diff(params: dict) -> dict:
         )
     diff_text = diff_text[:MAX_DIFF_CHARS]
 
+    # B1-C: advisory preclassifier — runs before debate, never skips it.
+    preclassifier_result = None
+    if _preclassify is not None:
+        try:
+            preclassifier_result = _preclassify(
+                diff_text,
+                context={"commit_gate": False, "release": False,
+                         "source": "local_debate_review_diff"},
+            )
+            print(f"MCP: preclassifier advisory — risk={preclassifier_result.get('risk_level')} "
+                  f"confidence={preclassifier_result.get('confidence')} "
+                  f"sensitive={len(preclassifier_result.get('sensitive_paths', []))}",
+                  file=sys.stderr)
+        except Exception as exc:
+            print(f"MCP: preclassifier failed (non-fatal): {exc}", file=sys.stderr)
+            preclassifier_result = None
+
     use_fast = params.get("fast", True)
     use_summary_only = params.get("summary_only", True)
     profiles_override = params.get("profiles")
@@ -2395,8 +2418,41 @@ def call_debate_review_diff(params: dict) -> dict:
     debate_trigger = params.get("_debate_trigger", "manual-mcp")
     cmd.extend(["--debate-trigger", debate_trigger])
 
+    # B1-C: build ledger extra env with preclassifier advisory fields.
+    # The debate subprocess writes its own ledger records via
+    # _emit_debate_round_ledger (not through the worker), so
+    # LOCAL_LLM_LEDGER_EXTRA is informational — available for
+    # downstream consumers that inspect the subprocess environment.
+    debate_extra_env = _build_ledger_extra_env(
+        mcp_tool_name="local_debate_review_diff",
+        commit_gate=False,
+        source=debate_trigger,
+    )
+    if preclassifier_result is not None:
+        try:
+            base = json.loads(debate_extra_env.get("LOCAL_LLM_LEDGER_EXTRA", "{}"))
+            base.update({
+                "diff_risk_level": preclassifier_result.get("risk_level"),
+                "diff_risk_confidence": preclassifier_result.get("confidence"),
+                "debate_skipped": False,
+                "debate_skip_reason": "",
+                "preclassifier_profile": "heuristic",
+                "preclassifier_model": "none",
+                "preclassifier_request_id": "",
+                "safety_blockers": preclassifier_result.get("safety_blockers", []),
+                "debate_skip_allowed": False,
+                "skip_debate_recommended": preclassifier_result.get("skip_debate_recommended", False),
+                "preclassifier_method": preclassifier_result.get("classification_method", "heuristic"),
+                "changed_files_count": len(preclassifier_result.get("changed_files", [])),
+            })
+            debate_extra_env["LOCAL_LLM_LEDGER_EXTRA"] = json.dumps(
+                base, separators=(",", ":"), sort_keys=True)
+        except Exception:
+            pass  # best-effort; never blocks debate
+
     request_id = _make_request_id()
-    result = run_subprocess(cmd, stdin_data=diff_text, timeout=DEBATE_TIMEOUT)
+    result = run_subprocess(cmd, stdin_data=diff_text, timeout=DEBATE_TIMEOUT,
+                            extra_env=debate_extra_env)
 
     if not result["ok"] and "timed out" in result["stderr"].lower():
         return build_error_response(
@@ -2406,6 +2462,41 @@ def call_debate_review_diff(params: dict) -> dict:
         )
 
     output, _parse_err = _parse_worker_stdout(result["stdout"]) if result["ok"] else (None, None)
+
+    # B1-C: inject preclassifier advisory into the response.
+    if output is not None and isinstance(output, dict):
+        advisory: dict[str, object]
+        if preclassifier_result is not None:
+            advisory = {
+                "ok": preclassifier_result.get("ok", True),
+                "risk_level": preclassifier_result.get("risk_level", "unknown"),
+                "confidence": preclassifier_result.get("confidence", "low"),
+                "skip_debate_recommended": preclassifier_result.get("skip_debate_recommended", False),
+                "skip_debate_allowed": False,
+                "debate_skipped": False,
+                "sensitive_paths": preclassifier_result.get("sensitive_paths", []),
+                "changed_files_count": len(preclassifier_result.get("changed_files", [])),
+                "safety_blockers": preclassifier_result.get("safety_blockers", []),
+                "risk_reasons": preclassifier_result.get("risk_reasons", []),
+                "classification_method": preclassifier_result.get("classification_method", "heuristic"),
+                "created_at": preclassifier_result.get("created_at", ""),
+            }
+        else:
+            advisory = {
+                "ok": False,
+                "risk_level": "unknown",
+                "confidence": "low",
+                "skip_debate_recommended": False,
+                "skip_debate_allowed": False,
+                "debate_skipped": False,
+                "sensitive_paths": [],
+                "changed_files_count": 0,
+                "safety_blockers": ["preclassifier unavailable"],
+                "risk_reasons": ["preclassifier module not loaded"],
+                "classification_method": "none",
+                "created_at": "",
+            }
+        output["preclassifier_advisory"] = advisory
 
     if result["ok"] and output:
         return build_success_response("local_debate_review_diff", output,

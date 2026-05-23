@@ -331,7 +331,7 @@ def test_call_debate_builds_correct_cmd():
     """Verify debate handler builds command with --fast and --summary-only by default."""
     captured_cmd = None
 
-    def mock_run(cmd, stdin_data=None, timeout=None):
+    def mock_run(cmd, stdin_data=None, timeout=None, extra_env=None):
         nonlocal captured_cmd
         captured_cmd = cmd
         return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
@@ -456,7 +456,7 @@ def test_debate_diff_too_large():
 
 def test_debate_timeout_structured_error():
     """Timeout should return structured error with suggestion."""
-    def mock_run(cmd, stdin_data=None, timeout=None):
+    def mock_run(cmd, stdin_data=None, timeout=None, extra_env=None):
         return {"ok": False, "returncode": -1, "stdout": "",
                 "stderr": "Subprocess timed out after 900s", "elapsed_seconds": 900.0}
 
@@ -483,7 +483,7 @@ def test_call_debate_explicit_fast_false():
     """When fast=False, --fast should NOT be in the command."""
     captured_cmd = None
 
-    def mock_run(cmd, stdin_data=None, timeout=None):
+    def mock_run(cmd, stdin_data=None, timeout=None, extra_env=None):
         nonlocal captured_cmd
         captured_cmd = cmd
         return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
@@ -502,7 +502,7 @@ def test_debate_timeout_passed_to_cmd():
     """When fast=True, --timeout should be passed to subprocess with DEBATE_FAST_PER_ROUND_TIMEOUT."""
     captured_cmd = None
 
-    def mock_run(cmd, stdin_data=None, timeout=None):
+    def mock_run(cmd, stdin_data=None, timeout=None, extra_env=None):
         nonlocal captured_cmd
         captured_cmd = cmd
         return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}
@@ -523,7 +523,7 @@ def test_call_debate_uses_debate_timeout():
     """Debate subprocess should use DEBATE_TIMEOUT, not DEFAULT_TIMEOUT."""
     captured_timeout = None
 
-    def mock_run(cmd, stdin_data=None, timeout=None):
+    def mock_run(cmd, stdin_data=None, timeout=None, extra_env=None):
         nonlocal captured_timeout
         captured_timeout = timeout
         return {"ok": True, "stdout": '{"ok": true}', "stderr": "", "elapsed_seconds": 1.0, "returncode": 0}

@@ -461,9 +461,9 @@ def test_call_local_check_does_not_stamp_env(monkeypatch):
 
 
 def test_call_debate_review_diff_does_not_stamp_env(monkeypatch):
-    """local_debate_review_diff drives local_llm_debate.py (P2-C3 will
-    emit per-round ledger entries from inside the debate runner). The MCP
-    handler must not pre-stamp the debate subprocess in P2-C1.1."""
+    """B1-C: local_debate_review_diff now stamps preclassifier advisory
+    fields into LOCAL_LLM_LEDGER_EXTRA. Verify debate_skipped is always
+    false and preclassifier fields are present."""
     captured = {}
 
     class _FakeResult:
@@ -486,7 +486,13 @@ def test_call_debate_review_diff_does_not_stamp_env(monkeypatch):
 
     env = captured["env"]
     assert env is not None
-    assert "LOCAL_LLM_LEDGER_EXTRA" not in env
+    # B1-C: LOCAL_LLM_LEDGER_EXTRA is now stamped with preclassifier advisory
+    assert "LOCAL_LLM_LEDGER_EXTRA" in env
+    extra = json.loads(env["LOCAL_LLM_LEDGER_EXTRA"])
+    assert extra["debate_skipped"] is False
+    assert extra["debate_skip_allowed"] is False
+    assert "diff_risk_level" in extra
+    assert extra["mcp_tool_name"] == "local_debate_review_diff"
 
 
 # --------------------------------------------------------------------------- #

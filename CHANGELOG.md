@@ -50,6 +50,20 @@
   malformed safety_blockers handling. No debate integration yet;
   debate-skips will show zero until B1-C/B1-D starts writing records.
   Next: B1-C advisory integration in non-commit/non-release debate path.
+- v0.11.0-B1-C: advisory preclassifier integration in debate path.
+  `call_debate_review_diff()` now runs `classify_diff_risk_heuristic()`
+  before building the debate command, injects `preclassifier_advisory`
+  into the MCP response (additive field), and stamps preclassifier
+  metadata into `LOCAL_LLM_LEDGER_EXTRA`. B1-C iron rule: debate is
+  always executed regardless of classification — `debate_skipped` and
+  `debate_skip_allowed` are always false. Preclassifier import failure
+  is non-fatal (safe fallback to `_preclassify=None`). 18 new tests
+  (`tests/test_preclassifier_advisory.py`) cover advisory injection,
+  no-skip invariant across 6 diff types, exception fallback, ledger
+  extra fields, and existing behaviour preservation. Updated 6 existing
+  test mocks to accept the new `extra_env` parameter. `call_review_diff`
+  auto-debate path intentionally not integrated (safer, simpler).
+  Next: B1-C2 dogfood verification or B1-D controlled skip policy audit.
 
 ## v0.10.0 - 2026-05-24
 

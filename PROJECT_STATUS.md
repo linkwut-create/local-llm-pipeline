@@ -391,6 +391,13 @@ plan.
   `tests/test_preclassifier_ledger.py`. No debate integration; debate-skips shows zero
   until B1-C/B1-D starts writing records. Old records unaffected — fields are additive.
 - **Next**: B1-C advisory integration in non-commit/non-release debate path.
+- **B1-C** (this step): advisory preclassifier integration in debate path.
+  `call_debate_review_diff()` runs preclassifier before debate, injects
+  `preclassifier_advisory` into response, stamps `LOCAL_LLM_LEDGER_EXTRA`.
+  Debate always executes regardless — `debate_skipped` and `debate_skip_allowed`
+  always false. 18 new tests + 6 updated mocks. `call_review_diff` auto-debate
+  path not integrated (safer). Preclassifier crash is non-fatal.
+- **Next**: B1-C2 dogfood verification or B1-D controlled skip policy audit.
 
 ## v0.10.0 Release-Prep Anchor
 
