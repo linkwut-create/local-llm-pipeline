@@ -10,6 +10,18 @@
   summarize-file and summarize-tree — it has correct cache-key
   composition, no TTL, and always writes ledger records.  16 new
   tests.  1316/1316 passed, 13/13 run_checks.  No VERSION bump.
+- v0.11.0-A2: summary cache end-to-end dogfood verification passed.
+  Real MCP `local_summarize_tree` calls proved worker cache is
+  operational and measurable: first call `cache_hit=false, dur=104527ms`,
+  second call (same params) `cache_hit=true, dur=0ms` in ledger (observed
+  elapsed ~0.89s).  `local_summarize_file` invalidation confirmed after
+  file content change.  Caveat: Claude Code MCP client may cache
+  identical `local_summarize_file` calls, so direct same-file A/B
+  testing of that tool can be polluted by client-side cache — this is
+  a Claude Code behavior, not a pipeline bug.  Summary cache line
+  is closed: worker cache is authoritative, ledger records cache hits,
+  and file-change invalidation works.  Next: v0.11.0-B0 diff risk
+  preclassifier contract audit.
 
 ## v0.10.0 - 2026-05-24
 

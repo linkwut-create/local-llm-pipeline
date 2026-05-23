@@ -352,13 +352,27 @@ schema were not touched, and no `structural_risk` runtime trigger or
 remains optional and may be revived only under a separately approved
 plan.
 
-## v0.11.0-A (in progress)
+## v0.11.0-A — Summary Cache Authority (closed)
 
-- v0.11.0-A1: removed redundant MCP-layer summarize-file cache.
-  Worker cache (`local_llm_cache.py`) is now authoritative.
-  Fixed: MCP cache hit skipped ledger; MCP cache key lacked
-  model/prompt_hash/size; hardcoded 1h TTL removed.
-  16 new tests.  1316/1316 passed.  No VERSION bump.
+- **A1** (`dc4f2e7`): removed redundant MCP-layer summarize-file cache.
+  Worker cache (`local_llm_cache.py`) is now authoritative for both
+  summarize-file and summarize-tree.  Fixed three MCP cache bugs:
+  cache key lacked model/prompt_hash/size; hardcoded 1h TTL; cache
+  hits bypassed worker entirely (no ledger record).  16 new tests.
+  1316/1316 passed, 13/13 run_checks.
+- **A2** (dogfood, no commit): end-to-end verification via real MCP
+  `local_summarize_tree` calls.  First call: `cache_hit=false`,
+  `dur=104527ms`.  Second call (same params): `cache_hit=true`,
+  `dur=0ms` in ledger, observed elapsed ~0.89s.  `local_summarize_file`
+  invalidation confirmed after file content change.  Caveat: Claude
+  Code MCP client may cache identical `local_summarize_file` tool
+  calls, polluting direct same-file A/B tests — this is a Claude Code
+  behavior, not a pipeline bug.
+- **Line closed**.  Summary cache is operational and measurable:
+  worker cache writes correct cache-hit ledger records with
+  `duration_ms=0`; file-change invalidation works.  No VERSION bump,
+  no tag.
+- **Next**: v0.11.0-B0 diff risk preclassifier contract audit.
 
 ## v0.10.0 Release-Prep Anchor
 
