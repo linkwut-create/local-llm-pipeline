@@ -125,7 +125,8 @@ separate design and approval before implementation.
   + cost-confidence labels (`high`/`medium`/`low`/`none`).  No exact LAN dollar costs.
 - ~~P6-B3-B / H5~~ — **Done (v0.10.0-M).** Worker/debate endpoint resolution unified.
   `_MTP_ENDPOINTS` is display-only (not changed).
-- **P5-C** — V4-Flash `_env` wiring, model warmup, per-profile provider hint
+- **P5-C / V4-Flash** — optional, deferred indefinitely, not a v0.10.0 blocker.
+  `_env` wiring, model warmup, provider hint for the experimental profile.
 
 ## Will NOT Do (by design)
 
@@ -141,10 +142,10 @@ separate design and approval before implementation.
 
 ## Recommendation
 
-The pipeline at v0.9.8 is feature-complete for its stated purpose: providing
-source-non-mutating, multi-model LLM assistance to Claude Code during software
-development with automated participation via hooks. The deferred items above
-are known reliability gaps, not feature gaps — they improve observability and
-robustness without adding new capabilities. Future work should prioritize
-stabilization (addressing deferred items with explicit design-before-code) over
-new feature development.
+The pipeline at post-v0.9.8 (HEAD `55a34b8`, `v0.9.8-14-g55a34b8`) has
+resolved all active v0.10.0 maintenance items: C2 streaming contract fix,
+call-ledger write-failure observability, manual ledger rotation, error
+classification disambiguation, cost-estimate credibility, and endpoint
+resolution unification.  1300 tests, 13/13 run_checks.  The only deferred
+item (P5-C / V4-Flash) is deferred indefinitely and is not a release blocker.
+Next step: release-prep read-only audit.

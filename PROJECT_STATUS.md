@@ -521,5 +521,20 @@ plan.
 - **Tests**: 12 new tests (provider/env/default resolution + args override +
   debate delegation + worker/debate agreement).  1300/1300 full suite.
   13/13 run_checks.  Commit-gate ok=true.
-- **Remaining**: P5-C V4-Flash polish only.  **Do not start P5-C without
-  separate approval.**
+- **Remaining**: P5-C V4-Flash polish — deferred indefinitely (not a v0.10.0
+  blocker).  **Do not start P5-C without separate re-authorization.**
+
+## v0.10.0 Active Maintenance Chain — Closeout
+
+- **HEAD**: `55a34b8` (`v0.9.8-14-g55a34b8`), working tree clean.
+- **Completed v0.10.0 chain**: C2 (streaming stdout contract) → P6-B2-C
+  (call ledger write-failure observability) → M3 (manual call ledger
+  rotation) → H6 (classify_error disambiguation) → M7 (cost-estimate
+  credibility) → P6-B3-B/H5 (endpoint resolution unification).
+- **Validation**: 1300/1300 passed, 13/13 run_checks.  All commit-gate
+  reviews passed.
+- **P5-C / V4-Flash** is **no longer active v0.10.0 scope**.  Deferred
+  indefinitely unless explicitly re-authorized.
+- **Next recommended step**: v0.10.0 release-prep read-only audit.
+- **No release yet**: VERSION remains `0.9.8`; HEAD carries no tag; no
+  release; no zip; no push.

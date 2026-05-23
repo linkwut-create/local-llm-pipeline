@@ -76,8 +76,11 @@
   auto-detection — previously it ignored all three and always defaulted to
   ollama + localhost:11434 when no env was set.  Worker behavior unchanged.
   12 new tests.  1300/1300 passed, 13/13 run_checks.  `_MTP_ENDPOINTS`
-  hardcode NOT changed (display-only, does not affect routing).  Next
-  remaining: P5-C V4-Flash polish.
+  hardcode NOT changed (display-only, does not affect routing).
+- Active v0.10.0 maintenance chain closed at HEAD `55a34b8`
+  (`v0.9.8-14-g55a34b8`).  1300/1300 passed, 13/13 run_checks.  P5-C
+  (V4-Flash `_env` wiring / model warmup / provider hint) is deferred
+  indefinitely — not a v0.10.0 blocker.  Next: release-prep read-only audit.
 
 ## v0.9.8 - 2026-05-23
 
