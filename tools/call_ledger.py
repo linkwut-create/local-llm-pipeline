@@ -565,3 +565,49 @@ def filter_debates(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]
     return [dict(r) for r in records
             if isinstance(r.get("extra"), dict)
             and r["extra"].get("debate_mode") is True]
+
+
+# ---------------------------------------------------------------------------
+# Ledger lifecycle (v0.10.0-H M3)
+# ---------------------------------------------------------------------------
+
+def rotate_ledger(archive_name: str | None = None,
+                  path: Path | None = None) -> tuple[bool, str]:
+    """Archive the active ``calls.jsonl`` and start a fresh one. Never raises.
+
+    Renames the current ledger file to an archive name so the next
+    :func:`record_call` creates a new ledger.  The archive file lives next to
+    the active ledger and remains readable via ``--path`` in the CLI.
+
+    Args:
+        archive_name: Target archive filename (e.g. ``calls.2026-05-24.jsonl``).
+            Defaults to ``calls.<ISO-8601-date>.jsonl``.
+        path: Path to the active ledger file. Defaults to :data:`LEDGER_FILE`.
+
+    Returns:
+        ``(ok, detail)`` where *ok* is ``True`` when the rotation succeeded
+        (or there was nothing to rotate) and *detail* is a human-readable
+        explanation.  ``(False, reason)`` when the target archive already
+        exists or an OS error occurs.  Never raises.
+    """
+    target = _resolve_path(path)
+    if not target.exists():
+        return True, f"nothing to rotate: {target} does not exist"
+    if target.stat().st_size == 0:
+        return True, f"nothing to rotate: {target} is empty"
+
+    if archive_name is None:
+        archive_name = f"calls.{_utc_now_iso()[:10]}.jsonl"
+    archive = target.parent / archive_name
+
+    try:
+        if archive.exists():
+            return False, (
+                f"archive target already exists: {archive}\n"
+                f"  choose a different --archive-name or move/delete the existing file"
+            )
+        target.rename(archive)
+    except OSError as exc:
+        return False, f"rotation failed: {exc}"
+
+    return True, f"archived {target.name} → {archive.name} ({archive.stat().st_size} bytes)"

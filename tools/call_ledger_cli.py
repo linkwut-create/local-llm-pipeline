@@ -283,6 +283,36 @@ def cmd_debates(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rotate(args: argparse.Namespace) -> int:
+    """Archive the active calls.jsonl and start a fresh one."""
+    from call_ledger import rotate_ledger
+    path = _resolve_path(args.path)
+
+    if getattr(args, "dry_run", False):
+        archive_name = getattr(args, "archive_name", None)
+        if archive_name is None:
+            from call_ledger import _utc_now_iso
+            archive_name = f"calls.{_utc_now_iso()[:10]}.jsonl"
+        if args.format == "json":
+            print(json.dumps(
+                {"ok": True, "detail": f"[DRY RUN] would archive {path.name} → {archive_name}"},
+                ensure_ascii=False))
+        else:
+            print(f"[DRY RUN] would archive {path.name} → {archive_name}")
+        return 0
+
+    ok, detail = rotate_ledger(
+        archive_name=getattr(args, "archive_name", None),
+        path=path,
+    )
+    if args.format == "json":
+        print(json.dumps({"ok": ok, "detail": detail}, ensure_ascii=False))
+    else:
+        prefix = "OK" if ok else "FAIL"
+        print(f"[{prefix}] {detail}")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="call_ledger_cli",
@@ -323,6 +353,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp_deb.add_argument("--limit", type=int, default=0,
                         help="limit to last N (0 = all)")
     sp_deb.set_defaults(func=cmd_debates)
+
+    sp_rot = sub.add_parser("rotate", help="archive calls.jsonl and start fresh")
+    sp_rot.add_argument("--archive-name", default=None,
+                        help="archive filename (default: calls.<date>.jsonl)")
+    sp_rot.add_argument("--dry-run", action="store_true", default=False,
+                        help="print what would happen without mutating files")
+    sp_rot.set_defaults(func=cmd_rotate)
 
     return p
 

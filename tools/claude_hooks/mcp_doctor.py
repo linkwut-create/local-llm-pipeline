@@ -500,10 +500,12 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
             if ledger_size > 100 * 1024 * 1024:
                 fail("ledger_file_size",
                      f"calls.jsonl is {ledger_size/1024/1024:.1f} MB — excessive",
-                     "Consider manual archival or enable rotation when available.")
+                     "Run: py -3 tools/call_ledger_cli.py rotate\n"
+                     "Then verify: py -3 tools/call_ledger_cli.py --diagnostics summary")
             elif ledger_size >= 10 * 1024 * 1024:
                 warn("ledger_file_size",
-                     f"calls.jsonl is {ledger_size/1024/1024:.1f} MB — consider archival")
+                     f"calls.jsonl is {ledger_size/1024/1024:.1f} MB — consider archival",
+                     "Run: py -3 tools/call_ledger_cli.py rotate")
             else:
                 ok("ledger_file_size",
                    f"calls.jsonl: {ledger_size} bytes")

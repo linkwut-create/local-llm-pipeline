@@ -1358,3 +1358,128 @@ class TestRecordCallDiagnosticOnFailure:
         # The ledger dir may not even be touched when disabled, so just
         # verify no exception was raised.
         assert cl.is_ledger_enabled() is False
+
+
+# ---------------------------------------------------------------------------
+# v0.10.0-H M3 — ledger rotation / archive
+# ---------------------------------------------------------------------------
+
+class TestRotateLedger:
+    """Tests for rotate_ledger()."""
+
+    def test_rotates_active_ledger(self, tmp_path):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text(
+            '{"id":"1","ok":true}\n{"id":"2","ok":false}\n',
+            encoding="utf-8")
+
+        ok, detail = cl.rotate_ledger(path=ledger)
+        assert ok is True
+        assert "archived" in detail
+        # The archive file should exist and contain old records.
+        archives = list(tmp_path.glob("calls.*.jsonl"))
+        assert len(archives) == 1
+        content = archives[0].read_text(encoding="utf-8")
+        assert '"id":"1"' in content
+        assert '"id":"2"' in content
+        # Active ledger should be gone (next record_call will recreate it).
+        assert not ledger.exists()
+
+    def test_custom_archive_name(self, tmp_path):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text('{"id":"1","ok":true}\n', encoding="utf-8")
+
+        ok, detail = cl.rotate_ledger(
+            archive_name="calls.my-archive.jsonl", path=ledger)
+        assert ok is True
+        archive = tmp_path / "calls.my-archive.jsonl"
+        assert archive.exists()
+        assert '"id":"1"' in archive.read_text(encoding="utf-8")
+
+    def test_missing_ledger_returns_ok_nothing_to_rotate(self, tmp_path):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ok, detail = cl.rotate_ledger(path=ledger)
+        assert ok is True
+        assert "does not exist" in detail
+
+    def test_empty_ledger_returns_ok_nothing_to_rotate(self, tmp_path):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text("", encoding="utf-8")
+        ok, detail = cl.rotate_ledger(path=ledger)
+        assert ok is True
+        assert "empty" in detail
+
+    def test_existing_archive_target_returns_false(self, tmp_path):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text('{"id":"1","ok":true}\n', encoding="utf-8")
+        archive = tmp_path / "calls.existing.jsonl"
+        archive.write_text("old archive", encoding="utf-8")
+
+        ok, detail = cl.rotate_ledger(
+            archive_name="calls.existing.jsonl", path=ledger)
+        assert ok is False
+        assert "already exists" in detail
+        # The active ledger should NOT have been rotated away.
+        assert ledger.exists()
+
+    def test_never_raises_on_oserror(self, tmp_path, monkeypatch):
+        import tools.call_ledger as cl
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text('{"id":"1","ok":true}\n', encoding="utf-8")
+
+        def _fail(*a, **kw):
+            raise OSError("permission denied")
+        monkeypatch.setattr(ledger.__class__, "rename", _fail)
+        ok, detail = cl.rotate_ledger(path=ledger)
+        assert ok is False
+        assert "failed" in detail
+
+
+class TestCliRotate:
+    """Tests for call_ledger_cli.py rotate subcommand."""
+
+    def test_dry_run_does_not_mutate(self, tmp_path, capsys):
+        import tools.call_ledger as cl
+        import call_ledger_cli
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text('{"id":"1","ok":true}\n', encoding="utf-8")
+
+        rc = call_ledger_cli.main(
+            ["--path", str(ledger), "rotate", "--dry-run"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "DRY RUN" in out
+        assert "calls." in out
+        # File should NOT have been mutated.
+        assert ledger.exists()
+
+    def test_rotate_succeeds(self, tmp_path, capsys):
+        import call_ledger_cli
+        ledger = tmp_path / "calls.jsonl"
+        ledger.write_text('{"id":"1","ok":true}\n', encoding="utf-8")
+
+        rc = call_ledger_cli.main(
+            ["--path", str(ledger), "rotate",
+             "--archive-name", "calls.archived.jsonl"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "OK" in out
+        archive = tmp_path / "calls.archived.jsonl"
+        assert archive.exists()
+        assert not ledger.exists()
+
+    def test_rotate_missing_ledger_returns_success(self, tmp_path, capsys):
+        import call_ledger_cli
+        ledger = tmp_path / "calls.jsonl"
+        # No file created — ledger doesn't exist.
+        rc = call_ledger_cli.main(
+            ["--path", str(ledger), "rotate"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "OK" in out
+        assert "does not exist" in out
