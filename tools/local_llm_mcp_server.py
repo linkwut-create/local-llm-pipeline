@@ -2116,42 +2116,16 @@ def call_summarize_file(params: dict) -> dict:
     except (OSError, UnicodeError):
         pass
 
-    # Output cache: skip re-analysis if file unchanged and cached result < 1h old
-    try:
-        cache_dir = SCRIPT_DIR / ".local_llm_out" / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cfpath = Path(path_str).resolve()
-        mtime = cfpath.stat().st_mtime
-        cache_key = hashlib.sha256(
-            f"{cfpath}:{mtime}:{proactive_profile or 'default'}".encode()
-        ).hexdigest()[:16]
-        cache_file = cache_dir / f"summarize_{cache_key}.json"
-        if cache_file.exists():
-            age = time.time() - cache_file.stat().st_mtime
-            if age < 3600:  # 1 hour TTL
-                cached = json.loads(cache_file.read_text(encoding="utf-8"))
-                cached["cache_hit"] = True
-                print(f"MCP: cache hit — summarize {path_str} ({age:.0f}s old)", file=sys.stderr)
-                return build_success_response("local_summarize_file", cached, 0, _make_request_id())
-    except Exception:
-        pass
-
+    # v0.11.0-A1: MCP-level summarize-file cache removed — worker cache
+    # (local_llm_cache.py) is authoritative and correctly records cache
+    # hits in the call ledger.  The old MCP cache skipped the worker
+    # entirely, which meant cache hits were invisible in the ledger.
     cmd = build_router_cmd("summarize-file", path_str, None, max_chars,
                            proactive_profile or user_profile, params.get("model"))
     result = _wrap_worker_call("local_summarize_file", cmd, task="summarize-file",
                                cjk_ratio=cjk_ratio,
                                extra_env=_build_ledger_extra_env(
                                    mcp_tool_name="local_summarize_file"))
-
-    # Write to cache on success
-    if result.get("ok"):
-        try:
-            text = result.get("result", {}).get("content", [{}])[0].get("text", "{}")
-            content = json.loads(text)
-            cache_file.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
-        except Exception:
-            pass
-
     return result
 
 

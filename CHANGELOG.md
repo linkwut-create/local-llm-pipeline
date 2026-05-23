@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.11.0 (unreleased, post-v0.10.0)
+
+- v0.11.0-A1: removed redundant MCP-layer summarize-file cache
+  (`call_summarize_file` L2119-2153).  The MCP cache had three bugs:
+  cache key lacked model/prompt_hash/size/mtime_ns, hardcoded 1h TTL,
+  and cache hits bypassed the worker entirely (no ledger record).
+  Worker cache (`local_llm_cache.py`) is now authoritative for both
+  summarize-file and summarize-tree — it has correct cache-key
+  composition, no TTL, and always writes ledger records.  16 new
+  tests.  1316/1316 passed, 13/13 run_checks.  No VERSION bump.
+
 ## v0.10.0 - 2026-05-24
 
 - C2 streaming stdout contract fix (v0.10.0-A through v0.10.0-D, chain closed).

@@ -352,6 +352,14 @@ schema were not touched, and no `structural_risk` runtime trigger or
 remains optional and may be revived only under a separately approved
 plan.
 
+## v0.11.0-A (in progress)
+
+- v0.11.0-A1: removed redundant MCP-layer summarize-file cache.
+  Worker cache (`local_llm_cache.py`) is now authoritative.
+  Fixed: MCP cache hit skipped ledger; MCP cache key lacked
+  model/prompt_hash/size; hardcoded 1h TTL removed.
+  16 new tests.  1316/1316 passed.  No VERSION bump.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`
