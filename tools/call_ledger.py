@@ -306,10 +306,44 @@ def _resolve_path(path: Path | None) -> Path:
     return Path(path) if path else LEDGER_FILE
 
 
+_LEDGER_WRITE_FAILURES_MAX_BYTES = 1024 * 1024  # 1 MB before truncation
+
+
+def _record_write_failure(error: str) -> None:
+    """Record a ledger write failure to a bounded diagnostic log. Never raises.
+
+    v0.10.0-G P6-B2-C: previously every ledger write failure was silent —
+    ``record_call`` returned ``False`` and callers discarded it.  This helper
+    writes one JSONL entry so the operator (and ``mcp_doctor``) can see that
+    ledger writes are failing.
+
+    Self-truncates at 1 MB.  Nested ``except: pass`` ensures a broken
+    diagnostic log can never cascade into a main-call failure.
+    """
+    try:
+        log_path = LEDGER_DIR / "_ledger_write_failures.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if log_path.exists() and log_path.stat().st_size > _LEDGER_WRITE_FAILURES_MAX_BYTES:
+                log_path.unlink()
+        except OSError:
+            pass
+        entry = {
+            "ts": _utc_now_iso(),
+            "error": str(error)[:500],
+        }
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def record_call(record: Mapping[str, Any], path: Path | None = None) -> bool:
     """Append a single ledger record. Never raises.
 
     Returns True on success, False when disabled or on any IO failure.
+    On write failure a diagnostic entry is recorded via
+    :func:`_record_write_failure` so operators can detect silent ledger loss.
     """
     if not is_ledger_enabled():
         return False
@@ -320,7 +354,8 @@ def record_call(record: Mapping[str, Any], path: Path | None = None) -> bool:
         with open(target, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
         return True
-    except Exception:
+    except Exception as exc:
+        _record_write_failure(str(exc))
         return False
 
 

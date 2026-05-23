@@ -458,3 +458,76 @@ class TestAutoWorkerObservability:
         results = mcp_doctor.run_checks(str(repo), str(config))
         found = self._find(results, "spawn_failures_log")
         assert found and found[0]["status"] == "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# v0.10.0-G P6-B2-C — call ledger health checks
+# ---------------------------------------------------------------------------
+
+class TestLedgerHealthChecks:
+    def _find(self, results, check):
+        return [r for r in results if r["check"] == check]
+
+    def test_ledger_file_absent_is_ok(self, healthy_dirs):
+        """No calls.jsonl yet — normal for fresh checkout."""
+        repo, config = healthy_dirs
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_file_present")
+        assert found and found[0]["status"] == "OK"
+
+    def test_ledger_file_present_and_small_is_ok(self, healthy_dirs):
+        repo, config = healthy_dirs
+        audit_dir = repo / ".local_llm_out" / "audit"
+        audit_dir.mkdir(parents=True)
+        (audit_dir / "calls.jsonl").write_text(
+            '{"id":"1","ok":true}\n', encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_file_size")
+        assert found and found[0]["status"] == "OK"
+
+    def test_ledger_file_large_warns(self, healthy_dirs):
+        repo, config = healthy_dirs
+        audit_dir = repo / ".local_llm_out" / "audit"
+        audit_dir.mkdir(parents=True)
+        (audit_dir / "calls.jsonl").write_text(
+            "x" * (10 * 1024 * 1024 + 1024), encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_file_size")
+        assert found and found[0]["status"] == "WARN"
+
+    def test_ledger_file_excessive_fails(self, healthy_dirs):
+        repo, config = healthy_dirs
+        audit_dir = repo / ".local_llm_out" / "audit"
+        audit_dir.mkdir(parents=True)
+        (audit_dir / "calls.jsonl").write_text(
+            "x" * (100 * 1024 * 1024 + 1024), encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_file_size")
+        assert found and found[0]["status"] == "FAIL"
+
+    def test_write_failures_log_absent_is_ok(self, healthy_dirs):
+        repo, config = healthy_dirs
+        (repo / ".local_llm_out" / "audit").mkdir(parents=True)
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_write_failures_log")
+        assert found and found[0]["status"] == "OK"
+
+    def test_write_failures_log_nonempty_warns(self, healthy_dirs):
+        repo, config = healthy_dirs
+        audit_dir = repo / ".local_llm_out" / "audit"
+        audit_dir.mkdir(parents=True)
+        (audit_dir / "_ledger_write_failures.log").write_text(
+            '{"ts":"t","error":"disk full"}\n', encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_write_failures_log")
+        assert found and found[0]["status"] == "WARN"
+
+    def test_write_failures_log_oversize_fails(self, healthy_dirs):
+        repo, config = healthy_dirs
+        audit_dir = repo / ".local_llm_out" / "audit"
+        audit_dir.mkdir(parents=True)
+        (audit_dir / "_ledger_write_failures.log").write_text(
+            "x" * (1024 * 1024 + 1024), encoding="utf-8")
+        results = mcp_doctor.run_checks(str(repo), str(config))
+        found = self._find(results, "ledger_write_failures_log")
+        assert found and found[0]["status"] == "FAIL"

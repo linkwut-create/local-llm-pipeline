@@ -485,6 +485,57 @@ def run_checks(repo_root: str, config_dir: str) -> list[dict]:
              f"Auto-worker output dir not yet present: {auto_dir}",
              "Normal for a fresh checkout; the first SessionStart will create it.")
 
+    # =================================================================
+    # 9. Call ledger health (v0.10.0-G P6-B2-C)
+    # =================================================================
+    ledger_dir = repo / ".local_llm_out" / "audit"
+    ledger_file = ledger_dir / "calls.jsonl"
+
+    if ledger_file.is_file():
+        try:
+            ledger_size = ledger_file.stat().st_size
+        except OSError as e:
+            warn("ledger_file_size", f"Could not stat calls.jsonl: {e}")
+        else:
+            if ledger_size > 100 * 1024 * 1024:
+                fail("ledger_file_size",
+                     f"calls.jsonl is {ledger_size/1024/1024:.1f} MB — excessive",
+                     "Consider manual archival or enable rotation when available.")
+            elif ledger_size >= 10 * 1024 * 1024:
+                warn("ledger_file_size",
+                     f"calls.jsonl is {ledger_size/1024/1024:.1f} MB — consider archival")
+            else:
+                ok("ledger_file_size",
+                   f"calls.jsonl: {ledger_size} bytes")
+    else:
+        ok("ledger_file_present",
+           "calls.jsonl not yet created — normal for a fresh checkout")
+
+    wf_log = ledger_dir / "_ledger_write_failures.log"
+    if wf_log.is_file():
+        try:
+            wf_size = wf_log.stat().st_size
+        except OSError as e:
+            warn("ledger_write_failures_log",
+                 f"Could not stat _ledger_write_failures.log: {e}")
+        else:
+            if wf_size == 0:
+                ok("ledger_write_failures_log",
+                   "_ledger_write_failures.log present but empty")
+            elif wf_size > 1024 * 1024:
+                fail("ledger_write_failures_log",
+                     f"_ledger_write_failures.log is {wf_size/1024/1024:.1f} MB "
+                     "— frequent write failures",
+                     f"Inspect {wf_log} for repeated failures, then truncate it.")
+            else:
+                warn("ledger_write_failures_log",
+                     f"_ledger_write_failures.log non-empty ({wf_size} bytes) "
+                     "— some ledger writes have failed",
+                     f"Inspect {wf_log} to see what failed.")
+    else:
+        ok("ledger_write_failures_log",
+           "_ledger_write_failures.log absent — no recorded write failures")
+
     return results
 
 
