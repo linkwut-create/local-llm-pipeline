@@ -68,8 +68,16 @@
   tests (19 classification + 4 build_record + 2 breakdown_counts + 7 CLI).
   1288/1288 passed, 13/13 run_checks.  Deferred: exact LAN dollar cost
   accounting, `LOCAL_LLM_COST_TABLE` expansion, streaming cost passthrough
-  (v2-B), cache-tier estimation (v2-C).  Next remaining: P6-B3-B/H5 MTP
-  endpoint config, P5-C V4-Flash polish.
+  (v2-B), cache-tier estimation (v2-C).
+- P6-B3-B/H5 endpoint resolution unification (v0.10.0-M).  Extracted shared
+  `_resolve_provider()` and `_resolve_endpoint()` helpers from worker's
+  `resolve_config()` so debate reuses the same priority chain.  Debate now
+  supports `LOCAL_LLM_PROVIDER` env var, `--base-url` CLI flag, and provider
+  auto-detection — previously it ignored all three and always defaulted to
+  ollama + localhost:11434 when no env was set.  Worker behavior unchanged.
+  12 new tests.  1300/1300 passed, 13/13 run_checks.  `_MTP_ENDPOINTS`
+  hardcode NOT changed (display-only, does not affect routing).  Next
+  remaining: P5-C V4-Flash polish.
 
 ## v0.9.8 - 2026-05-23
 

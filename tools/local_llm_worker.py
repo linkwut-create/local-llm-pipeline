@@ -852,23 +852,47 @@ def load_task_config(task_name: str) -> dict:
     return tasks.get(task_name, {})
 
 
+def _resolve_provider(args_provider: str | None = None) -> str:
+    """Resolve provider: args > LOCAL_LLM_PROVIDER env > auto-detect > 'ollama'.
+
+    Extracted from resolve_config() so debate can share the same logic
+    (v0.10.0-M P6-B3-B/H5 endpoint resolution unification).
+    """
+    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    auto_provider = "ollama"
+    if env_base and ":11434" not in env_base:
+        auto_provider = "openai-compatible"
+    return (
+        args_provider
+        or os.environ.get("LOCAL_LLM_PROVIDER")
+        or auto_provider
+    )
+
+
+def _resolve_endpoint(provider: str, args_base_url: str | None = None) -> str:
+    """Resolve base URL for *provider*: args > LOCAL_LLM_BASE_URL > OLLAMA_HOST > default.
+
+    Extracted from resolve_config() so debate can share the same logic
+    (v0.10.0-M P6-B3-B/H5 endpoint resolution unification).
+    """
+    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    if provider == "ollama":
+        ollama_host = os.environ.get("OLLAMA_HOST", "")
+        if ollama_host and not ollama_host.startswith("http"):
+            ollama_host = f"http://{ollama_host}"
+        return args_base_url or env_base or ollama_host or "http://localhost:11434"
+    return args_base_url or env_base or "http://localhost:8080/v1"
+
+
 def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     task_conf = load_task_config(args.task)
     profile_name = args.profile or task_conf.get("default_profile", "fast_summary")
     profile = load_profile(profile_name)
 
     config = WorkerConfig()
-    # Auto-detect provider: when LOCAL_LLM_BASE_URL points to a non-Ollama
-    # endpoint (e.g. llama.cpp on ports 8080-8083), switch to openai-compatible.
-    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    auto_provider = "ollama"
-    if env_base and ":11434" not in env_base:
-        auto_provider = "openai-compatible"
-    config.provider = (
-        args.provider
-        or os.environ.get("LOCAL_LLM_PROVIDER")
-        or auto_provider
-    )
+    # v0.10.0-M: provider and endpoint resolution delegated to shared helpers
+    # so debate can use the same logic.
+    config.provider = _resolve_provider(args.provider)
     config.model = (
         args.model
         or os.environ.get("LOCAL_LLM_MODEL")
@@ -876,13 +900,7 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
     )
     config.profile = profile_name
 
-    if config.provider == "ollama":
-        ollama_host = os.environ.get("OLLAMA_HOST", "")
-        if ollama_host and not ollama_host.startswith("http"):
-            ollama_host = f"http://{ollama_host}"
-        config.base_url = args.base_url or env_base or ollama_host or "http://localhost:11434"
-    else:
-        config.base_url = args.base_url or env_base or "http://localhost:8080/v1"
+    config.base_url = _resolve_endpoint(config.provider, args.base_url)
 
     config.timeout = int(
         args.timeout

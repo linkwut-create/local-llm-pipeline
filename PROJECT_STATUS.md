@@ -498,3 +498,28 @@ plan.
   streaming cost passthrough (v2-B), cache-tier estimation (v2-C).
   Next remaining: P6-B3-B/H5 MTP endpoint config, P5-C V4-Flash polish.
   **Do not start H5/MTP or P5-C without separate approval.**
+
+## P6-B3-B/H5 Endpoint Resolution Unification — Closeout
+
+- **Chain**: P6-B3-B/H5 read-only audit → v0.10.0-M.  Chain closed.
+- **Audit finding**: Worker and debate had independent endpoint resolution
+  logic with different fallback chains — debate ignored `LOCAL_LLM_PROVIDER`,
+  `--base-url`, and auto-detection.  `_MTP_ENDPOINTS` is display-only and
+  does not affect routing or `all_ok`.
+- **Fix**: Extracted `_resolve_provider(args_provider)` and
+  `_resolve_endpoint(provider, args_base_url)` from worker's `resolve_config()`
+  as module-level shared helpers.  Debate now imports and delegates to them.
+  Worker `resolve_config()` refactored to call the shared helpers — behavior
+  byte-identical.  Debate `resolve_base_url()` now delegates to
+  `_resolve_endpoint`.  Debate `--provider` default changed from `"ollama"`
+  to `None` to allow `LOCAL_LLM_PROVIDER` env fallthrough.  Added `--base-url`
+  CLI flag to debate.
+- **Preserved**: Default behavior unchanged — no env vars means ollama +
+  localhost:11434 (worker and debate agree).  `_MTP_ENDPOINTS` hardcode
+  unchanged.  `ALLOWED_ENV_VARS` unchanged.  Profiles JSON schema unchanged.
+  Doctor unchanged.  MCP server endpoint queries unchanged.
+- **Tests**: 12 new tests (provider/env/default resolution + args override +
+  debate delegation + worker/debate agreement).  1300/1300 full suite.
+  13/13 run_checks.  Commit-gate ok=true.
+- **Remaining**: P5-C V4-Flash polish only.  **Do not start P5-C without
+  separate approval.**

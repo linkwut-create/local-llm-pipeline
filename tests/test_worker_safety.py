@@ -284,3 +284,122 @@ def test_worker_stdin_read_handles_invalid_utf8(monkeypatch):
     # With errors="replace", the invalid bytes are replaced with U+FFFD
     assert "start" in content
     assert "end" in content
+
+
+# ---------------------------------------------------------------------------
+# v0.10.0-M — endpoint resolution unification tests
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_provider_explicit():
+    """--provider takes highest priority."""
+    from local_llm_worker import _resolve_provider
+    assert _resolve_provider("ollama") == "ollama"
+    assert _resolve_provider("openai-compatible") == "openai-compatible"
+
+
+def test_resolve_provider_from_env(monkeypatch):
+    """LOCAL_LLM_PROVIDER env takes effect when no CLI arg."""
+    from local_llm_worker import _resolve_provider
+    monkeypatch.setenv("LOCAL_LLM_PROVIDER", "openai-compatible")
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert _resolve_provider(None) == "openai-compatible"
+
+
+def test_resolve_provider_default_ollama(monkeypatch):
+    """Default to ollama when nothing is set."""
+    from local_llm_worker import _resolve_provider
+    monkeypatch.delenv("LOCAL_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert _resolve_provider(None) == "ollama"
+
+
+def test_resolve_endpoint_ollama_default(monkeypatch):
+    """Ollama default is localhost:11434."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert _resolve_endpoint("ollama") == "http://localhost:11434"
+
+
+def test_resolve_endpoint_openai_compat_default(monkeypatch):
+    """OpenAI-compatible default is localhost:8080/v1."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert _resolve_endpoint("openai-compatible") == "http://localhost:8080/v1"
+
+
+def test_resolve_endpoint_args_override(monkeypatch):
+    """--base-url overrides all env vars."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://env.example.com:11434")
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama-host.example.com")
+    assert _resolve_endpoint("ollama", "http://cli.example.com:9999") == "http://cli.example.com:9999"
+
+
+def test_resolve_endpoint_local_llm_base_url_priority(monkeypatch):
+    """LOCAL_LLM_BASE_URL takes priority over OLLAMA_HOST."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://env.example.com:11434")
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama-host.example.com")
+    assert _resolve_endpoint("ollama") == "http://env.example.com:11434"
+
+
+def test_resolve_endpoint_ollama_host_fallback(monkeypatch):
+    """OLLAMA_HOST used when LOCAL_LLM_BASE_URL not set."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OLLAMA_HOST", "193.168.2.2")
+    # OLLAMA_HOST without http:// prefix gets normalized
+    assert _resolve_endpoint("ollama") == "http://193.168.2.2"
+
+
+def test_resolve_endpoint_ollama_host_with_http(monkeypatch):
+    """OLLAMA_HOST with http:// prefix preserved as-is."""
+    from local_llm_worker import _resolve_endpoint
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OLLAMA_HOST", "http://192.168.2.2:11434")
+    assert _resolve_endpoint("ollama") == "http://192.168.2.2:11434"
+
+
+def test_debate_resolve_base_url_delegates_to_shared(monkeypatch):
+    """debate's resolve_base_url uses the same logic as worker."""
+    from local_llm_worker import _resolve_endpoint
+    from local_llm_debate import resolve_base_url
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    assert resolve_base_url("ollama") == _resolve_endpoint("ollama")
+    assert resolve_base_url("openai-compatible") == _resolve_endpoint("openai-compatible")
+
+
+def test_debate_worker_agree_on_defaults(monkeypatch):
+    """worker and debate produce same endpoint given identical env."""
+    from local_llm_worker import _resolve_provider, _resolve_endpoint
+    from local_llm_debate import resolve_base_url
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_PROVIDER", raising=False)
+    provider = _resolve_provider(None)
+    worker_url = _resolve_endpoint(provider)
+    debate_url = resolve_base_url(provider)
+    assert worker_url == debate_url
+
+
+def test_worker_config_uses_shared_helpers(monkeypatch):
+    """resolve_config() uses the shared helpers internally."""
+    import argparse
+    from local_llm_worker import resolve_config
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LOCAL_LLM_PROVIDER", raising=False)
+    args = argparse.Namespace(
+        task="summarize-file", profile=None, target=None, max_files=20,
+        provider=None, model=None, base_url=None, timeout=None,
+        max_chars=None, max_output_chars=None, output_dir=None,
+        target_language=None, style=None, json_only=False, no_markdown=False,
+        stream=False,
+    )
+    cfg = resolve_config(args)
+    assert cfg.provider == "ollama"
+    assert cfg.base_url == "http://localhost:11434"

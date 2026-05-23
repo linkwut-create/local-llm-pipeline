@@ -95,12 +95,13 @@
 - [x] M3 manual call ledger rotation (rotate_ledger, CLI rotate, doctor refs) — v0.10.0-H
 - [x] H6 classify_error taxonomy (substring disambiguation, word-boundary 5xx, connection-before-timeout) — v0.10.0-I→J
 - [x] M7 cost-estimate credibility (execution_location + cost_confidence labels) — v0.10.0-L
+- [x] P6-B3-B/H5 endpoint resolution unification (shared provider/endpoint helpers) — v0.10.0-M
 
 ## Current State (post-v0.9.8)
 
 - 9 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
 - 3-round debate (fast mode default for MCP), parallel review for release audits
-- 1288 tests, 13 run_checks categories, 23 profile entries
+- 1300 tests, 13 run_checks categories, 23 profile entries
 - Remote Ollama via LOCAL_LLM_BASE_URL / OLLAMA_HOST
 - Installer with manifest and --update mode
 - Auto-invocation hooks: SessionStart, PreToolUse, PostToolUse, Stop
@@ -122,7 +123,8 @@ separate design and approval before implementation.
   connection-before-timeout order, word-boundary 5xx gating, narrowed parse matches.
 - ~~M7~~ — **Done (v0.10.0-L).** Execution-location classification (`local`/`lan`/`remote`/`unknown`)
   + cost-confidence labels (`high`/`medium`/`low`/`none`).  No exact LAN dollar costs.
-- **P6-B3-B / H5** — MTP endpoint hardcoding / configuration surface
+- ~~P6-B3-B / H5~~ — **Done (v0.10.0-M).** Worker/debate endpoint resolution unified.
+  `_MTP_ENDPOINTS` is display-only (not changed).
 - **P5-C** — V4-Flash `_env` wiring, model warmup, per-profile provider hint
 
 ## Will NOT Do (by design)

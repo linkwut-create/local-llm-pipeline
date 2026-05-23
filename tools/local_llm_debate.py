@@ -25,7 +25,8 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from local_llm_worker import (
     BLOCKED_PATHS, BLOCKED_EXTENSIONS, BLOCKED_FILENAMES,
-    WorkerConfig, call_model, is_blocked_path, read_file_safe,
+    WorkerConfig, _resolve_provider, _resolve_endpoint,
+    call_model, is_blocked_path, read_file_safe,
     collect_tree,
 )
 
@@ -150,14 +151,11 @@ def load_profiles() -> dict:
     return json.loads(PROFILES_PATH.read_text(encoding="utf-8")).get("profiles", {})
 
 
-def resolve_base_url(provider: str) -> str:
-    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    if provider == "ollama":
-        ollama_host = os.environ.get("OLLAMA_HOST", "")
-        if ollama_host and not ollama_host.startswith("http"):
-            ollama_host = f"http://{ollama_host}"
-        return env_base or ollama_host or "http://localhost:11434"
-    return env_base or "http://localhost:8080/v1"
+# v0.10.0-M: resolve_base_url delegates to the shared _resolve_endpoint in
+# local_llm_worker so worker and debate use the same priority chain.
+# args_base_url is accepted so CLI --base-url overrides env vars.
+def resolve_base_url(provider: str, args_base_url: str | None = None) -> str:
+    return _resolve_endpoint(provider, args_base_url)
 
 
 def get_round_prompt(round_num: int, task: str) -> str:
@@ -229,7 +227,8 @@ def run_round(round_num: int, task: str, original_input: str,
               profiles: dict, provider: str, timeout: int,
               max_output_chars: int,
               total_rounds: int = MAX_ROUNDS,
-              debate_trigger: str = "cli") -> dict:
+              debate_trigger: str = "cli",
+              base_url: str | None = None) -> dict:
     profile = profiles.get(profile_name, {})
     model = profile.get("model", "unknown")
 
@@ -237,7 +236,7 @@ def run_round(round_num: int, task: str, original_input: str,
         provider=provider,
         model=model,
         profile=profile_name,
-        base_url=resolve_base_url(provider),
+        base_url=base_url or resolve_base_url(provider),
         timeout=timeout,
         max_output_chars=max_output_chars or profile.get("max_output_chars", 5000),
     )
@@ -447,8 +446,10 @@ def main():
                         help="Only write JSON, not Markdown")
     parser.add_argument("--no-markdown", action="store_true",
                         help="Alias for --json-only")
-    parser.add_argument("--provider", default="ollama",
+    parser.add_argument("--provider", default=None,
                         choices=["ollama", "openai-compatible"])
+    parser.add_argument("--base-url", default=None,
+                        help="Override the model endpoint base URL")
     parser.add_argument("--timeout", type=int, default=600,
                         help="Timeout per round in seconds")
     parser.add_argument("--summary-only", action="store_true",
@@ -518,6 +519,12 @@ def main():
     prior_outputs = []
     total_start = time.time()
 
+    # v0.10.0-M: resolve provider and endpoint once for all rounds via the
+    # shared helpers from local_llm_worker — same priority chain as the
+    # worker so the two can never silently diverge.
+    resolved_provider = _resolve_provider(args.provider)
+    resolved_base_url = _resolve_endpoint(resolved_provider, args.base_url)
+
     for i, profile_name in enumerate(round_profiles, 1):
         print(f"Round {i}/{num_rounds}: {profile_name} ({models[profile_name]})...", end=" ", flush=True, file=sys.stderr)
 
@@ -528,7 +535,8 @@ def main():
             prior_outputs=prior_outputs,
             profile_name=profile_name,
             profiles=all_profiles,
-            provider=args.provider,
+            provider=resolved_provider,
+            base_url=resolved_base_url,
             timeout=args.timeout,
             max_output_chars=args.max_output_chars,
             total_rounds=num_rounds,
