@@ -37,6 +37,43 @@ try:
 except Exception:
     _ledger_build = _ledger_record = None
 
+# B1-C3: fields that may be merged into debate round ledger records from
+# LOCAL_LLM_LEDGER_EXTRA.  Debate-authoritative fields (debate_mode,
+# debate_rounds, debate_round_index, debate_trigger, mcp_tool_name,
+# source) are NOT in this set — they can never be overridden by env.
+_DEBATE_ENV_MERGEABLE_KEYS = frozenset({
+    "diff_risk_level",
+    "diff_risk_confidence",
+    "debate_skipped",
+    "debate_skip_reason",
+    "preclassifier_profile",
+    "preclassifier_model",
+    "preclassifier_request_id",
+    "safety_blockers",
+    "debate_skip_allowed",
+    "skip_debate_recommended",
+    "preclassifier_method",
+    "changed_files_count",
+})
+
+
+def _load_ledger_env_extra_for_debate() -> dict:
+    """Read LOCAL_LLM_LEDGER_EXTRA and return only B1-C3-mergeable fields.
+
+    Never raises.  Returns {} on any failure.
+    """
+    raw = os.environ.get("LOCAL_LLM_LEDGER_EXTRA")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items()
+            if k in _DEBATE_ENV_MERGEABLE_KEYS and v is not None}
+
 PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 
@@ -179,7 +216,13 @@ def _emit_debate_round_ledger(
     debate_rounds: int,
     debate_trigger: str,
 ) -> None:
-    """Write one call ledger record per debate round.  Never raises."""
+    """Write one call ledger record per debate round.  Never raises.
+
+    B1-C3: merges preclassifier fields from LOCAL_LLM_LEDGER_EXTRA
+    (safely) then overrides with debate-authoritative fields.
+    ``debate_skipped`` and ``debate_skip_allowed`` are forced to
+    ``False`` while the debate runner is executing.
+    """
     if not (_ledger_build and _ledger_record):
         return
     try:
@@ -192,6 +235,21 @@ def _emit_debate_round_ledger(
             output_tokens = usage.get("output_tokens")
             cached_tokens = usage.get("cached_tokens")
             cache_miss_tokens = usage.get("cache_miss_tokens")
+
+        # B1-C3: merge preclassifier fields from env, then force
+        # debate-authoritative fields and safety invariants.
+        extra = _load_ledger_env_extra_for_debate()
+        extra["debate_mode"] = True
+        extra["debate_rounds"] = debate_rounds
+        extra["debate_round_index"] = debate_round_index
+        extra["debate_trigger"] = debate_trigger
+        extra["mcp_tool_name"] = "local_debate_review_diff"
+        extra["source"] = debate_trigger
+        # Hard safety invariants — if the debate runner is executing,
+        # the debate was NOT skipped and skipping is NOT allowed.
+        extra["debate_skipped"] = False
+        extra["debate_skip_allowed"] = False
+
         rec = _ledger_build(
             task_type=task_type,
             tool_name="local_debate_review_diff",
@@ -208,14 +266,7 @@ def _emit_debate_round_ledger(
             success=success,
             failure_reason=error,
             result_summary=(output_text[:300] if output_text else None),
-            extra={
-                "debate_mode": True,
-                "debate_rounds": debate_rounds,
-                "debate_round_index": debate_round_index,
-                "debate_trigger": debate_trigger,
-                "mcp_tool_name": "local_debate_review_diff",
-                "source": debate_trigger,
-            },
+            extra=extra,
         )
         _ledger_record(rec)
     except Exception:

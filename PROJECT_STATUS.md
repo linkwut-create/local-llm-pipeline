@@ -397,7 +397,11 @@ plan.
   Debate always executes regardless — `debate_skipped` and `debate_skip_allowed`
   always false. 18 new tests + 6 updated mocks. `call_review_diff` auto-debate
   path not integrated (safer). Preclassifier crash is non-fatal.
-- **Next**: B1-C2 dogfood verification or B1-D controlled skip policy audit.
+- **B1-C3** (this step): fixed debate ledger propagation. `local_llm_debate.py` reads
+  `LOCAL_LLM_LEDGER_EXTRA` via `_load_ledger_env_extra_for_debate()`, merges B1-B
+  fields into per-round ledger records. Debate-authoritative fields can't be overridden;
+  `debate_skipped`/`debate_skip_allowed` forced false. 15 new tests. 1431/1431 passed.
+- **Next**: B1-C4 dogfood re-verification.
 
 ## v0.10.0 Release-Prep Anchor
 

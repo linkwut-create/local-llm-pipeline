@@ -64,6 +64,19 @@
   test mocks to accept the new `extra_env` parameter. `call_review_diff`
   auto-debate path intentionally not integrated (safer, simpler).
   Next: B1-C2 dogfood verification or B1-D controlled skip policy audit.
+- v0.11.0-B1-C3: fixed debate ledger propagation. `local_llm_debate.py`
+  now reads `LOCAL_LLM_LEDGER_EXTRA` safely via new
+  `_load_ledger_env_extra_for_debate()` helper and merges allowlisted
+  B1-B preclassifier fields into per-round debate ledger records.
+  Debate-authoritative fields (`debate_mode`, `debate_rounds`,
+  `debate_round_index`, `debate_trigger`, `mcp_tool_name`, `source`)
+  can never be overridden by env. `debate_skipped` and
+  `debate_skip_allowed` are forced to `False` while the debate
+  runner is executing. 15 new tests
+  (`tests/test_debate_ledger_preclassifier.py`) cover env merging,
+  authoritative override, forced-false invariants, malformed env,
+  no-env backward compat, and ledger-failure survival.
+  Next: B1-C4 dogfood re-verification.
 
 ## v0.10.0 - 2026-05-24
 
