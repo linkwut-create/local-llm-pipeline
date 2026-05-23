@@ -82,6 +82,111 @@ def test_classify_error_invalid_json():
     assert error_type == "invalid_json"
 
 
+# ---------------------------------------------------------------------------
+# v0.10.0-J H6 — classify_error substring disambiguation
+# ---------------------------------------------------------------------------
+
+def test_port_number_not_classified_as_backend_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("port 5001 is already in use")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type != "backend_error"
+
+
+def test_standalone_500_still_backend_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("HTTP 500 internal server error")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_error"
+
+
+def test_internal_server_error_is_backend_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("internal server error on backend")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_error"
+
+
+def test_bad_gateway_is_backend_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("bad gateway from upstream")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_error"
+
+
+def test_service_unavailable_is_backend_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("service unavailable — try later")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_error"
+
+
+def test_generic_json_word_not_invalid_json():
+    from local_llm_worker import classify_error
+    e = RuntimeError("response body contains non-JSON extension field")
+    error_type, _ = classify_error(e, "summarize-file")
+    # Generic mention of "JSON" alone should not trigger invalid_json.
+    assert error_type != "invalid_json"
+
+
+def test_jsondecode_still_invalid_json():
+    from local_llm_worker import classify_error
+    e = ValueError("jsondecode error while parsing model output")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "invalid_json"
+
+
+def test_not_json_message_is_invalid_json():
+    from local_llm_worker import classify_error
+    e = ValueError("response is not json")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "invalid_json"
+
+
+def test_parse_error_is_invalid_json():
+    from local_llm_worker import classify_error
+    e = ValueError("could not parse model response")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "invalid_json"
+
+
+def test_failed_to_parse_is_invalid_json():
+    from local_llm_worker import classify_error
+    e = ValueError("failed to parse output")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "invalid_json"
+
+
+def test_unknown_exception_returns_unknown_error():
+    from local_llm_worker import classify_error
+    e = RuntimeError("some completely unexpected thing happened")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "unknown_error"
+
+
+def test_timeout_type_still_works():
+    from local_llm_worker import classify_error
+    import requests
+    e = requests.Timeout("read timed out")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "timeout"
+
+
+def test_connection_error_type_still_works():
+    from local_llm_worker import classify_error
+    import requests
+    e = requests.ConnectionError("connection refused")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_unreachable"
+
+
+def test_empty_response_still_works():
+    from local_llm_worker import classify_error
+    e = ValueError("empty response from model")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "empty_response"
+
+
 def test_no_retry_tasks_exclude_draft():
     from local_llm_worker import NO_RETRY_TASKS
     assert "draft-fix" in NO_RETRY_TASKS

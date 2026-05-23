@@ -555,9 +555,20 @@ RETRY_DELAY_SECONDS = 2.0
 
 
 def classify_error(exc: Exception, task: str) -> tuple[str, str]:
-    """Classify an exception into an error_type and a user-facing suggestion."""
+    """Classify an exception into an error_type and a user-facing suggestion.
+
+    Stable error_type value space (v0.10.0-J H6 disambiguation):
+      ``timeout``, ``backend_unreachable``, ``empty_response``,
+      ``invalid_json``, ``backend_error``, ``unknown_error``.
+
+    Matching order is load-bearing: ``isinstance`` checks run first, then
+    substring heuristics from most-specific to least-specific.  The
+    ``error_type`` values are intentionally stable — they appear in the call
+    ledger and historical queries must remain comparable.
+    """
     msg = str(exc).lower() if str(exc) else ""
 
+    # Layer 1 — precise type checks (no ambiguity here)
     if isinstance(exc, requests.Timeout):
         return ("timeout",
                 f"model call timed out after {getattr(exc, 'timeout', '?')}s — "
@@ -568,24 +579,36 @@ def classify_error(exc: Exception, task: str) -> tuple[str, str]:
                 "Ollama backend is not reachable — check that Ollama is running "
                 "and OLLAMA_HOST / LOCAL_LLM_BASE_URL is correct")
 
+    # Layer 2 — non-connection timeout / timing failures
     if "timeout" in msg or "timed" in msg:
         return ("timeout",
                 "model call timed out — try a smaller input or increase timeout")
 
+    # Layer 3 — connection-level failures
     if "connection" in msg or "refused" in msg or "unreachable" in msg:
         return ("backend_unreachable",
                 "backend connection failed — verify the backend is running")
 
+    # Layer 4 — empty / missing output
     if "empty" in msg or "no content" in msg:
         return ("empty_response",
                 "model returned empty response — the model may be overloaded or "
                 "the prompt may be incompatible")
 
-    if "json" in msg or "decode" in msg or "parse" in msg:
+    # Layer 5 — JSON / decoding / parsing failures (narrower than before)
+    if any(hint in msg for hint in (
+        "jsondecode", "json decode", "not json", "invalid json",
+        "parse error", "could not parse", "failed to parse",
+    )):
         return ("invalid_json",
                 "model response could not be parsed — the output format may be invalid")
 
-    if "500" in msg or "server error" in msg:
+    # Layer 6 — backend HTTP/server errors (word-boundary on 500)
+    padded = f" {msg} "
+    if (any(hint in padded for hint in (" 500 ", " 501 ", " 502 ", " 503 ", " 504 "))
+            or "internal server error" in msg
+            or "bad gateway" in msg
+            or "service unavailable" in msg):
         return ("backend_error",
                 "backend returned a server error — the model may be overloaded, "
                 "try a smaller model or retry later")
