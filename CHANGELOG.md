@@ -26,6 +26,15 @@
   unpatched `LEDGER_DIR`) — benign, confirmed not a production bug.
   `record_call()` still returns `bool`, still never raises; worker and debate
   call sites unchanged.  1234 passed, 13/13 run_checks.
+- M3 manual call ledger rotation (v0.10.0-H).  Added `rotate_ledger()` helper
+  that archives the active `calls.jsonl` by renaming it to a timestamped file
+  (`calls.<ISO-date>.jsonl`).  New `call_ledger_cli.py rotate` subcommand with
+  `--archive-name`, `--dry-run`, `--path`, and `--format` flags.  `mcp_doctor`
+  large-ledger WARN/FAIL messages now reference the rotate command.
+  `record_call()` unchanged — still append-only, never-raise, no automatic
+  stat or rotation.  `read_records()` unchanged — active file only; archived
+  ledgers readable via `--path`.  No automatic truncation, no data deletion,
+  no compression.  9 targeted tests.  1243 passed, 13/13 run_checks.
 
 ## v0.9.8 - 2026-05-23
 

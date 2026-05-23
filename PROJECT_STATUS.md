@@ -405,4 +405,22 @@ plan.
   `LEDGER_DIR`.  Benign test artifact — not a production bug.  Confirms
   the diagnostic system detects real write failures.
 - **Tests**: 13 targeted tests (6 call_ledger + 7 doctor).  1234 full suite.
-- **Next**: M3 ledger rotation (natural follow-on to ledger write diagnostics).
+
+## M3 Manual Call Ledger Rotation — Closeout
+
+- **Implemented**: v0.10.0-H at `c975222`.  Manual CLI archive, no auto-rotation.
+- **Added**: `rotate_ledger()` in `tools/call_ledger.py` — renames active
+  `calls.jsonl` to `calls.<ISO-date>.jsonl`.  Never raises.  Handles
+  missing ledger, empty ledger, existing archive target (blocks overwrite),
+  OSError.  New `call_ledger_cli.py rotate` subcommand with `--archive-name`,
+  `--dry-run`, `--path`, `--format`.  `mcp_doctor` WARN/FAIL updated to
+  reference the rotate command.
+- **Preserved**: `record_call()` unchanged — still append-only, still
+  never-raise, no `stat()` overhead, no automatic truncation.  `read_records()`
+  unchanged — reads active `calls.jsonl` only; archived ledgers are readable
+  explicitly via `--path`.
+- **Tests**: 9 targeted (6 rotate_ledger + 3 CLI).  1243 full suite.
+- **Smoke**: `call_ledger_cli.py rotate --dry-run` printed expected archive
+  name without mutating files.
+- **Next**: H6 classify_error taxonomy read-only audit (affects ledger
+  `error_type` distribution — requires design before code).

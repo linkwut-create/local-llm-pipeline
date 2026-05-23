@@ -90,12 +90,15 @@
 - [x] Call ledger read diagnostics (malformed line detection, CLI --diagnostics) — P6-B2
 - [x] Bounded ollama list subprocess (30s timeout) — P6-B3
 - [x] Hook silent-failure diagnostics (gate state, auto-worker spawn, MCP shape, doctor) — P7
+- [x] C2 streaming stdout contract fix (compat parser, producer migration) — v0.10.0-A→D
+- [x] P6-B2-C call ledger write-failure observability (_record_write_failure, doctor checks) — v0.10.0-G
+- [x] M3 manual call ledger rotation (rotate_ledger, CLI rotate, doctor refs) — v0.10.0-H
 
-## Current State (v0.9.8)
+## Current State (post-v0.9.8)
 
 - 9 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
 - 3-round debate (fast mode default for MCP), parallel review for release audits
-- 1196 tests, 13 run_checks categories, 23 profile entries
+- 1243 tests, 13 run_checks categories, 23 profile entries
 - Remote Ollama via LOCAL_LLM_BASE_URL / OLLAMA_HOST
 - Installer with manifest and --update mode
 - Auto-invocation hooks: SessionStart, PreToolUse, PostToolUse, Stop
@@ -110,14 +113,13 @@ These items are known gaps from the P6/P7 reliability audits. They are
 **not authorized** for any current or pending phase. Each requires a
 separate design and approval before implementation.
 
-- **P6-B2-C** — `record_call()` write-failure propagation (callers discard return)
-- **P6-B3-B / H5** — MTP endpoint hardcoding / configuration surface
-- **C2** — Streaming double-serialization in MCP server (high blast radius;
-  changes stdout contract for all 8 worker-backed MCP tools)
+- ~~C2~~ — **Done (v0.10.0-A→D).** Streaming stdout contract unified.
+- ~~P6-B2-C~~ — **Done (v0.10.0-G).** Write-failure diagnostic log + doctor checks.
+- ~~M3~~ — **Done (v0.10.0-H).** Manual CLI rotation; no auto-truncation.
 - **H6** — `classify_error` substring-matching rewrite (shifts ledger error_type
   distribution; requires controlled migration)
-- **M3** — Call ledger size / rotation (no archive layout decided)
 - **M7** — Cost-estimate LAN-proxy vs local distinguisher
+- **P6-B3-B / H5** — MTP endpoint hardcoding / configuration surface
 - **P5-C** — V4-Flash `_env` wiring, model warmup, per-profile provider hint
 
 ## Will NOT Do (by design)
