@@ -447,7 +447,19 @@ plan.
 	  (`debate_skip_policy=b1-d-v1`, `debate_mode=false`).  3 new
 	  `KNOWN_EXTRA_KEYS`.  37 new tests.  Commit/release/dangerous
 	  guards unchanged.  VERSION remains `0.10.0`.  No tag.
-	  **Next**: B1-E dogfood verification.
+	- **B1-E dogfood** (direct Python, no commit): verified.
+	  `B1E_DOGFOOD_DIRECT_VERIFIED=yes`,
+	  `B1E_REAL_MCP_ENV_ON_PENDING=yes`.  Direct Python all 8 steps
+	  passed: env-off preserves auto-debate; env-on docs-only skips
+	  auto-debate (single-model review still runs); `safe_to_commit=false`;
+	  skip ledger record written; `debate-skips` CLI counts skips
+	  (`total_skipped=40`); force debate override works; manual
+	  `local_debate_review_diff` never skipped; sensitive files never
+	  skipped.  Caveat: true MCP-process env-on verification pending
+	  Claude Code / MCP server restart with
+	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true`.  HEAD `a8fe5aa`,
+	  `v0.10.0-8-ga8fe5aa`, VERSION `0.10.0`, working tree clean.
+	  **Next**: B1-E2 real MCP env-on verification after MCP restart.
 
 ## v0.10.0 Release-Prep Anchor
 

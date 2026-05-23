@@ -137,7 +137,25 @@
 	  (`tests/test_b1e_controlled_skip.py`).  Manual
 	  `local_debate_review_diff` never skipped.  Commit/release/dangerous
 	  guards unchanged.  VERSION remains 0.10.0.  No tag.
-	  Next: B1-E dogfood verification.
+	- v0.11.0-B1-E dogfood verified (direct Python, not real MCP env-on).
+	  Direct Python verification (all 8 steps passed):
+	  env-off → auto-debate still fires; env-on docs-only → auto-debate
+	  skipped, single-model review still runs; response
+	  `debate_auto_escalation_skipped` with `safe_to_commit=false`,
+	  `requires_commit_gate_review=true`; skip ledger record written
+	  (`debate_skipped=true`, `debate_skip_allowed=true`, `debate_mode=false`,
+	  `debate_skip_policy=b1-d-v1`); `debate-skips` CLI shows
+	  `total_skipped=40`; `LOCAL_LLM_FORCE_DEBATE_REVIEW=true` overrides
+	  skip; manual `local_debate_review_diff` never skipped; sensitive
+	  files (MCP server) never skipped.  Temporary `_dogfood_b1e.py`
+	  removed, working tree clean.
+	  **Important caveat**: real MCP env-on verification is pending —
+	  Claude Code MCP server must be restarted with
+	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true` before the real MCP
+	  path is proven.  Current verification is direct Python only.
+	  `B1E_DOGFOOD_DIRECT_VERIFIED=yes`;
+	  `B1E_REAL_MCP_ENV_ON_PENDING=yes`.
+	  Next: B1-E2 real MCP env-on verification after MCP restart.
 
 ## v0.10.0 - 2026-05-24
 
