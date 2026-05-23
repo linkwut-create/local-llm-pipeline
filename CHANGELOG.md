@@ -191,7 +191,38 @@
 	  **B1-E line closed**: both direct Python and real MCP env-on
 	  paths verified.  Auto-debate skip is opt-in, observable, and
 	  reversible.  Manual debate path preserved.
-	  Next: B1 final closeout, then v0.11.0-C repo/codebase map.
+	- **v0.11.0-B1 final closeout**: diff preclassifier + controlled
+	  auto-debate skip chain closed.
+	  Final B1 state:
+	  B1-A: heuristic-only preclassifier safety core (58 tests).
+	  B1-B: ledger contract + debate-skips CLI (24 tests).
+	  B1-C: advisory integration in debate response and ledger
+	  (18 tests + 15 tests for B1-C3 ledger propagation).
+	  B1-D: controlled skip policy audit (read-only).
+	  B1-E: controlled low-risk auto-debate skip implementation
+	  (37 tests).
+	  B1-E2: real MCP env-on verification passed.
+	  Verified guarantees:
+	  - default unchanged unless
+	    `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true`
+	  - `LOCAL_LLM_FORCE_DEBATE_REVIEW` circuit breaker forces debate
+	  - docs-only heavy diff can skip auto-debate only when opt-in
+	    enabled
+	  - single-model review still runs on skip
+	  - `safe_to_commit=false`
+	  - `requires_commit_gate_review=true`
+	  - skip ledger records written (17 fields)
+	  - `debate-skips` CLI reports skip records
+	  - manual `local_debate_review_diff` never skips
+	  - commit gate / release guard / dangerous command guard
+	    unchanged
+	  Final verification:
+	  - real MCP env-on verified: `B1E_REAL_MCP_ENV_ON_VERIFIED=yes`
+	  - latest HEAD before closeout: `54d3c69`
+	  - VERSION: `0.10.0`
+	  - no tag
+	  **B1 chain closed.**
+	  Next: v0.11.0-C repo/codebase map planning.
 
 ## v0.10.0 - 2026-05-24
 

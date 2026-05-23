@@ -489,7 +489,27 @@ plan.
 	  VERSION remains `0.10.0`.  No tag.  Working tree clean.
 	  **B1-E line closed**: both direct Python and real MCP env-on
 	  paths verified.
-	  **Next**: B1 final closeout, then v0.11.0-C repo/codebase map.
+	- **B1 final closeout** (this entry): diff preclassifier +
+	  controlled auto-debate skip chain closed.
+	  `B1_FINAL_CLOSED=yes`.
+	  `B1E_REAL_MCP_ENV_ON_VERIFIED=yes`.
+	  Pre-closeout HEAD: `54d3c69`, `v0.10.0-10-g54d3c69`,
+	  VERSION `0.10.0`.
+	  What B1 provides:
+	  - preclassifier risk advisory in debate response and ledger
+	  - `debate-skips` CLI reporting
+	  - controlled env-gated auto-debate skip for docs-only diffs
+	    (single-model review still runs, `safe_to_commit=false`,
+	    `requires_commit_gate_review=true`)
+	  What B1 does NOT do:
+	  - does not skip manual `local_debate_review_diff`
+	  - does not bypass commit gate
+	  - does not bypass release guard
+	  - does not mark `safe_to_commit=true` on skip
+	  - does not enable skip by default
+	  - does not skip tests-only / runtime / security / sensitive files
+	  **B1 chain closed.**
+	  Next: v0.11.0-C repo/codebase map planning.
 
 ## v0.10.0 Release-Prep Anchor
 
