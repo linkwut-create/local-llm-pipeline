@@ -351,3 +351,15 @@ schema were not touched, and no `structural_risk` runtime trigger or
 `escalate=true` / `user_requested` MCP parameter was added. P3-C3
 remains optional and may be revived only under a separately approved
 plan.
+
+## v0.9.8 Release-Prep Anchor
+
+- VERSION: `0.9.7` → `0.9.8`
+- Date: 2026-05-23
+- HEAD: `dc253db` (test-only hotfix for stale mock)
+- Hard gates at prep: 1196 passed, 13/13 run_checks, installer dry-run OK (both fresh + update)
+- Deferred items reaffirmed: P6-B2-C, P6-B3-B/H5, C2, H6, M3, M7, P5-C
+- P1-H through P7 chains documented in CHANGELOG v0.9.8 section
+- CHANGELOG header changed from "Unreleased (post-v0.9.7)" to "v0.9.8 - 2026-05-23"
+- docs/roadmap.md rewritten: v0.6.x → v0.9.8 history, current state, deferred items
+- No tools / tests / implementation / tag / zip / push changes

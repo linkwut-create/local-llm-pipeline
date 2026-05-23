@@ -50,14 +50,75 @@
 - [x] Version consistency tests
 - [x] Architecture overview and roadmap (this file)
 
-## Current Stable Boundaries
+## Completed (v0.6.x → v0.9.8)
 
-- 7 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
-- 3-round debate (fast mode default for MCP)
-- 200+ tests, 13 run_checks categories
+### Phase 6: Profile Tuning + Benchmarking (v0.6.x)
+
+- [x] Profile auto-tuning from Ollama model inventory
+- [x] Benchmark expansion across model families
+- [x] Structured logging framework
+
+### Phase 7: Code Drafting + Config Validation (v0.7.x–v0.8.x)
+
+- [x] Code drafting MCP tool (draft-fix/feature/refactor/suggest-improvements)
+- [x] Config schema validation (validate_configs.py)
+- [x] Retry and timeout hardening
+- [x] Concurrency guard
+- [x] Summarize cache
+- [x] Structured call logging (call_ledger.py)
+- [x] Prompt registry with versioned prompt templates
+- [x] Readiness check for installed projects
+
+### Phase 8: MCP 2.0 — Gate, Auto-Worker, Global Launcher (v0.9.x)
+
+- [x] Commit gate review (mcp_gate.py) with diff hash tracking
+- [x] Auto-invocation hooks: SessionStart, PostToolUse, Stop
+- [x] Dangerous command blocking (PreToolUse)
+- [x] Release / tag / push guard
+- [x] Hook doctor diagnostic tool (mcp_doctor.py)
+- [x] Global MCP launcher for cross-project install
+- [x] MCP audit logging and reporting
+
+### Phase 9: Cost Discipline + Reliability + Observability (v0.9.1–v0.9.8)
+
+- [x] Health telemetry isolation (health_store.py) — P1-H
+- [x] Call ledger cost-discipline chain (profile/extra/env stamps, CLI reporting) — P2
+- [x] Escalation cost control with env-knob gates (confidence, uncertain_points) — P3
+- [x] Worker-pool dry-run diagnostic probe — P4
+- [x] V4-Flash experimental profile — P5
+- [x] Subprocess timeout observability fix (timeout vs worker_failed_no_output) — P6-B1
+- [x] Call ledger read diagnostics (malformed line detection, CLI --diagnostics) — P6-B2
+- [x] Bounded ollama list subprocess (30s timeout) — P6-B3
+- [x] Hook silent-failure diagnostics (gate state, auto-worker spawn, MCP shape, doctor) — P7
+
+## Current State (v0.9.8)
+
+- 9 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
+- 3-round debate (fast mode default for MCP), parallel review for release audits
+- 1196 tests, 13 run_checks categories, 23 profile entries
 - Remote Ollama via LOCAL_LLM_BASE_URL / OLLAMA_HOST
 - Installer with manifest and --update mode
+- Auto-invocation hooks: SessionStart, PreToolUse, PostToolUse, Stop
+- Call ledger with profile/extra/env stamps and CLI diagnostics
+- Health store with runtime telemetry (not polluting profiles JSON)
+- Hook doctor with 33 checks
 - Windows PowerShell + Git Bash compatible
+
+## Explicitly Deferred / Not Authorized
+
+These items are known gaps from the P6/P7 reliability audits. They are
+**not authorized** for any current or pending phase. Each requires a
+separate design and approval before implementation.
+
+- **P6-B2-C** — `record_call()` write-failure propagation (callers discard return)
+- **P6-B3-B / H5** — MTP endpoint hardcoding / configuration surface
+- **C2** — Streaming double-serialization in MCP server (high blast radius;
+  changes stdout contract for all 8 worker-backed MCP tools)
+- **H6** — `classify_error` substring-matching rewrite (shifts ledger error_type
+  distribution; requires controlled migration)
+- **M3** — Call ledger size / rotation (no archive layout decided)
+- **M7** — Cost-estimate LAN-proxy vs local distinguisher
+- **P5-C** — V4-Flash `_env` wiring, model warmup, per-profile provider hint
 
 ## Will NOT Do (by design)
 
@@ -71,44 +132,12 @@
 - **Read secrets or keys** — blocked by path validation
 - **Train or fine-tune models** — pipeline uses existing Ollama models only
 
-## Future Candidates (v0.6.0+)
-
-### Profile Auto-Tuning (priority: high)
-
-When new models are added to Ollama, automatically re-evaluate which model
-best fits each profile based on benchmark results rather than keyword matching.
-
-### MCP Output Compression (priority: high)
-
-Further reduce MCP response sizes with smarter truncation, optional field
-stripping, and structured summaries tailored for agent consumption.
-
-### Batch Update Dry-Run (priority: medium)
-
-Support checking update status across multiple installed projects at once,
-without applying changes.
-
-### Project Template Pack (priority: medium)
-
-Package the pipeline as a project template that can be instantiated via
-`cookiecutter` or similar, rather than only via the installer script.
-
-### Debate Profile Customization (priority: low)
-
-Allow users to specify which profiles/models participate in each debate round,
-rather than using the hardcoded coder → reasoning → deep order.
-
-### MCP Health Dashboard (priority: low)
-
-A small web or CLI dashboard showing MCP tool call history, latency, and
-error rates across sessions.
-
 ## Recommendation
 
-The pipeline is now feature-complete for its stated purpose: providing
-source-non-mutating, multi-model LLM assistance to Claude Code / Codex during
-software development. The next phase should focus on **using it**
-rather than extending it further.
-
-If you choose to continue development, start with profile auto-tuning
-(v0.6.0) — it has the highest impact-to-effort ratio of the candidates.
+The pipeline at v0.9.8 is feature-complete for its stated purpose: providing
+source-non-mutating, multi-model LLM assistance to Claude Code during software
+development with automated participation via hooks. The deferred items above
+are known reliability gaps, not feature gaps — they improve observability and
+robustness without adding new capabilities. Future work should prioritize
+stabilization (addressing deferred items with explicit design-before-code) over
+new feature development.

@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased (post-v0.9.7)
+## v0.9.8 - 2026-05-23
+
+**v0.9.8 is a reliability, observability, and cost-discipline release**
+spanning 47 commits from v0.9.7. It delivers health telemetry isolation
+(P1-H), a full call-ledger cost-discipline chain (P2), escalation cost
+control with env-knob gates (P3), a worker-pool dry-run diagnostic (P4),
+a V4-Flash experimental profile (P5), runtime reliability and
+observability fixes across worker timeout propagation, call-ledger read
+diagnostics, and bounded ollama-list subprocess (P6), and hook
+silent-failure diagnostics covering gate state persistence, auto-worker
+spawn failures, MCP shape warnings, and doctor checks (P7). One test-only
+hotfix unblocks the release gate (stale mock signature alignment).
 
 - Test-only hotfix: align stale `fake_run_subprocess` mock in
   `tests/test_local_llm_v093.py::test_mcp_summarize_file_success_does_not_disconnect`
