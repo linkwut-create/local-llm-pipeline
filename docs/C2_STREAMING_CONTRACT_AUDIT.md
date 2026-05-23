@@ -351,12 +351,19 @@ with streaming enabled (if supported by the client).
     `tools/local_llm_mcp_server.py`; hooks have zero direct consumers.
   - Producer contract migration (removing `json.dumps(output)` at line 1417)
     remains **not yet performed**.
-- **v0.10.0-D**: Fix producer (Phase 2 — **not authorized**). Removes
-  `json.dumps(output, …)` at the streaming producer and unifies `stdout` to
-  raw text with `JSON:` markers.
+- **v0.10.0-D**: Fix producer (Phase 2). Landed.
+  - Removed `json.dumps(output, …)` at line 1417 in `run_subprocess_streaming`.
+    Streaming producer now passes the parsed dict directly as `stdout`.
+  - `_parse_worker_stdout` Strategy 0 (v0.10.0-C) handles the dict transparently.
+  - All 4 consumer call sites unchanged — compat parser handles both string
+    and dict shapes.
+  - The streaming `stdout` contract is now unified with the non-streaming path:
+    both produce a dict that `_parse_worker_stdout` can consume directly.
+  - Targeted tests confirm dict passthrough from producer through parser.
 - **v0.10.0-E**: Cleanup (Phase 3 — **not authorized**). Removes compat
-  fallbacks once producer is the sole format.
+  string fallbacks (Strategies 1-4) once dict is the sole observed format in
+  production.
 
 ---
 
-*Last updated: v0.10.0-C parser hardening. Based on HEAD `6f4a3c1` (v0.10.0-B).*
+*Last updated: v0.10.0-D producer migration. Based on HEAD `bbed639` (v0.10.0-C).*

@@ -200,3 +200,43 @@ class TestParseWorkerStdoutDictInput:
         data, err = mcp._parse_worker_stdout(True)
         assert data is None
         assert err is not None
+
+
+# --------------------------------------------------------------------------- #
+# v0.10.0-D: producer pass-through from streaming path                        #
+# --------------------------------------------------------------------------- #
+
+class TestStreamingProducerDictPassthrough:
+    """Verify that when run_subprocess_streaming returns a dict in stdout,
+    _parse_worker_stdout hands it through without extra encoding."""
+
+    def test_dict_stdout_reaches_parser_unmodified(self):
+        """Simulate the v0.10.0-D streaming producer: stdout=dict."""
+        payload = {
+            "ok": True,
+            "result": "review passed",
+            "key_files": ["a.py"],
+            "summary": "all good",
+        }
+        # After v0.10.0-D, run_subprocess_streaming returns the dict directly.
+        streaming_result = {"ok": True, "stdout": payload, "stderr": ""}
+        data, err = mcp._parse_worker_stdout(streaming_result["stdout"])
+        assert err is None
+        assert data is payload
+
+    def test_dict_stdout_with_missing_output_path_uses_string_fallback(self):
+        """When no JSON path was found, stdout is a string (file path or '').
+        _parse_worker_stdout must still handle that via string strategies."""
+        streaming_result = {"ok": True, "stdout": "", "stderr": ""}
+        data, err = mcp._parse_worker_stdout(streaming_result["stdout"])
+        assert data is None  # empty string → no output
+
+    def test_legacy_json_string_stdout_still_works(self):
+        """Pre-v0.10.0-D streaming stdout (json.dumps string) is still
+        handled by Strategy 3."""
+        payload = {"ok": True, "result": "old format"}
+        legacy_stdout = json.dumps(payload)
+        streaming_result = {"ok": True, "stdout": legacy_stdout, "stderr": ""}
+        data, err = mcp._parse_worker_stdout(streaming_result["stdout"])
+        assert err is None
+        assert data == payload

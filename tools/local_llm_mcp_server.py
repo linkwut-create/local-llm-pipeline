@@ -1408,9 +1408,14 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
                 message="".join(accumulated),
             )
 
-        # If we have a JSON path, read the output file directly.
-        # (v0.10.0-B: was load_worker_output(json_path) which cannot parse a
-        # bare file path — it expects raw stdout text with JSON: markers.)
+        # If we have a JSON path, read the output file directly and pass
+        # the parsed dict through as stdout.  _parse_worker_stdout (Strategy 0)
+        # handles the dict transparently; when no JSON path is found, stdout
+        # falls back to a file-path string (Strategies 1-4).
+        # v0.10.0-B: fixed the file-path-vs-stdout bug.
+        # v0.10.0-D: removed json.dumps(output) — producer now passes the
+        #   dict directly, unifying the streaming contract with the
+        #   non-streaming path.
         if json_path:
             try:
                 output = json.loads(Path(json_path).read_text(encoding="utf-8"))
@@ -1419,7 +1424,7 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
             if output:
                 return {
                     "ok": proc.returncode == 0,
-                    "stdout": json.dumps(output, ensure_ascii=False, default=str),
+                    "stdout": output,
                     "stderr": (stderr_data or "")[:10000],
                     "returncode": proc.returncode,
                     "elapsed_seconds": elapsed,
