@@ -401,7 +401,35 @@ plan.
   `LOCAL_LLM_LEDGER_EXTRA` via `_load_ledger_env_extra_for_debate()`, merges B1-B
   fields into per-round ledger records. Debate-authoritative fields can't be overridden;
   `debate_skipped`/`debate_skip_allowed` forced false. 15 new tests. 1431/1431 passed.
-- **Next**: B1-C4 dogfood re-verification.
+- **B1-C4** (dogfood, no commit): re-verification passed. Real MCP
+	  `local_debate_review_diff` executed on docs-only diff (elapsed ~80s,
+	  2-round fast mode, models `qwen3.6:27b-q8-ud` + `reasoning_checker`).
+	  MCP response: `preclassifier_advisory` present — `ok=true`, `risk_level=low`,
+	  `confidence=high`, `skip_debate_recommended=true`, `debate_skipped=false`,
+	  `debate_skip_allowed=false`, `changed_files_count=1`, `safety_blockers=[]`.
+	  Ledger round records: `call_89b33304629d` (round 1) and `call_96224f4e6b01`
+	  (round 2) both carry all 12 B1-B preclassifier fields. `debate-skips` CLI
+	  returns `total_skipped=0`. Working tree clean — no files changed.
+	- **v0.11.0-B1 closed — diff preclassifier advisory line.**
+	  B1-A: heuristic-only safety core (58 tests). B1-B: ledger contract with
+	  12 preclassifier/debate-skip fields and `debate-skips` CLI (24 tests).
+	  B1-C: advisory integration in `call_debate_review_diff` — response gets
+	  `preclassifier_advisory`, debate always executes, `debate_skipped=false` /
+	  `debate_skip_allowed=false` (18 tests). B1-C1: regression reconciled.
+	  B1-C2: first dogfood partial. B1-C3: debate ledger propagation fixed
+	  (`local_llm_debate.py` reads `LOCAL_LLM_LEDGER_EXTRA`, merges allowlisted
+	  B1-B fields, forces `debate_skipped=false` / `debate_skip_allowed=false`;
+	  15 tests; 1431/1431 passed). B1-C4: dogfood re-verified — response advisory
+	  present, both round ledger records carry B1-B fields, `debate-skips=0`,
+	  working tree clean.
+	  **B1 state at closeout** (HEAD `dc8fb8e`, `v0.10.0-6-gdc8fb8e`):
+	  Fully observable advisory preclassifier line — classifies, responds, and
+	  records without ever skipping debate. `preclassifier_advisory` is now
+	  visible in both MCP response and per-round debate ledger records. Debate
+	  skip remains disabled (`debate_skipped=false`, `debate_skip_allowed=false`).
+	  Commit gate, release guard, and dangerous command guard unchanged. VERSION
+	  remains `0.10.0`. No tag. No release.
+	  **Next**: v0.11.0-B1-D controlled skip policy audit (not implementation).
 
 ## v0.10.0 Release-Prep Anchor
 

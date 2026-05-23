@@ -76,7 +76,41 @@
   (`tests/test_debate_ledger_preclassifier.py`) cover env merging,
   authoritative override, forced-false invariants, malformed env,
   no-env backward compat, and ledger-failure survival.
-  Next: B1-C4 dogfood re-verification.
+  - v0.11.0-B1-C4: dogfood re-verification passed. Real MCP
+	  `local_debate_review_diff` executed on docs-only diff (elapsed ~80s,
+	  2-round fast mode). `preclassifier_advisory` returned in response:
+	  `risk_level=low`, `confidence=high`, `skip_debate_recommended=true`,
+	  `debate_skipped=false`, `debate_skip_allowed=false`. Both debate
+	  round ledger records (`call_89b33304629d` round 1,
+	  `call_96224f4e6b01` round 2) carry all 12 B1-B preclassifier
+	  fields. `debate-skips` CLI returns `total_skipped=0`. Working tree
+	  clean — no files changed, no commits, no tags.
+	- **v0.11.0-B1 closed — diff preclassifier advisory line.**
+	  B1-A (safety core): heuristic-only classification, no model calls,
+	  no debate integration, `escalate_to_debate` always true,
+	  `skip_debate_allowed` always false.  58 tests.
+	  B1-B (ledger contract): 12 preclassifier/debate-skip fields in
+	  `KNOWN_EXTRA_KEYS`, `filter_debate_skips()` / `summarize_debate_skips()`
+	  helpers, `debate-skips` CLI subcommand.  24 tests.
+	  B1-C (advisory integration): `preclassifier_advisory` in MCP response,
+	  `LOCAL_LLM_LEDGER_EXTRA` stamping, debate always executes.  18 tests.
+	  B1-C1 (regression reconciled): health_store failure not reproduced,
+	  full tests passed without ignore.
+	  B1-C2 (first dogfood): response advisory worked, ledger propagation
+	  missing.
+	  B1-C3 (ledger propagation fix): `local_llm_debate.py` reads
+	  `LOCAL_LLM_LEDGER_EXTRA` via `_load_ledger_env_extra_for_debate()`,
+	  merges B1-B allowlist fields, forces `debate_skipped=false` /
+	  `debate_skip_allowed=false`.  15 tests.  1431/1431 passed, 13/13
+	  run_checks.
+	  B1-C4 (dogfood verified): real debate executed, response advisory
+	  present, both round ledger records carry B1-B fields, `debate-skips`
+	  zero, working tree clean.
+	  **B1 state at closeout**: fully observable advisory preclassifier
+	  line — classifies, responds, and records without ever skipping debate.
+	  Debate skip remains disabled.  Commit gate, release guard, and
+	  dangerous command guard unchanged.  VERSION remains 0.10.0.  No tag.
+	  Next: v0.11.0-B1-D controlled skip policy audit (not implementation).
 
 ## v0.10.0 - 2026-05-24
 
