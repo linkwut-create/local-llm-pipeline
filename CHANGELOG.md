@@ -22,6 +22,18 @@
   is closed: worker cache is authoritative, ledger records cache hits,
   and file-change invalidation works.  Next: v0.11.0-B0 diff risk
   preclassifier contract audit.
+- v0.11.0-B1-A: added diff preclassifier safety core
+  (`tools/local_llm_preclassifier.py`). Heuristic-only classification
+  module — no model calls, no debate integration, no debate skipping.
+  All outputs default to `escalate_to_debate=true` and
+  `skip_debate_allowed=false`. 58 focused tests
+  (`tests/test_preclassifier.py`) cover docs-only, tests-only,
+  sensitive paths (MCP server, hooks, ledger, auth, version/release),
+  large diff, empty diff, security patterns in body, commit_gate/release
+  context flags, Windows paths, and contract schema compliance.
+  B1-A iron rule: `escalate_to_debate` always true, `skip_debate_allowed`
+  always false — this is a safety classifier, not a debate bypass engine.
+  Next: B1-B ledger contract or B1-C advisory integration, pending review.
 
 ## v0.10.0 - 2026-05-24
 

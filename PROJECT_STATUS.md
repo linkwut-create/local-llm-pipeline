@@ -373,6 +373,13 @@ plan.
   `duration_ms=0`; file-change invalidation works.  No VERSION bump,
   no tag.
 - **Next**: v0.11.0-B0 diff risk preclassifier contract audit.
+- **B1-A** (this step): diff preclassifier safety core (`tools/local_llm_preclassifier.py`).
+  Heuristic-only — no model calls, no debate integration, no debate skipping.
+  All outputs default to `escalate_to_debate=true` and `skip_debate_allowed=false`.
+  58 focused tests in `tests/test_preclassifier.py`. B1-A iron rule: escalate always
+  true, skip_allow always false. This is a safety classifier, not a debate bypass
+  engine.
+- **Next**: B1-B ledger contract or B1-C advisory integration, pending review.
 
 ## v0.10.0 Release-Prep Anchor
 
