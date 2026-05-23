@@ -562,9 +562,10 @@ def classify_error(exc: Exception, task: str) -> tuple[str, str]:
       ``invalid_json``, ``backend_error``, ``unknown_error``.
 
     Matching order is load-bearing: ``isinstance`` checks run first, then
-    substring heuristics from most-specific to least-specific.  The
-    ``error_type`` values are intentionally stable — they appear in the call
-    ledger and historical queries must remain comparable.
+    connection-context substring checks, then generic timeout checks, then
+    output/content heuristics.  The ``error_type`` values are intentionally
+    stable — they appear in the call ledger and historical queries must remain
+    comparable.
     """
     msg = str(exc).lower() if str(exc) else ""
 
@@ -579,15 +580,17 @@ def classify_error(exc: Exception, task: str) -> tuple[str, str]:
                 "Ollama backend is not reachable — check that Ollama is running "
                 "and OLLAMA_HOST / LOCAL_LLM_BASE_URL is correct")
 
-    # Layer 2 — non-connection timeout / timing failures
-    if "timeout" in msg or "timed" in msg:
-        return ("timeout",
-                "model call timed out — try a smaller input or increase timeout")
-
-    # Layer 3 — connection-level failures
+    # Layer 2 — connection-level failures (must run before generic timeout
+    # check so that connection-context timeout text is not captured as
+    # generic timeout; isinstance requests.ConnectionError is Layer 1)
     if "connection" in msg or "refused" in msg or "unreachable" in msg:
         return ("backend_unreachable",
                 "backend connection failed — verify the backend is running")
+
+    # Layer 3 — non-connection timeout / timing failures
+    if "timeout" in msg or "timed" in msg:
+        return ("timeout",
+                "model call timed out — try a smaller input or increase timeout")
 
     # Layer 4 — empty / missing output
     if "empty" in msg or "no content" in msg:

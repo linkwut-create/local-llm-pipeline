@@ -180,6 +180,35 @@ def test_connection_error_type_still_works():
     assert error_type == "backend_unreachable"
 
 
+# v0.10.0-J H6-J — connection-context timeout must not be captured as generic timeout
+def test_connection_timed_out_is_backend_unreachable():
+    from local_llm_worker import classify_error
+    e = RuntimeError("Connection to 192.168.1.2 timed out")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_unreachable"
+
+
+def test_connection_timed_out_short_is_backend_unreachable():
+    from local_llm_worker import classify_error
+    e = RuntimeError("connection timed out")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_unreachable"
+
+
+def test_backend_connection_timed_out_is_backend_unreachable():
+    from local_llm_worker import classify_error
+    e = RuntimeError("backend connection timed out")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "backend_unreachable"
+
+
+def test_generic_timed_out_still_timeout():
+    from local_llm_worker import classify_error
+    e = RuntimeError("request timed out after 60s")
+    error_type, _ = classify_error(e, "summarize-file")
+    assert error_type == "timeout"
+
+
 def test_empty_response_still_works():
     from local_llm_worker import classify_error
     e = ValueError("empty response from model")
