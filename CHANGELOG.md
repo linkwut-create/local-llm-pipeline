@@ -2,6 +2,15 @@
 
 ## Unreleased (post-v0.9.7)
 
+- Test-only hotfix: align stale `fake_run_subprocess` mock in
+  `tests/test_local_llm_v093.py::test_mcp_summarize_file_success_does_not_disconnect`
+  with the real `run_subprocess` signature, which gained an
+  `extra_env=None` keyword in P2-C1.1 (`cc1bcbf`). The mock previously
+  raised `TypeError`, which was caught by `handle_tools_call` and
+  surfaced as `ok=False`, breaking the success-path acceptance check.
+  Fix is a one-line signature update — no production code, no
+  behavior change, no other test touched. Unblocks the v0.9.8 release
+  hard gate (`py -m pytest` full suite: 1195 → 1196 passed).
 - Hook silent-failure diagnostics P7-B.1 verification + P7-C phase
   closeout. **P7 chain closed** (P7-A → P7-B → P7-B.1 → P7-C).
   P7-B.1 (read-only, no commit) verified that the P7-B commit

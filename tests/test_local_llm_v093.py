@@ -195,7 +195,7 @@ def test_mcp_summarize_file_success_does_not_disconnect(monkeypatch, tmp_path):
         "prompt_hash": "deadbeef",
     }
 
-    def fake_run_subprocess(cmd, stdin_data=None, timeout=mcp.DEFAULT_TIMEOUT):
+    def fake_run_subprocess(cmd, stdin_data=None, timeout=mcp.DEFAULT_TIMEOUT, extra_env=None):
         # Worker emits a JSON: marker with the path it wrote.
         out_file = tmp_path / "fake_worker_output.json"
         out_file.write_text(json.dumps(fake_payload), encoding="utf-8")
