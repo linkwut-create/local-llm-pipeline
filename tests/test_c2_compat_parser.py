@@ -152,3 +152,51 @@ class TestParseWorkerStdoutEdgeCases:
         data, err = mcp._parse_worker_stdout(stdout)
         assert err is None
         assert data == payload
+
+
+# --------------------------------------------------------------------------- #
+# Strategy 0 (v0.10.0-C): dict/object input hardening                         #
+# --------------------------------------------------------------------------- #
+
+class TestParseWorkerStdoutDictInput:
+    def test_dict_input_returns_directly(self):
+        payload = {"ok": True, "summary": "direct pass-through"}
+        data, err = mcp._parse_worker_stdout(payload)
+        assert err is None
+        assert data is payload  # same object, not a copy
+
+    def test_empty_dict_is_valid(self):
+        data, err = mcp._parse_worker_stdout({})
+        assert err is None
+        assert data == {}
+
+    def test_list_input_is_rejected(self):
+        data, err = mcp._parse_worker_stdout([1, 2, 3])
+        assert data is None
+        assert err is not None
+        assert "list" in err
+
+    def test_none_input_is_rejected(self):
+        data, err = mcp._parse_worker_stdout(None)
+        assert data is None
+        assert err is not None
+        assert "NoneType" in err
+
+    def test_int_input_is_rejected(self):
+        data, err = mcp._parse_worker_stdout(42)
+        assert data is None
+        assert err is not None
+        assert "int" in err
+
+    def test_custom_object_is_rejected(self):
+        class Foo:
+            pass
+        data, err = mcp._parse_worker_stdout(Foo())
+        assert data is None
+        assert err is not None
+        assert "Foo" in err
+
+    def test_boolean_true_is_rejected(self):
+        data, err = mcp._parse_worker_stdout(True)
+        assert data is None
+        assert err is not None

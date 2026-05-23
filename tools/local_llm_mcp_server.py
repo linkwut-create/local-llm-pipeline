@@ -1490,22 +1490,44 @@ def load_worker_output(stdout: str) -> tuple[dict | None, str | None]:
         return None, f"worker output unreadable at {path}: {exc}"
 
 
-def _parse_worker_stdout(stdout: str) -> tuple[dict | None, str | None]:
+def _parse_worker_stdout(stdout: str | dict | None) -> tuple[dict | None, str | None]:
     """Parse worker subprocess stdout in any known format.
 
-    v0.10.0-B C2 compat parser. Handles:
-      - Raw stdout text containing ``JSON: <path>`` markers (non-streaming path)
-      - A direct JSON file path (streaming path fallback, line 1427)
-      - A JSON-encoded string of a dict (streaming path with pre-parsed output,
-        line 1417)
-      - A double-serialized JSON string (legacy MCP envelope passthrough)
+    v0.10.0-B C2 compat parser; hardened in v0.10.0-C for dict/object input.
+    Handles, in order:
+
+      **Strategy 0 (v0.10.0-C):** already-loaded dict — returned directly.
+        Non-dict objects/lists are rejected with a structured error.
+
+      **Strategy 1 (string):** direct file path (streaming path fallback,
+        line 1427 → ``stdout = json_path``). Reads the file as JSON.
+
+      **Strategy 2 (string):** raw stdout text containing ``JSON: <path>``
+        markers (non-streaming path). Delegates to :func:`load_worker_output`.
+
+      **Strategy 3 (string):** JSON-encoded dict string (streaming path,
+        line 1417 ``json.dumps(output)``).
+
+      **Strategy 4 (string):** double-serialized JSON string (JSON string
+        inside JSON string — legacy MCP envelope passthrough).
 
     Returns ``(data, error)`` — same signature as :func:`load_worker_output`.
     Callers that previously called ``load_worker_output(result["stdout"])``
     should use this helper instead so streaming and non-streaming paths are
     handled uniformly.
     """
-    if not stdout or not stdout.strip():
+    # Strategy 0: already a dict → no parsing needed (v0.10.0-C hardening).
+    # This is the desired end-state: producer passes the dict directly and
+    # the parser is a transparent pass-through.  Non-dict objects (list,
+    # custom class, etc.) are rejected explicitly.
+    if isinstance(stdout, dict):
+        return stdout, None
+    if not isinstance(stdout, str):
+        return None, (
+            f"expected str or dict stdout, got {type(stdout).__name__}"
+        )
+
+    if not stdout.strip():
         return None, "worker produced empty stdout"
 
     # Strategy 1: direct file path (streaming path when output is None, line

@@ -337,13 +337,26 @@ with streaming enabled (if supported by the client).
 
 ## 12. Decision Record
 
-- **v0.10.0-A**: This document. Design only. No code changes.
-- **v0.10.0-B**: Implement compat parser (Phase 1). Requires separate approval.
-- **v0.10.0-C**: Fix producer (Phase 2). Requires separate approval.
-- **v0.10.0-D**: Cleanup (Phase 3). Requires separate approval.
-
-**None of v0.10.0-B/C/D are authorized by this document.**
+- **v0.10.0-A**: This document. Design only. No code changes. Landed at `b984511`.
+- **v0.10.0-B**: Implement compat parser (Phase 1). Landed at `6f4a3c1`.
+  - Added `_parse_worker_stdout(stdout)` with 4 string strategies.
+  - Fixed `run_subprocess_streaming:1413` file-path-vs-stdout bug.
+  - Replaced `load_worker_output(result["stdout"])` at all 4 consumer call sites.
+  - 15 targeted tests.
+  - No MCP contract change, no producer change.
+- **v0.10.0-C**: Harden compat parser for dict/object input (Phase 1 hardening).
+  - Parser now accepts already-loaded dicts (Strategy 0 — transparent pass-through).
+  - Non-dict objects/lists rejected with a structured error.
+  - Consumer inventory completed: all stdout consumers are inside
+    `tools/local_llm_mcp_server.py`; hooks have zero direct consumers.
+  - Producer contract migration (removing `json.dumps(output)` at line 1417)
+    remains **not yet performed**.
+- **v0.10.0-D**: Fix producer (Phase 2 — **not authorized**). Removes
+  `json.dumps(output, …)` at the streaming producer and unifies `stdout` to
+  raw text with `JSON:` markers.
+- **v0.10.0-E**: Cleanup (Phase 3 — **not authorized**). Removes compat
+  fallbacks once producer is the sole format.
 
 ---
 
-*Last updated: v0.10.0-A C2 design audit. Based on HEAD `73da601` (v0.9.8).*
+*Last updated: v0.10.0-C parser hardening. Based on HEAD `6f4a3c1` (v0.10.0-B).*
