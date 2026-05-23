@@ -14,6 +14,18 @@
   returned dict payloads with no errors.  v0.10.0-E cleanup (removing compat
   fallbacks) remains explicitly deferred.  See
   `docs/C2_STREAMING_CONTRACT_AUDIT.md` for full design audit.
+- P6-B2-C call ledger write-failure observability (v0.10.0-G).  Previously,
+  `record_call()` returned `False` on write failure but callers discarded the
+  return value and swallowed exceptions, making ledger write loss completely
+  silent.  Added `_record_write_failure()` helper (bounded JSONL diagnostic
+  log, self-truncating at 1 MB, never raises) and wired it into `record_call()`'s
+  `except` block.  `mcp_doctor` gained 3 ledger health checks: file size (WARN
+  at 10 MB, FAIL at 100 MB), file presence, and write-failure log status.  13
+  targeted tests.  Doctor immediately surfaced a pre-existing test artifact
+  (`RuntimeError("nope")` from `test_record_call_never_raises` using an
+  unpatched `LEDGER_DIR`) — benign, confirmed not a production bug.
+  `record_call()` still returns `bool`, still never raises; worker and debate
+  call sites unchanged.  1234 passed, 13/13 run_checks.
 
 ## v0.9.8 - 2026-05-23
 

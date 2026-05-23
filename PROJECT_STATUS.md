@@ -383,3 +383,26 @@ plan.
   formats, test stubs, and edge-case callers.
 - **Commits**: `b984511` (A design), `6f4a3c1` (B compat parser), `bbed639`
   (C dict hardening), `336274c` (D producer migration).
+
+## P6-B2-C Call Ledger Write-Failure Observability — Closeout
+
+- **Implemented**: v0.10.0-G at `6f644c6`.  Pure additive observability.
+- **Problem**: `record_call()` returned `False` on write failure but all 5
+  call sites (worker `_emit_ledger` ×3, debate `_emit_debate_round_ledger` ×2)
+  discarded the return value and wrapped calls in `except: pass`.  Ledger
+  write loss was completely invisible.
+- **Fix**: Added `_record_write_failure()` helper — bounded JSONL diagnostic
+  log at `.local_llm_out/audit/_ledger_write_failures.log`, self-truncating
+  at 1 MB, never raises.  Wired into `record_call()`'s `except` block.
+  `mcp_doctor` gained 3 ledger health checks (file size, file presence,
+  write-failure log status).
+- **Contract preserved**: `record_call()` still returns `bool`, still never
+  raises.  Worker and debate call sites unchanged.  Ledger disabled path
+  produces no diagnostic.
+- **Real-world finding**: Doctor immediately surfaced 2 non-empty entries
+  (122 bytes).  Traced to `RuntimeError("nope")` from pre-existing test
+  `test_record_call_never_raises` which patches `_resolve_path` but not
+  `LEDGER_DIR`.  Benign test artifact — not a production bug.  Confirms
+  the diagnostic system detects real write failures.
+- **Tests**: 13 targeted tests (6 call_ledger + 7 doctor).  1234 full suite.
+- **Next**: M3 ledger rotation (natural follow-on to ledger write diagnostics).
