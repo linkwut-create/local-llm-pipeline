@@ -351,7 +351,7 @@ with streaming enabled (if supported by the client).
     `tools/local_llm_mcp_server.py`; hooks have zero direct consumers.
   - Producer contract migration (removing `json.dumps(output)` at line 1417)
     remains **not yet performed**.
-- **v0.10.0-D**: Fix producer (Phase 2). Landed.
+- **v0.10.0-D**: Fix producer (Phase 2). Landed at `336274c`.
   - Removed `json.dumps(output, …)` at line 1417 in `run_subprocess_streaming`.
     Streaming producer now passes the parsed dict directly as `stdout`.
   - `_parse_worker_stdout` Strategy 0 (v0.10.0-C) handles the dict transparently.
@@ -359,11 +359,17 @@ with streaming enabled (if supported by the client).
     and dict shapes.
   - The streaming `stdout` contract is now unified with the non-streaming path:
     both produce a dict that `_parse_worker_stdout` can consume directly.
-  - Targeted tests confirm dict passthrough from producer through parser.
-- **v0.10.0-E**: Cleanup (Phase 3 — **not authorized**). Removes compat
-  string fallbacks (Strategies 1-4) once dict is the sole observed format in
-  production.
+  - 25 targeted tests; 1221 full suite; 13/13 run_checks.
+  - **Real MCP smoke passed** (2026-05-23): `local_summarize_file` returned
+    dict payload, no `missing_worker_output`; `local_review_diff` returned
+    dict payload; call ledger recorded 275 records / 0 skipped; mcp_doctor
+    32 OK / 1 WARN / 0 FAIL.  Zero errors observed.  Working tree clean.
+- **v0.10.0-E**: Cleanup (Phase 3 — **explicitly deferred, not authorized**).
+  Removes compat string fallbacks (Strategies 1-4).  These are zero-cost
+  insurance against legacy worker output formats, test stubs, edge-case
+  callers, and future protocol drift.  Deferred until dict pass-through
+  (Strategy 0) is the sole format observed in sustained production use.
 
 ---
 
-*Last updated: v0.10.0-D producer migration. Based on HEAD `bbed639` (v0.10.0-C).*
+*C2 chain closed at v0.10.0-D. Last updated: 2026-05-23 smoke gate. Based on HEAD `336274c`.*

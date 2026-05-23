@@ -363,3 +363,23 @@ plan.
 - CHANGELOG header changed from "Unreleased (post-v0.9.7)" to "v0.9.8 - 2026-05-23"
 - docs/roadmap.md rewritten: v0.6.x → v0.9.8 history, current state, deferred items
 - No tools / tests / implementation / tag / zip / push changes
+
+## C2 Streaming Contract Fix — Closeout
+
+- **Chain**: v0.10.0-A → v0.10.0-B → v0.10.0-C → v0.10.0-D.  C2 chain closed.
+- **Problem**: streaming path at `run_subprocess_streaming:1417` serialized
+  worker output dict into `json.dumps(output)`, while non-streaming path left
+  raw stdout with `JSON:` markers.  `load_worker_output(result["stdout"])`
+  could not parse the JSON string → `missing_worker_output`.
+- **Fix**: `_parse_worker_stdout()` compat parser (5 strategies) at all 4
+  consumer call sites; fixed file-path-vs-stdout bug at line 1413; removed
+  `json.dumps(output)` at streaming producer → dict pass-through (Strategy 0).
+- **Smoke**: `local_check` OK, `local_summarize_file` dict payload, no
+  `missing_worker_output`, `local_review_diff` dict payload, call ledger 275
+  records / 0 skipped, mcp_doctor 32/1/0, 25 targeted C2 tests, 1221 full
+  suite, 13/13 run_checks, working tree clean.
+- **v0.10.0-E cleanup**: explicitly deferred / not authorized.  String
+  fallback strategies (1-4) are zero-cost insurance against legacy worker
+  formats, test stubs, and edge-case callers.
+- **Commits**: `b984511` (A design), `6f4a3c1` (B compat parser), `bbed639`
+  (C dict hardening), `336274c` (D producer migration).

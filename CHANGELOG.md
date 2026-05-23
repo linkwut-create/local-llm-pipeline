@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased (post-v0.9.8)
+
+- C2 streaming stdout contract fix (v0.10.0-A through v0.10.0-D, chain closed).
+  Fixed a `stdout` double-serialization in the streaming subprocess path
+  (`run_subprocess_streaming` line 1417) that caused `load_worker_output` to
+  fail on streaming results, returning `missing_worker_output`.  Added
+  `_parse_worker_stdout` compat parser with 5 strategies (dict pass-through,
+  direct file path, raw `JSON:` markers, JSON-encoded string, double-serialized
+  legacy), fixed a file-path-vs-stdout bug at line 1413, and unified the
+  streaming producer to pass parsed dicts directly.  25 targeted tests.
+  Real MCP smoke passed: `local_summarize_file`, `local_review_diff` both
+  returned dict payloads with no errors.  v0.10.0-E cleanup (removing compat
+  fallbacks) remains explicitly deferred.  See
+  `docs/C2_STREAMING_CONTRACT_AUDIT.md` for full design audit.
+
 ## v0.9.8 - 2026-05-23
 
 **v0.9.8 is a reliability, observability, and cost-discipline release**
