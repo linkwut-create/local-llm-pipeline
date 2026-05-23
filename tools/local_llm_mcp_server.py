@@ -1408,9 +1408,14 @@ def run_subprocess_streaming(cmd: list[str], progress_token: str,
                 message="".join(accumulated),
             )
 
-        # If we have a JSON path, read the output file
+        # If we have a JSON path, read the output file directly.
+        # (v0.10.0-B: was load_worker_output(json_path) which cannot parse a
+        # bare file path — it expects raw stdout text with JSON: markers.)
         if json_path:
-            output, _ = load_worker_output(json_path)
+            try:
+                output = json.loads(Path(json_path).read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                output = None
             if output:
                 return {
                     "ok": proc.returncode == 0,
@@ -1483,6 +1488,66 @@ def load_worker_output(stdout: str) -> tuple[dict | None, str | None]:
         return data, None
     except (json.JSONDecodeError, OSError) as exc:
         return None, f"worker output unreadable at {path}: {exc}"
+
+
+def _parse_worker_stdout(stdout: str) -> tuple[dict | None, str | None]:
+    """Parse worker subprocess stdout in any known format.
+
+    v0.10.0-B C2 compat parser. Handles:
+      - Raw stdout text containing ``JSON: <path>`` markers (non-streaming path)
+      - A direct JSON file path (streaming path fallback, line 1427)
+      - A JSON-encoded string of a dict (streaming path with pre-parsed output,
+        line 1417)
+      - A double-serialized JSON string (legacy MCP envelope passthrough)
+
+    Returns ``(data, error)`` — same signature as :func:`load_worker_output`.
+    Callers that previously called ``load_worker_output(result["stdout"])``
+    should use this helper instead so streaming and non-streaming paths are
+    handled uniformly.
+    """
+    if not stdout or not stdout.strip():
+        return None, "worker produced empty stdout"
+
+    # Strategy 1: direct file path (streaming path when output is None, line
+    # 1427 → stdout = json_path).  Try reading it as a JSON file.
+    first_char = stdout.strip()[0]
+    if first_char not in ('{', '['):
+        candidate = Path(stdout.strip())
+        try:
+            if candidate.exists() and candidate.suffix == '.json':
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                return (data, None) if isinstance(data, dict) else (None,
+                        "direct file path loaded non-dict JSON")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Strategy 2: raw stdout text with JSON: marker (non-streaming path)
+    data, err = load_worker_output(stdout)
+    if data is not None:
+        return data, err
+
+    # Strategy 3: JSON-encoded string (streaming path, line 1417
+    # json.dumps(output))
+    try:
+        data = json.loads(stdout)
+        if isinstance(data, dict):
+            return data, None
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Strategy 4: double-serialized (JSON string inside JSON string —
+    # can happen when the MCP response envelope passes through an extra
+    # json.dumps round trip)
+    try:
+        outer = json.loads(stdout)
+        if isinstance(outer, str):
+            data = json.loads(outer)
+            if isinstance(data, dict):
+                return data, None
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return None, err or "could not parse worker output in any known format"
 
 
 def find_latest_json_output() -> dict | None:
@@ -1678,7 +1743,7 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
             cmd, progress_token, stdin_data=stdin_data, timeout=timeout,
             extra_env=extra_env,
         )
-        payload, _ = load_worker_output(result["stdout"])
+        payload, _ = _parse_worker_stdout(result["stdout"])
         if result["ok"] and payload:
             return build_success_response(tool, payload, result["elapsed_seconds"], request_id)
         if result["ok"]:
@@ -1711,7 +1776,7 @@ def _wrap_worker_call(tool: str, cmd: list[str], stdin_data: str | None = None,
 
     result = run_subprocess(cmd, stdin_data=stdin_data, timeout=timeout,
                             extra_env=extra_env)
-    payload, parse_err = load_worker_output(result["stdout"])
+    payload, parse_err = _parse_worker_stdout(result["stdout"])
 
     # Phase 3B: auto-update model health (best-effort, never blocks)
     if payload:
@@ -2258,7 +2323,7 @@ def call_review_diff(params: dict) -> dict:
             profile=params.get("profile"), model=params.get("model"),
         )
 
-    payload, parse_err = load_worker_output(result["stdout"])
+    payload, parse_err = _parse_worker_stdout(result["stdout"])
 
     if result["ok"]:
         if payload is None:
@@ -2339,14 +2404,7 @@ def call_debate_review_diff(params: dict) -> dict:
             elapsed=result["elapsed_seconds"], request_id=request_id,
         )
 
-    output = None
-    if result["ok"]:
-        try:
-            output = json.loads(result["stdout"])
-        except (json.JSONDecodeError, TypeError):
-            pass
-        if output is None:
-            output, _ = load_worker_output(result["stdout"])
+    output, _parse_err = _parse_worker_stdout(result["stdout"]) if result["ok"] else (None, None)
 
     if result["ok"] and output:
         return build_success_response("local_debate_review_diff", output,
