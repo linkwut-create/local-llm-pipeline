@@ -23,6 +23,7 @@ from call_ledger import (
     LEDGER_FILE,
     breakdown_counts,
     filter_debates,
+    filter_debate_skips,
     filter_escalations,
     filter_failures,
     group_by,
@@ -31,6 +32,7 @@ from call_ledger import (
     read_records_with_diagnostics,
     recent,
     summarize,
+    summarize_debate_skips,
 )
 
 
@@ -325,6 +327,57 @@ def cmd_debates(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_debate_skips(skips_summary: dict, fmt: str) -> None:
+    """Print debate-skip summary in table or JSON format."""
+    if fmt == "json":
+        out = dict(skips_summary)
+        # Don't print the full records in JSON — just counts
+        records = out.pop("skipped_records", [])
+        out["recent_skips"] = []
+        for r in records[-5:]:
+            extra = r.get("extra") or {}
+            out["recent_skips"].append({
+                "timestamp": (r.get("timestamp") or "")[:19],
+                "profile": r.get("profile"),
+                "diff_risk_level": extra.get("diff_risk_level"),
+                "diff_risk_confidence": extra.get("diff_risk_confidence"),
+                "debate_skip_reason": extra.get("debate_skip_reason") or "",
+                "changed_files_count": extra.get("changed_files_count"),
+            })
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return
+
+    total = skips_summary["total_skipped"]
+    if total == 0:
+        print("debate-skips: (none — no debates have been skipped yet)")
+        print("This is expected before B1-C/B1-D integration.")
+        return
+
+    print(f"debate-skips: {total} total")
+    print(f"  estimated debate seconds saved: {skips_summary['estimated_debate_seconds_saved']}")
+    print(f"  estimated tokens saved:         {skips_summary['estimated_tokens_saved']}")
+    print()
+    if skips_summary["by_risk_level"]:
+        print("  by risk level:")
+        for k, v in skips_summary["by_risk_level"].items():
+            print(f"    {k:<12} {v}")
+    if skips_summary["by_confidence"]:
+        print("  by confidence:")
+        for k, v in skips_summary["by_confidence"].items():
+            print(f"    {k:<12} {v}")
+    if skips_summary["by_preclassifier_profile"]:
+        print("  by preclassifier profile:")
+        for k, v in skips_summary["by_preclassifier_profile"].items():
+            print(f"    {k:<24} {v}")
+
+
+def cmd_debate_skips(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    summary = summarize_debate_skips(records)
+    _print_debate_skips(summary, args.format)
+    return 0
+
+
 def cmd_rotate(args: argparse.Namespace) -> int:
     """Archive the active calls.jsonl and start a fresh one."""
     from call_ledger import rotate_ledger
@@ -397,6 +450,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp_deb.add_argument("--limit", type=int, default=0,
                         help="limit to last N (0 = all)")
     sp_deb.set_defaults(func=cmd_debates)
+
+    sp_ds = sub.add_parser("debate-skips", help="list debates skipped via preclassifier")
+    sp_ds.set_defaults(func=cmd_debate_skips)
 
     sp_rot = sub.add_parser("rotate", help="archive calls.jsonl and start fresh")
     sp_rot.add_argument("--archive-name", default=None,

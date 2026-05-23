@@ -380,6 +380,17 @@ plan.
   true, skip_allow always false. This is a safety classifier, not a debate bypass
   engine.
 - **Next**: B1-B ledger contract or B1-C advisory integration, pending review.
+- **B1-B** (this step): preclassifier ledger reporting contract.
+  Extended `KNOWN_EXTRA_KEYS` (+12 fields: `diff_risk_level`, `diff_risk_confidence`,
+  `debate_skipped`, `debate_skip_reason`, `preclassifier_profile`, `preclassifier_model`,
+  `preclassifier_request_id`, `safety_blockers`, `debate_skip_allowed`,
+  `skip_debate_recommended`, `preclassifier_method`, `changed_files_count`).
+  Added `filter_debate_skips()` + `summarize_debate_skips()` to `tools/call_ledger.py`.
+  Added `debate-skips` CLI subcommand with JSON/text output, per-risk/confidence/profile
+  breakdowns, and estimated seconds/tokens saved. 24 new tests in
+  `tests/test_preclassifier_ledger.py`. No debate integration; debate-skips shows zero
+  until B1-C/B1-D starts writing records. Old records unaffected — fields are additive.
+- **Next**: B1-C advisory integration in non-commit/non-release debate path.
 
 ## v0.10.0 Release-Prep Anchor
 

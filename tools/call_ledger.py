@@ -80,6 +80,19 @@ KNOWN_EXTRA_KEYS = frozenset({
     "host",
     # Structured error type (worker already classifies via output.error_type)
     "error_type",
+    # Diff preclassifier fields (B1-B ledger contract)
+    "diff_risk_level",
+    "diff_risk_confidence",
+    "debate_skipped",
+    "debate_skip_reason",
+    "preclassifier_profile",
+    "preclassifier_model",
+    "preclassifier_request_id",
+    "safety_blockers",
+    "debate_skip_allowed",
+    "skip_debate_recommended",
+    "preclassifier_method",
+    "changed_files_count",
 })
 
 
@@ -671,6 +684,39 @@ def filter_debates(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]
     return [dict(r) for r in records
             if isinstance(r.get("extra"), dict)
             and r["extra"].get("debate_mode") is True]
+
+
+# B1-B: filter records where a debate was skipped via preclassifier.
+def filter_debate_skips(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(r) for r in records
+            if isinstance(r.get("extra"), dict)
+            and r["extra"].get("debate_skipped") is True]
+
+
+# B1-B: aggregate stats for debate-skip records.
+def summarize_debate_skips(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    skips = filter_debate_skips(records)
+    total = len(skips)
+    by_risk: dict[str, int] = {}
+    by_confidence: dict[str, int] = {}
+    by_profile: dict[str, int] = {}
+    for r in skips:
+        extra = r.get("extra") or {}
+        rl = extra.get("diff_risk_level", "unknown") or "unknown"
+        rc = extra.get("diff_risk_confidence", "unknown") or "unknown"
+        pp = extra.get("preclassifier_profile", "unknown") or "unknown"
+        by_risk[rl] = by_risk.get(rl, 0) + 1
+        by_confidence[rc] = by_confidence.get(rc, 0) + 1
+        by_profile[pp] = by_profile.get(pp, 0) + 1
+    return {
+        "total_skipped": total,
+        "by_risk_level": dict(sorted(by_risk.items())),
+        "by_confidence": dict(sorted(by_confidence.items())),
+        "by_preclassifier_profile": dict(sorted(by_profile.items())),
+        "estimated_debate_seconds_saved": total * 500,
+        "estimated_tokens_saved": total * 100_000,
+        "skipped_records": skips,
+    }
 
 
 # ---------------------------------------------------------------------------
