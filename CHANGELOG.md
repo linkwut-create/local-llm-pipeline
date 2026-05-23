@@ -35,6 +35,28 @@
   stat or rotation.  `read_records()` unchanged — active file only; archived
   ledgers readable via `--path`.  No automatic truncation, no data deletion,
   no compression.  9 targeted tests.  1243 passed, 13/13 run_checks.
+- H6 worker error classification disambiguation (v0.10.0-I → v0.10.0-J,
+  follow-up at `b41ec97`).  H6-I read-only audit identified colliding
+  substring heuristics in `classify_error()` (timeout before connection,
+  port numbers captured as 5xx backend errors, generic JSON references
+  captured as invalid_json).  H6-J at `4f4b648` narrowed JSON/parse
+  matches, added word-boundary gating on 5xx backend-error codes (prevents
+  "port 5001" false positive), moved 5xx/server-error to Layer 6.
+  Follow-up `b41ec97` swapped the generic substring order so
+  connection-context matching runs before generic timeout matching —
+  messages like "connection timed out" now correctly classify as
+  `backend_unreachable` instead of `timeout`.  `classify_error()` signature
+  unchanged (`tuple[str, str]`); `error_type` value space unchanged
+  (6 values: `timeout`, `backend_unreachable`, `empty_response`,
+  `invalid_json`, `backend_error`, `unknown_error`); no `error_subtype`;
+  no call ledger schema change; no caller changes; no migration required
+  for historical ledger records.  `isinstance` checks (Layer 1) remain
+  first: `requests.Timeout` → `timeout`, `requests.ConnectionError` →
+  `backend_unreachable`.  4 new tests (connection-timed-out → backend_unreachable);
+  generic "request timed out" regresses to `timeout`.  1261/1261 passed,
+  13/13 run_checks, commit-gate ok=true.  H6 chain closed.  Deferred:
+  M7 cost-estimate credibility, P6-B3-B/H5 MTP endpoint config, P5-C
+  V4-Flash polish.
 
 ## v0.9.8 - 2026-05-23
 

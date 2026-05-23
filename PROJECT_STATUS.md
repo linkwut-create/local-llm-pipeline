@@ -423,4 +423,43 @@ plan.
 - **Smoke**: `call_ledger_cli.py rotate --dry-run` printed expected archive
   name without mutating files.
 - **Next**: H6 classify_error taxonomy read-only audit (affects ledger
-  `error_type` distribution — requires design before code).
+  `error_type` distribution — requires design before code).  **Resolved:
+  H6 completed v0.10.0-I through v0.10.0-J follow-up; see below.**
+
+## H6 Classify Error Taxonomy — Closeout
+
+- **Chain**: H6-I → H6-J → H6-J follow-up (`b41ec97`).  H6 chain closed.
+- **H6-I**: Read-only audit of `classify_error()` substring heuristics.
+  Identified colliding substring checks: generic timeout before connection,
+  port numbers (e.g. "port 5001") captured as 5xx backend errors, generic
+  JSON references flagged as invalid_json.
+- **H6-J** (`4f4b648`): Narrowed JSON/parse matches (specific delimiters:
+  `jsondecode`, `json decode`, `not json`, `invalid json`, `parse error`,
+  `could not parse`, `failed to parse`).  Added word-boundary gating on
+  5xx HTTP status codes (space-padded ` 500 `–` 504 ` prevents "port 5001"
+  false positive).  Moved 5xx/server-error to Layer 6 (last heuristic
+  before unknown).  14 new H6-specific tests in `tests/test_worker_safety.py`.
+- **H6-J follow-up** (`b41ec97`): Swapped generic substring order so
+  connection-context matching (Layer 2) runs before generic timeout matching
+  (Layer 3).  Messages like "connection timed out" now correctly classify as
+  `backend_unreachable` instead of `timeout`.  4 new tests.
+- **Contract preserved**: `classify_error()` signature unchanged
+  (`tuple[str, str]`).  `error_type` value space unchanged (6 values:
+  `timeout`, `backend_unreachable`, `empty_response`, `invalid_json`,
+  `backend_error`, `unknown_error`).  No `error_subtype` added.  No call
+  ledger schema change.  No caller changes.  No migration required for
+  historical ledger records.
+- **Classification ordering**:
+  1. `isinstance(exc, requests.Timeout)` → `timeout`
+  2. `isinstance(exc, requests.ConnectionError)` → `backend_unreachable`
+  3. Generic connection/refused/unreachable substring → `backend_unreachable`
+  4. Generic timeout/timed substring → `timeout`
+  5. Empty/no-content → `empty_response`
+  6. JSON/parse delimiters → `invalid_json`
+  7. Word-boundary 5xx / internal server / bad gateway / service unavailable → `backend_error`
+  8. Everything else → `unknown_error`
+- **Tests**: 33/33 worker safety.  1261/1261 full suite.  13/13 run_checks.
+  Commit-gate ok=true.
+- **Deferred**: M7 cost-estimate credibility, P6-B3-B/H5 MTP endpoint config,
+  P5-C V4-Flash polish.  Next recommended: M7 cost-estimate credibility
+  read-only audit.  **Do not start M7 implementation without separate approval.**
