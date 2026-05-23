@@ -460,6 +460,36 @@ plan.
 	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true`.  HEAD `a8fe5aa`,
 	  `v0.10.0-8-ga8fe5aa`, VERSION `0.10.0`, working tree clean.
 	  **Next**: B1-E2 real MCP env-on verification after MCP restart.
+	- **B1-E2 real MCP env-on verification** (no commit): passed.
+	  `B1E_DOGFOOD_DIRECT_VERIFIED=yes`,
+	  `B1E_REAL_MCP_ENV_ON_VERIFIED=yes`,
+	  `B1E_REAL_MCP_ENV_ON_PENDING=no`.
+	  Baseline: HEAD `2ce8080`, `v0.10.0-9-g2ce8080`, VERSION `0.10.0`.
+	  Claude Code / MCP server restarted with
+	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true` and
+	  `LOCAL_LLM_FORCE_DEBATE_REVIEW` not set.
+	  Real MCP `local_review_diff` on docs-only heavy diff
+	  (163 lines, 6,868 chars, `PROJECT_STATUS.md` only):
+	  auto-debate successfully skipped; single-model review
+	  (`commit_reviewer` / `qwen3-coder:30b`) still ran (~15s).
+	  Response: `debate_auto_escalation_skipped.skipped=true`,
+	  `safe_to_commit=false`, `requires_commit_gate_review=true`,
+	  `manual_debate_still_available=true`, `policy=b1-d-v1`,
+	  `policy_version=1`, `preclassifier_advisory.risk_level=low`,
+	  `preclassifier_advisory.confidence=high`.
+	  Ledger: skip record `call_06dfa216bc1d` written with all
+	  17 expected fields; `debate-skips` CLI reports
+	  `total_skipped=49` (includes this skip).
+	  Manual `local_debate_review_diff` verified still executes
+	  full debate (~127s, 2 models): `debate_skipped=false`,
+	  `debate_skip_allowed=false`, no `debate_auto_escalation_skipped`.
+	  Boundaries preserved: manual debate never skipped; commit gate
+	  unchanged; release guard unchanged; dangerous command guard
+	  unchanged; skip default remains off unless env knob is set.
+	  VERSION remains `0.10.0`.  No tag.  Working tree clean.
+	  **B1-E line closed**: both direct Python and real MCP env-on
+	  paths verified.
+	  **Next**: B1 final closeout, then v0.11.0-C repo/codebase map.
 
 ## v0.10.0 Release-Prep Anchor
 

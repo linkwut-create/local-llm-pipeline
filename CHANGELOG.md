@@ -156,6 +156,42 @@
 	  `B1E_DOGFOOD_DIRECT_VERIFIED=yes`;
 	  `B1E_REAL_MCP_ENV_ON_PENDING=yes`.
 	  Next: B1-E2 real MCP env-on verification after MCP restart.
+	- **v0.11.0-B1-E2**: real MCP env-on verification passed.
+	  Claude Code / MCP server was restarted with
+	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true` and
+	  `LOCAL_LLM_FORCE_DEBATE_REVIEW` not set.
+	  Real MCP `local_review_diff` called on docs-only heavy diff
+	  (163 lines, 6,868 chars, `PROJECT_STATUS.md` only):
+	  auto-debate successfully skipped; single-model review
+	  (`commit_reviewer` / `qwen3-coder:30b`) still ran (~15s).
+	  Response contract verified: `debate_auto_escalation_skipped`
+	  present with `skipped=true`, `safe_to_commit=false`,
+	  `requires_commit_gate_review=true`,
+	  `manual_debate_still_available=true`, `policy=b1-d-v1`,
+	  `policy_version=1`.  `preclassifier_advisory`: `risk_level=low`,
+	  `confidence=high`.
+	  Ledger verified: skip record `call_06dfa216bc1d` written with
+	  all 17 expected fields (`debate_skipped=true`,
+	  `debate_skip_allowed=true`, `debate_skip_policy=b1-d-v1`,
+	  `debate_skip_policy_version=1`, `diff_risk_level=low`,
+	  `diff_risk_confidence=high`, `preclassifier_method=heuristic`,
+	  `preclassifier_model=none`, `safety_blockers=[]`,
+	  `changed_files_count=1`, `skipped_estimated_seconds_saved=500.0`,
+	  `source=auto-debate-skip`, `mcp_tool_name=local_review_diff`).
+	  `debate-skips` CLI: `total_skipped=49` (includes this skip).
+	  Manual `local_debate_review_diff` verified still executes full
+	  debate (~127s, 2 models): `debate_skipped=false`,
+	  `debate_skip_allowed=false`, no `debate_auto_escalation_skipped`
+	  block.  Working tree clean.
+	  `B1E_DOGFOOD_DIRECT_VERIFIED=yes`;
+	  `B1E_REAL_MCP_ENV_ON_VERIFIED=yes`.
+	  Default remains off unless `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP=true`
+	  is set.  Commit gate / release guard / dangerous command guard
+	  unchanged.  VERSION remains `0.10.0`.  No tag.
+	  **B1-E line closed**: both direct Python and real MCP env-on
+	  paths verified.  Auto-debate skip is opt-in, observable, and
+	  reversible.  Manual debate path preserved.
+	  Next: B1 final closeout, then v0.11.0-C repo/codebase map.
 
 ## v0.10.0 - 2026-05-24
 
