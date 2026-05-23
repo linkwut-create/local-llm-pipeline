@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (post-v0.9.8)
+## v0.10.0 - 2026-05-24
 
 - C2 streaming stdout contract fix (v0.10.0-A through v0.10.0-D, chain closed).
   Fixed a `stdout` double-serialization in the streaming subprocess path

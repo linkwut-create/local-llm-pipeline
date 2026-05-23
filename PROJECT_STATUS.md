@@ -352,6 +352,17 @@ schema were not touched, and no `structural_risk` runtime trigger or
 remains optional and may be revived only under a separately approved
 plan.
 
+## v0.10.0 Release-Prep Anchor
+
+- VERSION: `0.9.8` → `0.10.0`
+- Date: 2026-05-24
+- HEAD: `3a704ff` (scope closeout), bumped to commit TBD
+- Hard gates: 1300 passed, 13/13 run_checks
+- Active v0.10.0 chain complete: C2 (streaming stdout), P6-B2-C (ledger write-failure obs), M3 (manual rotation), H6 (classify_error), M7 (cost credibility), P6-B3-B/H5 (endpoint unification)
+- P5-C/V4-Flash deferred indefinitely — not a v0.10.0 blocker
+- No tag `v0.10.0` yet — release gate pending (full debate review + release auditor on bumped HEAD)
+- No zip, no push
+
 ## v0.9.8 Release-Prep Anchor
 
 - VERSION: `0.9.7` → `0.9.8`
@@ -536,5 +547,6 @@ plan.
 - **P5-C / V4-Flash** is **no longer active v0.10.0 scope**.  Deferred
   indefinitely unless explicitly re-authorized.
 - **Next recommended step**: v0.10.0 release-prep read-only audit.
-- **No release yet**: VERSION remains `0.9.8`; HEAD carries no tag; no
-  release; no zip; no push.
+- **Release bump**: `3a704ff` → VERSION bumped to `0.10.0`.  Tag `v0.10.0`
+  not yet created — pending release gate (full debate review + release
+  auditor on current HEAD).
