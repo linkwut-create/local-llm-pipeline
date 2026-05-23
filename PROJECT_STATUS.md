@@ -429,7 +429,25 @@ plan.
 	  skip remains disabled (`debate_skipped=false`, `debate_skip_allowed=false`).
 	  Commit gate, release guard, and dangerous command guard unchanged. VERSION
 	  remains `0.10.0`. No tag. No release.
-	  **Next**: v0.11.0-B1-D controlled skip policy audit (not implementation).
+	- **B1-D** (audit, no code): controlled skip policy audit passed.
+	  Read-only inspection confirmed no skip branches exist.  Designed
+	  minimal opt-in docs-only auto-debate skip: integration point =
+	  `call_review_diff` auto-escalation only, two env knobs
+	  (`LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP` default off,
+	  `LOCAL_LLM_FORCE_DEBATE_REVIEW` circuit breaker), docs-only files
+	  only (no tests-only), non-skippable conditions enumerated.
+	  Verdict: PROCEED.
+	- **v0.11.0-B1-E**: controlled low-risk auto-debate skip implemented.
+	  `_should_skip_auto_debate_for_low_risk_docs()` in MCP server gates
+	  skip behind env opt-in, preclassifier, and docs-only check.  Wired
+	  into `call_review_diff()` auto-debate escalation only — manual
+	  `local_debate_review_diff` never skipped.  Skip response injects
+	  `debate_auto_escalation_skipped` with `safe_to_commit=false` and
+	  `requires_commit_gate_review=true`.  Ledger skip record written
+	  (`debate_skip_policy=b1-d-v1`, `debate_mode=false`).  3 new
+	  `KNOWN_EXTRA_KEYS`.  37 new tests.  Commit/release/dangerous
+	  guards unchanged.  VERSION remains `0.10.0`.  No tag.
+	  **Next**: B1-E dogfood verification.
 
 ## v0.10.0 Release-Prep Anchor
 

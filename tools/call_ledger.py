@@ -93,6 +93,10 @@ KNOWN_EXTRA_KEYS = frozenset({
     "skip_debate_recommended",
     "preclassifier_method",
     "changed_files_count",
+    # Controlled auto-debate skip policy fields (B1-E)
+    "debate_skip_policy",
+    "debate_skip_policy_version",
+    "skipped_estimated_seconds_saved",
 })
 
 

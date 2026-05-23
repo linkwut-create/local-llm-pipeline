@@ -34,8 +34,12 @@ from health_store import load_profile_health, record_invocation
 # B1-C: preclassifier advisory integration (safe fallback)
 try:
     from local_llm_preclassifier import classify_diff_risk_heuristic as _preclassify
+    from local_llm_preclassifier import is_docs_only as _preclassifier_is_docs_only
+    from local_llm_preclassifier import detect_changed_files as _preclassifier_detect_files
 except Exception:
     _preclassify = None  # preclassifier unavailable — debate path unchanged
+    _preclassifier_is_docs_only = None
+    _preclassifier_detect_files = None
 
 # Concurrency guard: prevent multiple LLM calls from competing for GPU
 _call_lock = threading.Lock()
@@ -600,6 +604,11 @@ _MAX_ESCALATION_DEPTH = 2  # Allow up to 2 escalation hops (3 total invocations)
 # See docs/MCP_COST_DISCIPLINE_PLAN.md §4.2 for the P3 target table.
 _ENV_AUTO_ESCALATE_ON_LOW_CONFIDENCE = "LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE"
 _ENV_AUTO_ESCALATE_ON_UNCERTAIN = "LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN"
+# B1-E: controlled low-risk auto-debate skip (opt-in)
+_ENV_ENABLE_LOW_RISK_DEBATE_SKIP = "LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP"
+_ENV_FORCE_DEBATE_REVIEW = "LOCAL_LLM_FORCE_DEBATE_REVIEW"
+_ENV_B1E_SKIP_POLICY = "b1-d-v1"
+_ENV_B1E_SKIP_POLICY_VERSION = 1
 
 
 def _parse_env_flag(name: str, default: bool = False) -> bool:
@@ -2233,6 +2242,189 @@ def call_generate_test_plan(params: dict) -> dict:
 REVIEW_TIMEOUT = 60
 
 
+# B1-E: controlled low-risk auto-debate skip helper.
+# Best-effort ledger import — must not break review if ledger is unavailable.
+try:
+    from call_ledger import build_record as _ledger_build, record_call as _ledger_record
+except Exception:
+    _ledger_build = _ledger_record = None
+
+
+def _should_skip_auto_debate_for_low_risk_docs(
+    diff_text: str,
+    *,
+    commit_gate: bool,
+    context_source: str = "call_review_diff_auto_escalation",
+) -> tuple[bool, dict]:
+    """Determine whether a low-risk docs-only diff should skip auto-debate escalation.
+
+    Returns ``(should_skip, advisory)`` where *advisory* is safe to inject into
+    the single-model review response.  Never raises — all failures return
+    ``(False, {...})`` so the default behaviour is always to execute debate.
+    """
+    reason = ""
+    preclassifier_result = None
+
+    # A. Opt-in disabled → no skip
+    if not _parse_env_flag(_ENV_ENABLE_LOW_RISK_DEBATE_SKIP, default=False):
+        reason = "opt-in disabled (LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP not set)"
+        return False, _skip_advisory(False, reason, None)
+
+    # B. Force debate circuit breaker → no skip
+    if _parse_env_flag(_ENV_FORCE_DEBATE_REVIEW, default=False):
+        reason = "LOCAL_LLM_FORCE_DEBATE_REVIEW enabled"
+        return False, _skip_advisory(False, reason, None)
+
+    # C. Commit gate → no skip
+    if commit_gate:
+        reason = "commit gate requires debate review"
+        return False, _skip_advisory(False, reason, None)
+
+    # D. Preclassifier unavailable → no skip
+    if _preclassify is None:
+        reason = "preclassifier unavailable"
+        return False, _skip_advisory(False, reason, None)
+
+    # E. Run preclassifier
+    try:
+        preclassifier_result = _preclassify(
+            diff_text,
+            context={
+                "commit_gate": commit_gate,
+                "release": False,
+                "source": context_source,
+            },
+        )
+    except Exception:
+        reason = "preclassifier exception"
+        return False, _skip_advisory(False, reason, None)
+
+    if preclassifier_result is None:
+        reason = "preclassifier returned None"
+        return False, _skip_advisory(False, reason, None)
+
+    changed_files = preclassifier_result.get("changed_files", [])
+
+    # F. Non-skippable conditions
+    if preclassifier_result.get("risk_level") != "low":
+        reason = f"risk_level={preclassifier_result.get('risk_level')}"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    if preclassifier_result.get("confidence") != "high":
+        reason = f"confidence={preclassifier_result.get('confidence')}"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    if not preclassifier_result.get("skip_debate_recommended"):
+        reason = "skip_debate_recommended is false"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    safety_blockers = preclassifier_result.get("safety_blockers", [])
+    if safety_blockers:
+        reason = f"safety_blockers non-empty: {safety_blockers}"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    if len(changed_files) == 0:
+        reason = "no changed files"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    # G. All files must be docs-only (NOT tests-only)
+    if (_preclassifier_is_docs_only is not None
+            and not _preclassifier_is_docs_only(changed_files)):
+        reason = "not all files are docs-only"
+        return False, _skip_advisory(False, reason, preclassifier_result)
+
+    # Double-check: ensure no runtime/test file is present
+    for f in changed_files:
+        norm = f.replace("\\", "/")
+        if norm.startswith("tests/") or norm.endswith("_test.py") or norm.startswith("test_"):
+            reason = f"test file detected: {norm}"
+            return False, _skip_advisory(False, reason, preclassifier_result)
+        if not norm.endswith(".md") and not norm.startswith("docs/"):
+            reason = f"non-docs file detected: {norm}"
+            return False, _skip_advisory(False, reason, preclassifier_result)
+
+    # All checks passed — skip is allowed.
+    reason = "low-risk docs-only diff; opt-in enabled via LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP"
+    advisory = _skip_advisory(True, reason, preclassifier_result)
+
+    # H. Write skip ledger record (best-effort, never blocks)
+    _write_skip_ledger_record(diff_text, changed_files, preclassifier_result)
+
+    return True, advisory
+
+
+def _skip_advisory(skipped: bool, reason: str,
+                   preclassifier_result: dict | None) -> dict:
+    """Build the ``debate_auto_escalation_skipped`` response field."""
+    advisory: dict = {
+        "ok": True,
+        "skipped": skipped,
+        "reason": reason,
+        "preclassifier_advisory": preclassifier_result or {},
+        "requires_commit_gate_review": True,
+        "safe_to_commit": False,
+        "manual_debate_still_available": True,
+        "force_circuit_breaker": _ENV_FORCE_DEBATE_REVIEW,
+        "policy": _ENV_B1E_SKIP_POLICY,
+        "policy_version": _ENV_B1E_SKIP_POLICY_VERSION,
+    }
+    return advisory
+
+
+def _write_skip_ledger_record(
+    diff_text: str,
+    changed_files: list[str],
+    preclassifier_result: dict,
+) -> None:
+    """Write a single ledger record documenting the skipped auto-debate escalation.
+
+    Never raises — ledger failures are silently swallowed so the review path
+    is never broken.
+    """
+    if not (_ledger_build and _ledger_record):
+        return None
+    try:
+        extra = {
+            "debate_skipped": True,
+            "debate_skip_allowed": True,
+            "debate_skip_reason": "low-risk docs-only diff; opt-in enabled",
+            "debate_skip_policy": _ENV_B1E_SKIP_POLICY,
+            "debate_skip_policy_version": _ENV_B1E_SKIP_POLICY_VERSION,
+            "diff_risk_level": preclassifier_result.get("risk_level", "low"),
+            "diff_risk_confidence": preclassifier_result.get("confidence", "high"),
+            "skip_debate_recommended": True,
+            "preclassifier_method": preclassifier_result.get("classification_method", "heuristic"),
+            "preclassifier_profile": "heuristic",
+            "preclassifier_model": "none",
+            "changed_files_count": len(changed_files),
+            "safety_blockers": preclassifier_result.get("safety_blockers", []),
+            "skipped_estimated_seconds_saved": 500.0,
+            "debate_mode": False,
+            "debate_rounds": 0,
+            "debate_round_index": 0,
+            "mcp_tool_name": "local_review_diff",
+            "source": "auto-debate-skip",
+        }
+        rec = _ledger_build(
+            task_type="review-diff",
+            tool_name="local_review_diff",
+            profile="auto-debate-skip",
+            model="none",
+            provider="skip",
+            input_chars=len(diff_text),
+            output_chars=0,
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=0,
+            success=True,
+            result_summary=f"auto-debate escalation skipped: {len(changed_files)} docs-only file(s)",
+            extra=extra,
+        )
+        _ledger_record(rec)
+    except Exception:
+        pass  # ledger must never break the review path
+
+
 def call_review_diff(params: dict) -> dict:
     diff_text = params.get("diff_text", "")
     if not diff_text.strip():
@@ -2249,6 +2441,7 @@ def call_review_diff(params: dict) -> dict:
 
     # Auto-escalate to debate for large or multi-file diffs (v0.9.5)
     # commit_gate skips escalation for fast pre-commit review
+    # B1-E: controlled low-risk docs-only skip (opt-in via env knob)
     if not commit_gate:
         line_count = diff_text.count('\n')
         file_count = len(re.findall(r'^diff --git ', diff_text, re.MULTILINE))
@@ -2260,11 +2453,22 @@ def call_review_diff(params: dict) -> dict:
         if (line_count > 100 or file_count >= 3
                 or (has_logic and file_count >= 2)
                 or (is_heavy and has_logic)):
-            if is_heavy and has_logic:
-                print(f"MCP: heavy diff ({line_count}L, {file_count} files, has_logic) → auto-debate",
-                      file=sys.stderr)
-            params["_debate_trigger"] = "auto-escalate"
-            return call_debate_review_diff(params)
+            # B1-E: check controlled low-risk skip before escalating
+            skip_debate, skip_advisory = _should_skip_auto_debate_for_low_risk_docs(
+                diff_text,
+                commit_gate=False,
+                context_source="call_review_diff_auto_escalation",
+            )
+            if not skip_debate:
+                if is_heavy and has_logic:
+                    print(f"MCP: heavy diff ({line_count}L, {file_count} files, has_logic) → auto-debate",
+                          file=sys.stderr)
+                params["_debate_trigger"] = "auto-escalate"
+                return call_debate_review_diff(params)
+            # B1-E: skip allowed — fall through to single-model review.
+            print(f"MCP: auto-debate skipped ({skip_advisory.get('reason', '')}) → single-model review",
+                  file=sys.stderr)
+            params["_debate_auto_escalation_skipped"] = skip_advisory
 
     # Unified complexity-based routing: security → reasoning, CJK → CJK-capable,
     # heavy → deep_reviewer, normal → diff_reviewer, light → commit_reviewer
@@ -2281,11 +2485,19 @@ def call_review_diff(params: dict) -> dict:
 
     # Non-commit-gate: route through _wrap_worker_call for quality escalation (v0.9.6)
     if not commit_gate:
-        return _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
-                                 task="review-diff", cjk_ratio=cjk_ratio,
-                                 extra_env=_build_ledger_extra_env(
-                                     mcp_tool_name="local_review_diff",
-                                     commit_gate=False))
+        result = _wrap_worker_call("local_review_diff", cmd, stdin_data=diff_text,
+                                   task="review-diff", cjk_ratio=cjk_ratio,
+                                   extra_env=_build_ledger_extra_env(
+                                       mcp_tool_name="local_review_diff",
+                                       commit_gate=False))
+        # B1-E: inject controlled skip advisory when auto-debate escalation was skipped
+        if params.get("_debate_auto_escalation_skipped"):
+            try:
+                if isinstance(result, dict):
+                    result["debate_auto_escalation_skipped"] = params["_debate_auto_escalation_skipped"]
+            except Exception:
+                pass  # best-effort injection — never break the review response
+        return result
 
     # Commit gate: pre-invocation constraint check — reject heavy/risky models
     if commit_gate:

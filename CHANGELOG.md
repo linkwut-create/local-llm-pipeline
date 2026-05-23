@@ -110,7 +110,34 @@
 	  line — classifies, responds, and records without ever skipping debate.
 	  Debate skip remains disabled.  Commit gate, release guard, and
 	  dangerous command guard unchanged.  VERSION remains 0.10.0.  No tag.
-	  Next: v0.11.0-B1-D controlled skip policy audit (not implementation).
+	- v0.11.0-B1-D: controlled skip policy audit (read-only, no code).
+	  Inspected all relevant source files (preclassifier, debate, MCP
+	  server, call ledger, gate).  Confirmed no skip branches exist.
+	  Designed minimal opt-in docs-only auto-debate skip policy:
+	  integration point = `call_review_diff` auto-escalation only
+	  (manual `local_debate_review_diff` never skipped).  Non-skippable:
+	  commit_gate, release, VERSION, pyproject, MCP/worker/router/debate/
+	  ledger/hook/cache files, auth/security, runtime code, tests-only,
+	  mixed diffs, low confidence, malformed diff, security body patterns.
+	  Skippable: docs-only `.md` / `docs/**` / `CHANGELOG.md` /
+	  `PROJECT_STATUS.md` with env opt-in.  Two env knobs:
+	  `LOCAL_LLM_ENABLE_LOW_RISK_DEBATE_SKIP` (default off) and
+	  `LOCAL_LLM_FORCE_DEBATE_REVIEW` (circuit breaker, overrides all).
+	  Verdict: PROCEED to B1-E implementation.
+	- **v0.11.0-B1-E**: controlled low-risk auto-debate skip implemented.
+	  Added `_should_skip_auto_debate_for_low_risk_docs()` helper in MCP
+	  server — env-gated, preclassifier-driven, docs-only check.  Wired
+	  into `call_review_diff()` auto-debate escalation path only.  When
+	  skip fires: single-model review still runs, response gains
+	  `debate_auto_escalation_skipped` advisory (`safe_to_commit=false`,
+	  `requires_commit_gate_review=true`), ledger skip record written
+	  (`debate_mode=false`, `debate_skip_allowed=true`).  3 new
+	  `KNOWN_EXTRA_KEYS` (`debate_skip_policy`, `debate_skip_policy_version`,
+	  `skipped_estimated_seconds_saved`).  37 new tests
+	  (`tests/test_b1e_controlled_skip.py`).  Manual
+	  `local_debate_review_diff` never skipped.  Commit/release/dangerous
+	  guards unchanged.  VERSION remains 0.10.0.  No tag.
+	  Next: B1-E dogfood verification.
 
 ## v0.10.0 - 2026-05-24
 
