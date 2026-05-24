@@ -522,7 +522,19 @@ plan.
 	  171 files, 23 test mappings, all roles verified, no sensitive
 	  content.  Full suite 1561 passed.  Not yet connected to any
 	  MCP tool, review path, test-plan, or hooks.
-	  Next: C1 dogfood closeout, then C2 MCP tool `local_repo_map`.
+	- **C1 dogfood** (no commit): verified.
+	  `C1_IMPLEMENTED=yes`, `C1_DOGFOOD_VERIFIED=yes`.
+	  Implementation commit: `d223063`,
+	  `v0.10.0-12-gd223063`, VERSION `0.10.0`.
+	  `tools/local_llm_repo_map.py` standalone: `--root . --json`
+	  produces valid schema v1.  `total_files=171`,
+	  `test_mapping entries=23`.  All key roles verified.
+	  `.local_llm_out/` ignored, no sensitive content/body in
+	  output.  93/93 repo map tests, 1561/1561 full suite,
+	  13/13 run_checks.  Boundaries: no MCP integration yet, no
+	  review/test-plan/hooks integration, no gate behavior changed.
+	  **C1 line closed.**
+	  Next: v0.11.0-C2 MCP tool `local_repo_map`.
 
 ## v0.10.0 Release-Prep Anchor
 

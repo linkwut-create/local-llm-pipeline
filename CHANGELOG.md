@@ -246,7 +246,20 @@
 	  171 files, git_head=`a5144d2`, all key roles verified, no
 	  sensitive content in output.  Full suite 1561 passed.
 	  Advisory-only foundation — no MCP tool, no review/test-plan/hook
-	  integration yet.  Next: C1 dogfood closeout or C2 MCP tool.
+	  integration yet.
+	- **v0.11.0-C1 dogfood**: verified.  `tools/local_llm_repo_map.py`
+	  runs standalone via `--root . --json`.  Output: `ok=true`,
+	  `schema_version=1`, `git_head=d223063`, `total_files=171`,
+	  `test_mapping entries=23`.  All key roles verified:
+	  `mcp_server`, `worker`, `router`, `debate`, `ledger`, `hook`,
+	  `docs`, `test`.  `.local_llm_out/` correctly ignored, no
+	  sensitive content/body in output.  Tests: 93/93 repo map,
+	  146/146 grouped, 1561/1561 full suite.  13/13 run_checks.
+	  Commit-gate review `ok=true`.  Boundaries confirmed: no model
+	  calls, no MCP tool, no ledger writes, no review/test-plan/hook
+	  integration.  Advisory-only foundation.  VERSION remains
+	  `0.10.0`, no tag.  **C1 line closed.**
+	  Next: v0.11.0-C2 MCP tool `local_repo_map`.
 
 ## v0.10.0 - 2026-05-24
 
