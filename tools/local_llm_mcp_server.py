@@ -3266,12 +3266,13 @@ def call_classify_test_failure(params: dict) -> dict:
 
     stdin_data = json.dumps(payload_obj, ensure_ascii=False)
 
-    # Ledger extra
-    ledger_extra = _build_ledger_extra_env(
+    # Ledger extra for subprocess env — all values must be strings.
+    # test_failure_exit_code goes into the JSON payload so subprocess never
+    # sees a raw int env value (D-C.1 fix for Bug 1).
+    extra_env = _build_ledger_extra_env(
         mcp_tool_name=tool_name,
+        test_failure_exit_code=exit_code if exit_code is not None else None,
     )
-    if exit_code is not None:
-        ledger_extra["test_failure_exit_code"] = exit_code
 
     # Resolve profile
     user_profile = params.get("profile", "")
@@ -3283,11 +3284,18 @@ def call_classify_test_failure(params: dict) -> dict:
         user_profile or None,
     )
 
-    cmd = build_router_cmd("classify-test-failure", None, None, None,
-                           proactive_profile or user_profile, params.get("model"))
+    # D-C.1 fix for Bug 2: must include --stdin so the worker receives the
+    # failure payload via stdin (same pattern as call_review_diff:2634).
+    cmd = [sys.executable, str(SCRIPT_DIR / "local_llm_router.py"),
+           "classify-test-failure", "--stdin"]
+    profile = proactive_profile or user_profile
+    if profile:
+        cmd.extend(["--profile", profile])
+    if params.get("model"):
+        cmd.extend(["--model", params["model"]])
     result = _wrap_worker_call(tool_name, cmd, stdin_data=stdin_data,
                                task="classify-test-failure",
-                               extra_env=ledger_extra)
+                               extra_env=extra_env)
 
     # Try to parse the worker result text for failure_class/confidence
     classification_parsed = False
@@ -3312,9 +3320,8 @@ def call_classify_test_failure(params: dict) -> dict:
             result["failure_class"] = fc
             result["confidence"] = conf
             result["advisory_only"] = bool(w.get("advisory_only", True))
-            # Propagate into ledger extra for this call
-            ledger_extra["test_failure_class"] = fc
-            ledger_extra["test_failure_confidence"] = conf
+            extra_env["test_failure_class"] = fc
+            extra_env["test_failure_confidence"] = conf
             classification_parsed = True
     except Exception:
         pass
@@ -3324,11 +3331,10 @@ def call_classify_test_failure(params: dict) -> dict:
         result["confidence"] = "low"
         result["advisory_only"] = True
         result["classification_parse_warning"] = "invalid_json"
-        ledger_extra["test_failure_class"] = "unknown"
-        ledger_extra["test_failure_confidence"] = "low"
+        extra_env["test_failure_class"] = "unknown"
+        extra_env["test_failure_confidence"] = "low"
 
-    # Rebuild ledger extra with classification fields
-    result["_ledger_extra"] = ledger_extra
+    result["_ledger_extra"] = extra_env
 
     return result
 

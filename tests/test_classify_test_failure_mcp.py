@@ -1,7 +1,8 @@
-"""Tests for D-C: local_classify_test_failure MCP tool, handler, ledger keys.
+"""Tests for D-C / D-C.1: local_classify_test_failure MCP tool, handler, ledger keys.
 
 Covers MCP tool registration, input validation, worker wiring, classification
-JSON parsing, invalid JSON fallback, ledger extra keys, and safety boundaries.
+JSON parsing, invalid JSON fallback, ledger extra keys, safety boundaries,
+and D-C.1 hotfix regressions (env values are strings, command uses --stdin).
 """
 
 import json
@@ -120,7 +121,7 @@ def test_worker_called_with_correct_task(mock_wrap):
         "summary": "test", "likely_cause": "test", "files_to_inspect": [],
         "recommended_action": "check", "advisory_only": True,
     })
-    result = mcp.call_classify_test_failure({
+    mcp.call_classify_test_failure({
         "stderr": "AssertionError: assert 1 == 2",
         "exit_code": 1,
     })
@@ -139,10 +140,39 @@ def test_stderr_truncated_in_payload(mock_wrap):
     huge_stderr = "x" * 60_000
     mcp.call_classify_test_failure({"stderr": huge_stderr})
     assert mock_wrap.called
-    # stdin_data should be truncated
     stdin = mock_wrap.call_args[1].get("stdin_data", "")
     payload = json.loads(stdin)
     assert len(payload["stderr"]) <= 50_001  # _STDERR_MAX_CHARS + some slack
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_stdout_truncated_in_payload(mock_wrap):
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "unknown", "confidence": "low",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    huge_stdout = "y" * 30_000
+    mcp.call_classify_test_failure({"stderr": "err", "stdout": huge_stdout})
+    assert mock_wrap.called
+    stdin = mock_wrap.call_args[1].get("stdin_data", "")
+    payload = json.loads(stdin)
+    assert len(payload["stdout"]) <= 20_001  # _STDOUT_MAX_CHARS
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_test_command_capped(mock_wrap):
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "unknown", "confidence": "low",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    long_cmd = "pytest " + "x" * 2000
+    mcp.call_classify_test_failure({"stderr": "err", "test_command": long_cmd})
+    assert mock_wrap.called
+    stdin = mock_wrap.call_args[1].get("stdin_data", "")
+    payload = json.loads(stdin)
+    assert len(payload["test_command"]) <= 1000
 
 
 @patch("local_llm_mcp_server._wrap_worker_call")
@@ -157,6 +187,80 @@ def test_changed_files_capped(mock_wrap):
     stdin = mock_wrap.call_args[1].get("stdin_data", "")
     payload = json.loads(stdin)
     assert len(payload["changed_files"]) <= 50
+
+
+# ── C-1. D-C.1 hotfix regressions ─────────────────────────────────────
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_command_uses_stdin(mock_wrap):
+    """Bug 2 fix: cmd must include --stdin."""
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "assertion", "confidence": "medium",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    mcp.call_classify_test_failure({
+        "stderr": "AssertionError",
+        "exit_code": 1,
+        "test_command": "pytest -q",
+        "changed_files": ["a.py"],
+    })
+    assert mock_wrap.called
+    cmd = mock_wrap.call_args[0][1]  # second positional arg is cmd list
+    assert "--stdin" in cmd, f"--stdin missing from cmd: {cmd}"
+    stdin_data = mock_wrap.call_args[1].get("stdin_data", "")
+    assert stdin_data
+    payload = json.loads(stdin_data)
+    assert "stderr" in payload
+    assert "stdout" in payload
+    assert payload.get("exit_code") == 1
+    assert payload.get("test_command") == "pytest -q"
+    assert payload.get("changed_files") == ["a.py"]
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_env_values_are_all_strings(mock_wrap):
+    """Bug 1 fix: all extra_env values must be str for subprocess env."""
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "import_error", "confidence": "high",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    mcp.call_classify_test_failure({
+        "stderr": "ImportError: cannot import X",
+        "exit_code": 1,
+    })
+    assert mock_wrap.called
+    extra_env = mock_wrap.call_args[1].get("extra_env", {})
+    for key, value in extra_env.items():
+        assert isinstance(value, str), (
+            f"extra_env[{key!r}] = {value!r} is {type(value).__name__}, expected str"
+        )
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_exit_code_stored_in_ledger_json_not_as_raw_int(mock_wrap):
+    """Bug 1 fix: test_failure_exit_code inside LOCAL_LLM_LEDGER_EXTRA JSON."""
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "timeout", "confidence": "medium",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    mcp.call_classify_test_failure({
+        "stderr": "timeout",
+        "exit_code": 124,
+    })
+    assert mock_wrap.called
+    extra_env = mock_wrap.call_args[1].get("extra_env", {})
+    raw_json = extra_env.get("LOCAL_LLM_LEDGER_EXTRA", "")
+    assert raw_json
+    ledger_payload = json.loads(raw_json)
+    assert ledger_payload.get("test_failure_exit_code") == 124
+    # Must NOT be a separate raw env var with int value
+    assert "test_failure_exit_code" not in extra_env, (
+        "test_failure_exit_code must be inside LOCAL_LLM_LEDGER_EXTRA JSON, "
+        "not a raw env key"
+    )
 
 
 # ── D. Classification parse (valid JSON result) ───────────────────────
@@ -239,6 +343,7 @@ def test_ledger_no_forbidden_keys():
 
 @patch("local_llm_mcp_server._wrap_worker_call")
 def test_ledger_extra_passed_to_worker(mock_wrap):
+    """Classification fields in _ledger_extra for parsed worker output."""
     mock_wrap.return_value = _mock_worker_output({
         "ok": True, "failure_class": "timeout", "confidence": "medium",
         "summary": "x", "likely_cause": "x", "files_to_inspect": [],
@@ -251,7 +356,10 @@ def test_ledger_extra_passed_to_worker(mock_wrap):
     le = result["_ledger_extra"]
     assert le["test_failure_class"] == "timeout"
     assert le["test_failure_confidence"] == "medium"
-    assert le["test_failure_exit_code"] == 2
+    # D-C.1: test_failure_exit_code is inside LOCAL_LLM_LEDGER_EXTRA JSON
+    raw_json = le.get("LOCAL_LLM_LEDGER_EXTRA", "")
+    ledger_payload = json.loads(raw_json)
+    assert ledger_payload["test_failure_exit_code"] == 2
 
 
 @patch("local_llm_mcp_server._wrap_worker_call")
@@ -263,7 +371,42 @@ def test_ledger_extra_fallback_on_invalid_json(mock_wrap):
     assert le["test_failure_confidence"] == "low"
 
 
-# ── G. Safety boundaries ──────────────────────────────────────────────
+# ── G. Ledger privacy (D-C.1) ─────────────────────────────────────────
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_ledger_env_excludes_stderr_stdout_test_command(mock_wrap):
+    """Extra env / ledger payload must NOT leak stderr, stdout, or test_command."""
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True, "failure_class": "assertion", "confidence": "high",
+        "summary": "x", "likely_cause": "x", "files_to_inspect": [],
+        "recommended_action": "x", "advisory_only": True,
+    })
+    mcp.call_classify_test_failure({
+        "stderr": "AssertionError: secret-token-12345",
+        "stdout": "API_KEY=abcdef",
+        "test_command": "pytest tests/test_secret.py -q",
+        "exit_code": 1,
+    })
+    extra_env = mock_wrap.call_args[1].get("extra_env", {})
+    # Check LOCAL_LLM_LEDGER_EXTRA JSON does not contain stderr/stdout/test_command
+    raw_json = extra_env.get("LOCAL_LLM_LEDGER_EXTRA", "")
+    assert raw_json
+    ledger_payload = json.loads(raw_json)
+    assert "stderr" not in ledger_payload
+    assert "stdout" not in ledger_payload
+    assert "test_command" not in ledger_payload
+    # Raw env keys must not contain stderr/stdout/test_command
+    for key in extra_env:
+        assert "stderr" not in key.lower(), f"forbidden key in extra_env: {key}"
+        assert "stdout" not in key.lower(), f"forbidden key in extra_env: {key}"
+        assert "test_command" not in key.lower(), f"forbidden key in extra_env: {key}"
+    # Full stderr must not appear as any env value
+    for value in extra_env.values():
+        assert "secret-token-12345" not in value
+        assert "API_KEY=abcdef" not in value
+
+
+# ── H. Safety boundaries ──────────────────────────────────────────────
 
 def test_handler_no_commit_gate_param():
     """Handler must not accept or require commit_gate."""

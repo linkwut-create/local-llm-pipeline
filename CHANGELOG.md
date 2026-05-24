@@ -416,6 +416,24 @@
 		  for tool count 10→11 across 6 test suites.  No hooks/gates/guards/
 		  debate/queue/VERSION/tag changes.  VERSION remains `0.10.0`, no tag.
 		  Next: D-D real MCP dogfood (requires MCP server restart).
+	- **v0.11.0-D-C.1**: hotfix for two blocking bugs found during D-D real MCP
+	  dogfood.  **Bug 1** (`environment can only contain strings`):
+	  `test_failure_exit_code` (int) was added as a raw key in the `extra_env`
+	  dict passed to subprocess; `subprocess.Popen(env=...)` rejects non-str
+	  values.  Fixed by passing `test_failure_exit_code` through
+	  `_build_ledger_extra_env` kwargs so it lands inside the
+	  `LOCAL_LLM_LEDGER_EXTRA` JSON string instead of as a standalone env key.
+	  **Bug 2** (worker `empty_input` / `No target specified and --stdin not
+	  used`): handler called `build_router_cmd("classify-test-failure", None,
+	  ...)` which does not add `--stdin`; worker received no payload.  Fixed
+	  by constructing the command list explicitly with `--stdin` (same pattern
+	  as `call_review_diff:2634`).  7 new tests added (env-strings, --stdin,
+	  stdout truncation, test_command cap, exit_code JSON location, ledger
+	  privacy).  3 test expectations updated for new `test_failure_exit_code`
+	  location.  1719/1719 full suite, 13/13 run_checks, commit-gate review
+	  passed.  No hooks/gates/guards/debate/queue/VERSION/tag changes.
+	  VERSION remains `0.10.0`, no tag.  Next: re-run D-D real MCP dogfood
+	  after MCP server restart.
 
 ## v0.10.0 - 2026-05-24
 
