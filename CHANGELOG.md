@@ -377,7 +377,30 @@
 		  invocation; no VERSION bump; no tag; no zip; no push.  Validation: 1633/1633
 		  full suite, 13/13 run_checks, commit-gate reviews passed, real MCP dogfood
 		  verified for C2 and C3-B.  VERSION remains `0.10.0`, no tag.
-		  Next: v0.11.0-D read-only planning audit for test failure classifier.
+		- **v0.11.0-D-A**: read-only planning audit completed.  Reviewed 11 source
+		  files.  Recommended new 11th MCP tool `local_classify_test_failure`
+		  (synchronous, independent of E/queue).  Rejected extending
+		  `local_generate_test_plan` or `local_review_diff`.  Defined minimal
+		  input (stderr required, stdout/exit_code/test_command/changed_files
+		  optional), output schema (8 fields, fixed enums), 8 failure classes,
+		  confidence caps (high only for syntax_error/import_error/dependency
+		  with exact file+line), hard safety boundaries, 3 ledger keys, repo-map
+		  opt-in mirroring C3-B, and 5-slice implementation plan (D-A → D-B → D-C
+		  → D-D → D-E).  No code changes.  VERSION remains `0.10.0`, no tag.
+		- **v0.11.0-D-B**: worker prompt + response schema for
+		  `classify-test-failure`.  Added `classify-test-failure` task prompt to
+		  `tools/local_llm_worker.py::TASK_PROMPTS` — advisory-only classifier
+		  with 8 output fields (`ok`, `failure_class`, `confidence`, `summary`,
+		  `likely_cause`, `files_to_inspect`, `recommended_action`,
+		  `advisory_only`), 8 failure classes (`assertion`, `import_error`,
+		  `syntax_error`, `dependency`, `timeout`, `environment`, `flaky`,
+		  `unknown`), confidence caps, secret-safety rules (redact tokens/keys,
+		  no full stderr/stdout echo, compact output under 2 KB), and boundary
+		  wording (no auto-fix/rerun/commit/hook/gate/review replacement).  52
+		  focused tests in `tests/test_classify_test_failure_prompt.py`.
+		  Helper-only — no MCP tool, handler, ledger, or hook integration yet.
+		  MCP tool count remains 10.  VERSION remains `0.10.0`, no tag.
+		  Next: D-C MCP tool implementation (11th tool).
 
 ## v0.10.0 - 2026-05-24
 
