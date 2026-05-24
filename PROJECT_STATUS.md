@@ -582,8 +582,21 @@ plan.
 	  limitation).  `subsystem_peers` → `.mcp.json` (config).
 	  Cap/unknown-path/Windows-path/safety checks all passed.
 	  **C3-A line closed.**
-	  Next: C3-B `local_generate_test_plan` explicit
-	  `use_repo_map=false` default parameter planning.
+	  **C3-B implemented.**
+	  `local_generate_test_plan` now accepts `use_repo_map` (default
+	  false), `repo_map_path`, `repo_map_max_files`.  When
+	  `use_repo_map=true`: loads/builds repo map, extracts context
+	  via C3-A helper, injects advisory prompt prefix via
+	  `LOCAL_LLM_REPO_MAP_CONTEXT` env var.  Worker `build_prompt`
+	  reads env var (best-effort, never crashes).  Response adds
+	  `repo_map_context_used` and related additive fields.  Ledger
+	  `KNOWN_EXTRA_KEYS` extended with 4 C3-B fields.  Missing/
+	  corrupt repo map → warning, not failure.  22 new tests,
+	  233 repo-map+MCP, 1633 full suite, 13/13 run_checks.
+	  `local_repo_map` remains manual-only.  No hooks/review/debate/
+	  gate changes.  VERSION remains `0.10.0`, no tag.
+	  **C3-B line closed.**
+	  Next: C3-B real MCP dogfood (default + `use_repo_map=true`).
 
 ## v0.10.0 Release-Prep Anchor
 

@@ -311,8 +311,24 @@
 		  unknown path, Windows path normalization, safety scan
 		  all passed.  Working tree clean.  VERSION remains
 		  `0.10.0`, no tag.  **C3-A line closed.**
-		  Next: C3-B `local_generate_test_plan` explicit
-		  `use_repo_map=false` default parameter planning.
+		- **v0.11.0-C3-B**: `local_generate_test_plan` repo map advisory
+		  opt-in.  New optional params: `use_repo_map` (default false),
+		  `repo_map_path`, `repo_map_max_files`.  When
+		  `use_repo_map=true`, loads or builds a repo map, extracts
+		  advisory context via the C3-A helper, and injects it as a
+		  prompt prefix.  Missing/corrupt repo map never fails the
+		  test-plan call — returns warning instead.  Response adds
+		  additive metadata: `repo_map_context_used`,
+		  `repo_map_related_tests_count`, `repo_map_subsystems`.
+		  Ledger records 4 new extra keys.  Worker `build_prompt`
+		  reads `LOCAL_LLM_REPO_MAP_CONTEXT` env var (never crashes
+		  on bad JSON).  Default path unchanged:
+		  `use_repo_map=false` → identical behaviour to before.
+		  No MCP schema breaking changes, no hooks/review/debate/gate
+		  changes.  `local_repo_map` remains manual-only.  22 new
+		  tests, 233 repo-map+MCP, 1633 full suite, 13/13 run_checks.
+		  VERSION remains `0.10.0`, no tag.  **C3-B line closed.**
+		  Next: C3-B real MCP dogfood (default + `use_repo_map=true`).
 
 ## v0.10.0 - 2026-05-24
 

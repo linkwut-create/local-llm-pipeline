@@ -856,7 +856,7 @@ TOOLS = {
         },
     },
     "local_generate_test_plan": {
-        "description": "Generate a test plan for a source file using a local LLM. Returns test categories, edge cases, and coverage suggestions.",
+        "description": "Generate a test plan for a source file using a local LLM. Returns test categories, edge cases, and coverage suggestions. When use_repo_map=true, injects advisory repo-map context into the prompt.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -871,6 +871,18 @@ TOOLS = {
                 "model": {
                     "type": "string",
                     "description": "Optional model name override.",
+                },
+                "use_repo_map": {
+                    "type": "boolean",
+                    "description": "When true, inject a small advisory repo-map context into the test-plan prompt. Default false.",
+                },
+                "repo_map_path": {
+                    "type": "string",
+                    "description": "Optional path to an existing repo_map.json. Used only when use_repo_map=true.",
+                },
+                "repo_map_max_files": {
+                    "type": "integer",
+                    "description": "Optional max files if a fresh repo map must be built. Default 300. Used only when use_repo_map=true.",
                 },
             },
             "required": ["path"],
@@ -1205,6 +1217,7 @@ def _build_ledger_extra_env(
     mcp_tool_name: str,
     commit_gate: bool | None = None,
     source: str = "manual-mcp",
+    **extra: object,
 ) -> dict[str, str]:
     payload: dict[str, object] = {
         "mcp_tool_name": mcp_tool_name,
@@ -1212,6 +1225,9 @@ def _build_ledger_extra_env(
     }
     if commit_gate is not None:
         payload["commit_gate"] = bool(commit_gate)
+    for k, v in extra.items():
+        if v is not None:
+            payload[k] = v
     return {
         "LOCAL_LLM_LEDGER_EXTRA": json.dumps(
             payload, separators=(",", ":"), sort_keys=True,
@@ -2241,6 +2257,58 @@ def call_generate_test_plan(params: dict) -> dict:
             profile=params.get("profile"), model=params.get("model"),
         )
 
+    use_repo_map = bool(params.get("use_repo_map", False))
+
+    # --- repo map advisory context (C3-B) ---
+    repo_map_context: dict | None = None
+    repo_map_context_warning: str | None = None
+    repo_map_extra: dict[str, object] = {}
+
+    if use_repo_map:
+        repo_map_extra["test_plan_repo_map_used"] = True
+        try:
+            from local_llm_repo_map import (
+                build_repo_map, build_repo_map_context_for_path,
+            )
+            repo_map_path = params.get("repo_map_path") or ".local_llm_out/repo_map.json"
+            repo_map_max_files = params.get("repo_map_max_files", 300)
+
+            # Try to load an existing repo map
+            repo_map_data: dict | None = None
+            try:
+                rp = Path(repo_map_path)
+                if rp.exists():
+                    repo_map_data = json.loads(rp.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                repo_map_context_warning = "repo_map_corrupt"
+
+            # Fallback: build a fresh repo map in-memory (do NOT write to disk)
+            if repo_map_data is None:
+                try:
+                    repo_map_data = build_repo_map(
+                        PROJECT_ROOT, max_files=repo_map_max_files,
+                    )
+                except Exception:
+                    repo_map_context_warning = "repo_map_build_failed"
+
+            if repo_map_data is not None and repo_map_data.get("ok"):
+                repo_map_context = build_repo_map_context_for_path(
+                    repo_map_data, path_str,
+                )
+                repo_map_extra["test_plan_related_tests_count"] = len(
+                    repo_map_context.get("related_tests", []))
+                repo_map_extra["test_plan_subsystems"] = ",".join(
+                    repo_map_context.get("subsystems_touched", []))
+            elif repo_map_context_warning is None:
+                repo_map_context_warning = "repo_map_unavailable"
+        except Exception:
+            repo_map_context_warning = "repo_map_context_failed"
+
+        if repo_map_context_warning:
+            repo_map_extra["test_plan_repo_map_warning"] = repo_map_context_warning
+    else:
+        repo_map_extra["test_plan_repo_map_used"] = False
+
     # Proactive routing: read the file to count definitions and estimate complexity
     user_profile = params.get("profile", "")
     proactive_profile = None
@@ -2250,7 +2318,6 @@ def call_generate_test_plan(params: dict) -> dict:
         content = fpath.read_text(encoding="utf-8", errors="replace")[:16_384]
         info = _classify_input_complexity(content, is_diff=False)
         cjk_ratio = info["cjk_ratio"]
-        # Boost complexity tier based on definition count
         def_count = len(re.findall(
             r'^\s*(?:async\s+)?def\s+\w+|^\s*class\s+\w+',
             content, re.MULTILINE,
@@ -2264,12 +2331,31 @@ def call_generate_test_plan(params: dict) -> dict:
     except (OSError, UnicodeError):
         pass
 
+    # Build extra_env with both ledger extra and optional repo map context
+    extra_env = _build_ledger_extra_env(
+        mcp_tool_name="local_generate_test_plan",
+        **repo_map_extra,
+    )
+    if repo_map_context is not None:
+        extra_env["LOCAL_LLM_REPO_MAP_CONTEXT"] = json.dumps(
+            repo_map_context, separators=(",", ":"), sort_keys=True,
+        )
+
     cmd = build_router_cmd("generate-test-plan", path_str, None, None,
                            proactive_profile or user_profile, params.get("model"))
-    return _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan",
-                             cjk_ratio=cjk_ratio,
-                             extra_env=_build_ledger_extra_env(
-                                 mcp_tool_name="local_generate_test_plan"))
+    result = _wrap_worker_call("local_generate_test_plan", cmd, task="generate-test-plan",
+                               cjk_ratio=cjk_ratio,
+                               extra_env=extra_env)
+
+    # Inject C3-B response metadata additively
+    result.setdefault("repo_map_context_used", bool(use_repo_map and repo_map_context is not None))
+    if repo_map_context_warning:
+        result["repo_map_context_warning"] = repo_map_context_warning
+    if repo_map_context is not None:
+        result["repo_map_related_tests_count"] = len(repo_map_context.get("related_tests", []))
+        result["repo_map_subsystems"] = repo_map_context.get("subsystems_touched", [])
+
+    return result
 
 
 REVIEW_TIMEOUT = 60

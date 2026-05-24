@@ -436,8 +436,32 @@ def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, st
     if "{style}" in task_prompt:
         task_prompt = task_prompt.replace("{style}", config.style)
 
+    # C3-B: inject advisory repo map context if present (never fails on bad JSON)
+    repo_map_hint = ""
+    try:
+        rm_ctx_raw = os.environ.get("LOCAL_LLM_REPO_MAP_CONTEXT", "")
+        if rm_ctx_raw:
+            import json as _json
+            rm_ctx = _json.loads(rm_ctx_raw)
+            if rm_ctx.get("advisory_only") and rm_ctx.get("target"):
+                t = rm_ctx["target"]
+                lines = [
+                    "Repo map advisory context (use only for test recommendations; do NOT claim tests pass):",
+                    f"  target: {t.get('path','?')}  role={t.get('role','?')}  subsystem={t.get('subsystem','?')}",
+                    f"  risk_tags: {', '.join(t.get('risk_tags', [])) or 'none'}",
+                    f"  related_tests: {', '.join(rm_ctx.get('related_tests', [])) or 'none'}",
+                ]
+                peers = rm_ctx.get("subsystem_peers", [])
+                if peers:
+                    peer_strs = [f"{p['path']} ({p.get('role','?')})" for p in peers[:10]]
+                    lines.append(f"  subsystem_peers: {', '.join(peer_strs)}")
+                lines.append(f"  advisory_only: true")
+                repo_map_hint = "\n".join(lines) + "\n\n"
+    except Exception:
+        pass
+
     system = SYSTEM_PROMPT_BASE + f"\nTask: {task}\n"
-    user = f"{task_prompt}\n\n---\n\n{content}"
+    user = f"{repo_map_hint}{task_prompt}\n\n---\n\n{content}"
     return system, user, meta
 
 
