@@ -222,7 +222,31 @@
 	  - VERSION: `0.10.0`
 	  - no tag
 	  **B1 chain closed.**
-	  Next: v0.11.0-C repo/codebase map planning.
+	- **v0.11.0-C0**: repo/codebase map read-only audit completed.
+	  Audited 14 files across worker, MCP server, cache, router,
+	  preclassifier, hooks, ledger, and config layers.  Found no
+	  existing persistent repo map, module ownership, test-to-module
+	  mapping, subsystem awareness in diff review, or file/module
+	  dimensions in ledger.  Designed schema v1 with 8 subsystems,
+	  heuristic role classification, risk tags, entrypoint detection,
+	  and name-based test mapping inference.  Recommended phased
+	  integration: C1 generator only → C2 MCP tool → C3 test-plan
+	  advisory → C4 review context → C5 optional SessionStart preload.
+	  Verdict: PROCEED to C1 implementation.
+	- **v0.11.0-C1**: repo map generator implemented
+	  (`tools/local_llm_repo_map.py`).  Heuristic-only, no model
+	  calls, no MCP integration, no ledger writes, read-only scan.
+	  Schema v1: file classification (19 roles), risk tags (15 types),
+	  entrypoint detection (name + content heuristics), test mapping
+	  inference (name-based, 23 mappings detected in dogfood),
+	  subsystem grouping (14 subsystems), deterministic output order,
+	  binary detection, sensitive path exclusion.  CLI with --json
+	  and --write flags for manual inspection.  93 focused tests
+	  (`tests/test_repo_map.py`).  Dogfood on local-llm-pipeline:
+	  171 files, git_head=`a5144d2`, all key roles verified, no
+	  sensitive content in output.  Full suite 1561 passed.
+	  Advisory-only foundation — no MCP tool, no review/test-plan/hook
+	  integration yet.  Next: C1 dogfood closeout or C2 MCP tool.
 
 ## v0.10.0 - 2026-05-24
 

@@ -509,7 +509,20 @@ plan.
 	  - does not enable skip by default
 	  - does not skip tests-only / runtime / security / sensitive files
 	  **B1 chain closed.**
-	  Next: v0.11.0-C repo/codebase map planning.
+	- **v0.11.0-C0 audit** (read-only, no commit): completed.
+	  Audited 14 files.  Found no existing persistent repo map,
+	  module ownership, test-to-module mapping, or subsystem-aware
+	  diff review.  Designed schema v1 and C1→C5 phased integration.
+	  Verdict: PROCEED to C1.
+	- **v0.11.0-C1 implementation**: repo map generator landed.
+	  `tools/local_llm_repo_map.py` — heuristic-only, no model calls,
+	  no MCP integration, no ledger writes.  Schema v1: 19 roles,
+	  15 risk tags, entrypoint detection, test mapping inference,
+	  14 subsystems, deterministic sort.  93 tests.  Dogfood:
+	  171 files, 23 test mappings, all roles verified, no sensitive
+	  content.  Full suite 1561 passed.  Not yet connected to any
+	  MCP tool, review path, test-plan, or hooks.
+	  Next: C1 dogfood closeout, then C2 MCP tool `local_repo_map`.
 
 ## v0.10.0 Release-Prep Anchor
 
