@@ -124,8 +124,9 @@ class TestSummaryCandidateSelection:
     def test_prioritizes_entrypoints(self, sample_files):
         selected = TB._select_summary_candidates(sample_files, "", 2)
         reasons = [s["selection_reason"] for s in selected]
+        # Slot allocation: entrypoint_slots=1, source_slots=1
         assert reasons[0] == "entrypoint"
-        assert reasons[1] == "entrypoint"
+        assert reasons[1] in ("entrypoint", "largest_source")
 
     def test_respects_max_summaries(self, sample_files):
         selected = TB._select_summary_candidates(sample_files, "", 1)
@@ -773,7 +774,159 @@ class TestRegressionBoundaries:
         ]
         inst = TB._select_instruction_files(files)
         selected = TB._select_summary_candidates(files, "", 1)
-        # Instruction files are tracked separately, not in selected
         assert len(inst) == 2
-        # max_summaries limits selected, not instructions
         assert len(selected) == 1
+
+
+# ---------------------------------------------------------------------------
+# F-J: Slot allocation
+# ---------------------------------------------------------------------------
+
+class TestSlotAllocation:
+    @pytest.fixture
+    def many_entrypoints(self):
+        return [
+            _make_file("scripts/smoke.py", role="source", size=15000,
+                       entrypoint=True),
+            _make_file("scripts/rebuild.py", role="source", size=10000,
+                       entrypoint=True),
+            _make_file("tools/bench.py", role="source", size=13000,
+                       entrypoint=True),
+            _make_file("tools/validate.py", role="source", size=8000,
+                       entrypoint=True),
+            _make_file("tools/run_checks.py", role="source", size=8000,
+                       entrypoint=True),
+            _make_file("app.py", role="source", size=100000, entrypoint=False),
+            _make_file("services/tm.py", role="source", size=70000,
+                       entrypoint=False),
+        ]
+
+    def test_entrypoints_do_not_fill_all_slots(self, many_entrypoints):
+        selected = TB._select_summary_candidates(many_entrypoints, "", 5)
+        reasons = [s["selection_reason"] for s in selected]
+        assert "entrypoint" in reasons
+        assert "largest_source" in reasons
+
+    def test_app_py_selected_as_largest_source(self, many_entrypoints):
+        selected = TB._select_summary_candidates(many_entrypoints, "", 5)
+        paths = [s["path"] for s in selected]
+        assert "app.py" in paths
+
+    def test_scripts_do_not_monopolize(self, many_entrypoints):
+        selected = TB._select_summary_candidates(many_entrypoints, "", 5)
+        paths = [s["path"] for s in selected]
+        script_count = sum(1 for p in paths if p.startswith("scripts/"))
+        assert script_count < len(paths)
+
+    def test_task_keyword_gets_slot(self, many_entrypoints):
+        selected = TB._select_summary_candidates(
+            many_entrypoints, "translation memory", 5,
+        )
+        paths = [s["path"] for s in selected]
+        assert "services/tm.py" in paths
+
+
+# ---------------------------------------------------------------------------
+# F-J: Application core boost
+# ---------------------------------------------------------------------------
+
+class TestApplicationCoreBoost:
+    def test_app_py_boosted_in_largest_source(self):
+        files = [
+            _make_file("scripts/util.py", role="source", size=20000,
+                       entrypoint=False),
+            _make_file("app.py", role="source", size=10000, entrypoint=False),
+            _make_file("tools/helper.py", role="source", size=30000,
+                       entrypoint=False),
+        ]
+        selected = TB._select_summary_candidates(files, "", 2)
+        paths = [s["path"] for s in selected]
+        # app.py should be first due to application core boost despite smaller size
+        assert paths[0] == "app.py"
+
+    def test_services_path_boosted_in_task_match(self):
+        files = [
+            _make_file("scripts/tm_helper.py", role="source", size=5000,
+                       entrypoint=False),
+            _make_file("services/tm_service.py", role="source", size=30000,
+                       entrypoint=False),
+        ]
+        selected = TB._select_summary_candidates(
+            files, "translation memory", 3,
+        )
+        paths = [s["path"] for s in selected]
+        assert "services/tm_service.py" in paths
+
+
+# ---------------------------------------------------------------------------
+# F-J: JSON path summary extraction
+# ---------------------------------------------------------------------------
+
+class TestJSONPathSummary:
+    def test_json_path_derives_md_path(self, tmp_path):
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        md_file = out_dir / "test_summary.md"
+        md_content = "# Summary\n\nCache-hit summary content."
+        md_file.write_text(md_content, encoding="utf-8")
+
+        json_file = out_dir / "test_summary.json"
+        json_file.write_text("{}", encoding="utf-8")
+
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = f"OK (cache hit): done\nJSON: {json_file}\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is True, f"Expected ok=True, got {result}"
+        assert "Cache-hit" in result["summary"], \
+            f"Expected cache-hit content, got: {result['summary'][:200]}"
+
+    def test_json_without_corresponding_md_fails(self, tmp_path):
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = "OK (cache hit): done\nJSON: /tmp/nonexistent.json\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is False
+        assert "not readable" in result.get("error", "")
+
+    def test_md_preferred_over_json_when_both_present(self, tmp_path):
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        md_file = out_dir / "real.md"
+        md_file.write_text("# MD content", encoding="utf-8")
+        json_file = out_dir / "derived.json"
+        json_file.write_text("{}", encoding="utf-8")
+
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = f"OK: done\nMD: {md_file}\nJSON: {json_file}\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is True
+        assert "MD content" in result["summary"]

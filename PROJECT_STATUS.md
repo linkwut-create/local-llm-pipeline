@@ -702,6 +702,33 @@ plan.
   expansion (translation→tm, subtitle→srt, ocr→paddleocr, etc.).
   71 tests.  No MCP/server/router/worker/path-policy changes.
 
+## v0.11.0-FH — Refined Bootstrap Re-Dogfood (partial, no commit)
+
+- **F-H** (no commit): re-dogfood at `d8dee6b`.  Confirmed Fix 1 (vendor)
+  and Fix 3 (instruction files) working.  Found 2 remaining issues:
+  (1) 13 non-vendor entrypoints still filled all slots — app.py and
+  services/* not reached; (2) summary all failed (exit 3) because
+  cache-hit router output lacks "MD:" line.  `F_H_PARTIAL=yes`.
+
+## v0.11.0-FI — Second Refinement Audit (closed, no commit)
+
+- **F-I** (no commit): pinpointed root causes.  Selection: 13 non-vendor
+  non-test entrypoints fill P1 before P1.5/P2/P3 are reached.
+  Summary: router cache-hit prints only "JSON:" not "MD:".  Designed
+  slot allocation + JSON path derivation + application core boost.
+  `F_I_SECOND_REFINEMENT_AUDIT_PASS=yes`.
+
+## v0.11.0-FJ — Second Refinement Implementation (in progress)
+
+- **FJ** (pending commit): 3 fixes.
+  1) Slot allocation: entrypoint_slots ≤ max_summaries/3, task_kw_slots
+  guaranteed, source_slots fill remainder.
+  2) JSON path → MD path: parse "JSON:" line, derive .md path when
+  "MD:" absent (cache-hit case).  MD still preferred when both present.
+  3) Application core boost: app.py/main.py/server.py/services/ paths
+  weighted higher within their priority tier.
+  80 tests.  No MCP/server/router/worker/path-policy changes.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`

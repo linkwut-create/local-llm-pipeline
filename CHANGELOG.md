@@ -2,6 +2,16 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-FJ: second refinement — slot allocation + cache-hit summary.
+  1) Selection slot allocation: entrypoints limited to at most 1/3
+  of max_summaries; task keyword and largest source files each
+  guaranteed slots.  Application core names (app.py, main.py,
+  server.py, etc.) and services/ paths receive priority boost.
+  2) Summary extraction: parse "JSON:" line in router stderr
+  (cache-hit path) to derive MD file location; MD line still
+  preferred when both present.
+  80 tests.  CLI-only, advisory-only.  No MCP/router/worker changes.
+
 - v0.11.0-FG: task bootstrap refinement (4 fixes from F-E dogfood).
   1) Vendor path deprioritization: embedded `tools/local_llm_*`,
   `models/`, `node_modules/` paths no longer crowd out project

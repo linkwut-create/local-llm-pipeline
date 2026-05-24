@@ -71,6 +71,11 @@ _TASK_SYNONYMS: dict[str, list[str]] = {
     "screenshot": ["screen", "capture", "overlay"],
 }
 
+_APPLICATION_CORE_NAMES = {
+    "app.py", "main.py", "server.py", "api.py", "routes.py",
+    "index.py", "run.py",
+}
+
 ROUTER_PATH = SCRIPT_DIR / "local_llm_router.py"
 
 
@@ -186,7 +191,11 @@ def _select_summary_candidates(
     task_text: str,
     max_summaries: int,
 ) -> list[dict]:
-    """Select files for LLM summarization. Returns files with a selection_reason."""
+    """Select files for LLM summarization with slot allocation.
+
+    Slots are allocated across categories so no single category
+    (e.g. entrypoints) fills the entire quota.
+    """
     if max_summaries <= 0:
         return []
 
@@ -199,7 +208,6 @@ def _select_summary_candidates(
         return True
 
     def _task_match_score(f: dict) -> int:
-        """Score a file against task keywords. Higher = more relevant."""
         if not task_kw:
             return 0
         parts = f["path"].lower().replace("\\", "/").split("/")
@@ -212,60 +220,102 @@ def _select_summary_candidates(
                 score += 1
         return score
 
-    # Collect candidates with scores
+    def _app_core_boost(f: dict) -> int:
+        """Boost application core files and services/ paths."""
+        boost = 0
+        name = Path(f["path"]).name.lower()
+        if name in _APPLICATION_CORE_NAMES:
+            boost += 2
+        p = f["path"].lower().replace("\\", "/")
+        if p.startswith("services/") or "/services/" in p:
+            boost += 1
+        return boost
+
+    # --- Slot allocation ---
+    has_task = bool(task_kw)
+    if has_task:
+        entrypoint_slots = max(1, max_summaries // 3)
+        task_kw_slots = max(1, max_summaries // 3)
+        source_slots = max_summaries - entrypoint_slots - task_kw_slots
+        if source_slots < 1:
+            source_slots = 1
+            entrypoint_slots = max(0, max_summaries - source_slots - task_kw_slots)
+    else:
+        entrypoint_slots = max(1, max_summaries // 2)
+        source_slots = max_summaries - entrypoint_slots
+        task_kw_slots = 0
+
     candidates: list[dict] = []
     seen: set[str] = set()
 
-    # Priority 1: entrypoints (non-vendor, non-test)
-    entrypoints = [f for f in files if f.get("entrypoint")
-                   and not _looks_like_vendor_embedded(f["path"])]
-    entrypoints.sort(key=lambda f: f.get("size", 0), reverse=True)
-    for f in entrypoints:
-        if _ok(f):
-            seen.add(f["path"])
-            candidates.append({**f, "selection_reason": "entrypoint"})
+    # --- Phase 1: Collect organised lists ---
+    good_eps = [f for f in files if f.get("entrypoint")
+                and not _looks_like_vendor_embedded(f["path"])
+                and _ok(f)]
+    good_eps.sort(key=lambda f: f.get("size", 0), reverse=True)
 
-    # Priority 1.5: task keyword matched sources (boosted above generic size)
+    core_sources = [f for f in files if f.get("role") == "source"
+                    and not _looks_like_vendor_embedded(f["path"])
+                    and _ok(f)]
+    core_sources.sort(key=lambda f: (
+        -(_app_core_boost(f)),  # application core first
+        -(f.get("size", 0)),    # then largest
+    ))
+
+    task_matches = []
     if task_kw:
-        scored_source = [
-            (f, _task_match_score(f))
-            for f in files
-            if f.get("role") == "source"
-            and f["path"] not in seen
-            and not _looks_like_vendor_embedded(f["path"])
-            and _ok(f)
-        ]
-        scored_source.sort(key=lambda x: x[1], reverse=True)
-        for f, score in scored_source:
+        for f in core_sources:
+            score = _task_match_score(f)
             if score > 0:
-                seen.add(f["path"])
-                candidates.append({**f, "selection_reason": "task_keyword_match"})
+                task_matches.append((f, score))
+        task_matches.sort(key=lambda x: (
+            -(_app_core_boost(x[0])),
+            -x[1],
+            -(x[0].get("size", 0)),
+        ))
 
-    # Priority 2: largest project source files not already selected
-    sources = [f for f in files if f.get("role") == "source"
-               and not _looks_like_vendor_embedded(f["path"])]
-    sources.sort(key=lambda f: f.get("size", 0), reverse=True)
-    for f in sources:
-        if f["path"] in seen:
-            continue
-        if not _ok(f):
-            continue
-        seen.add(f["path"])
-        candidates.append({**f, "selection_reason": "largest_source"})
+    # --- Phase 2: Fill slots ---
 
-    # Priority 3: remaining entrypoints (including vendor) as fallback
-    remaining_eps = [f for f in files if f.get("entrypoint")
-                     and f["path"] not in seen]
-    remaining_eps.sort(key=lambda f: f.get("size", 0), reverse=True)
-    for f in remaining_eps:
-        if not _ok(f):
-            continue
+    # P1: entrypoints (limited)
+    for f in good_eps[:entrypoint_slots]:
         seen.add(f["path"])
         candidates.append({**f, "selection_reason": "entrypoint"})
 
-    # Slice to max_summaries
-    selected = candidates[:max_summaries]
-    return selected
+    # P1.5: task keyword matches (limited, excluding already-selected)
+    if task_kw_slots > 0:
+        added = 0
+        for f, score in task_matches:
+            if f["path"] in seen:
+                continue
+            if added >= task_kw_slots:
+                break
+            seen.add(f["path"])
+            candidates.append({**f, "selection_reason": "task_keyword_match"})
+            added += 1
+
+    # P2: largest core sources (fill remaining, excluding already-selected)
+    remaining_slots = max_summaries - len(candidates)
+    for f in core_sources:
+        if remaining_slots <= 0:
+            break
+        if f["path"] in seen:
+            continue
+        seen.add(f["path"])
+        candidates.append({**f, "selection_reason": "largest_source"})
+        remaining_slots -= 1
+
+    # P3: fallback — remaining entrypoints + sources if slots remain
+    if remaining_slots > 0:
+        fallback = [f for f in good_eps if f["path"] not in seen]
+        fallback += [f for f in core_sources if f["path"] not in seen]
+        fallback.sort(key=lambda f: f.get("size", 0), reverse=True)
+        for f in fallback[:remaining_slots]:
+            if f["path"] in seen:
+                continue
+            seen.add(f["path"])
+            candidates.append({**f, "selection_reason": "entrypoint"})
+
+    return candidates[:max_summaries]
 
 
 # ---------------------------------------------------------------------------
@@ -428,13 +478,23 @@ def _run_summary(file_path: str, max_chars: int = 12000) -> dict:
                 "error": f"router exit {result.returncode}: "
                          f"{result.stderr[:200] if result.stderr else 'no stderr'}",
             }
-        # Find output file path from router stderr
+        # Find output file path from router stderr.
+        # On first call: router prints "MD: <path>" and "JSON: <path>".
+        # On cache hit:  router prints only "JSON: <path>" — derive MD.
         output_path = ""
+        json_path = ""
         for line in result.stderr.splitlines():
             stripped = line.strip()
             if stripped.startswith("MD:") or stripped.startswith("Markdown:"):
                 output_path = line.split(":", 1)[1].strip()
                 break
+            if stripped.startswith("JSON:"):
+                json_path = line.split(":", 1)[1].strip()
+        if not output_path and json_path:
+            if json_path.endswith(".json"):
+                output_path = json_path[:-5] + ".md"
+            else:
+                output_path = json_path
         # Read summary from the worker's output file
         summary = ""
         if output_path:
