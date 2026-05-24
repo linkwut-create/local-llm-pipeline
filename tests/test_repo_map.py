@@ -625,3 +625,251 @@ class TestCLI:
         assert out.exists()
         data = json.loads(out.read_text(encoding="utf-8"))
         assert data["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# build_repo_map_context_for_path  (C3-A helper)
+# ---------------------------------------------------------------------------
+
+def _make_minimal_repo_map(files=None, test_mapping=None, subsystems=None):
+    """Return a well-formed but minimal repo map for testing the context helper."""
+    return {
+        "schema_version": 1,
+        "repo_root": "/fake/repo",
+        "git_head": "abc1234",
+        "generated_at": "2026-05-24T00:00:00+00:00",
+        "generated_by": "local_llm_repo_map v0.1.0",
+        "ok": True,
+        "summary": {},
+        "files": files or [],
+        "skipped_files": [],
+        "subsystems": subsystems or {},
+        "test_mapping": test_mapping or {},
+        "risk_tags_legend": {},
+        "cache_key": "test",
+    }
+
+
+class TestBuildRepoMapContextForPath:
+    """Tests for build_repo_map_context_for_path — C3-A advisory context helper."""
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+
+    def _sample_repo_map(self):
+        """Return a repo map with a small realistic file set."""
+        files = [
+            {"path": "tools/local_llm_mcp_server.py", "role": "mcp_server",
+             "subsystem": "mcp", "risk_tags": ["mcp"], "entrypoint": True,
+             "size": 141159, "mtime_ns": 1},
+            {"path": "tools/local_llm_router.py", "role": "router",
+             "subsystem": "routing", "risk_tags": ["routing"], "entrypoint": True,
+             "size": 20157, "mtime_ns": 2},
+            {"path": "tools/local_llm_worker.py", "role": "worker",
+             "subsystem": "worker", "risk_tags": ["worker"], "entrypoint": True,
+             "size": 57060, "mtime_ns": 3},
+            {"path": "tools/call_ledger.py", "role": "ledger",
+             "subsystem": "ledger", "risk_tags": ["ledger"], "entrypoint": False,
+             "size": 27802, "mtime_ns": 4},
+            {"path": "tests/test_mcp_server.py", "role": "test",
+             "subsystem": "tests", "risk_tags": ["tests"], "entrypoint": False,
+             "size": 31986, "mtime_ns": 5},
+            {"path": "tests/test_repo_map.py", "role": "test",
+             "subsystem": "tests", "risk_tags": ["tests"], "entrypoint": True,
+             "size": 25207, "mtime_ns": 6},
+        ]
+        test_mapping = {
+            "tools/local_llm_mcp_server.py": [
+                "tests/test_mcp_server.py",
+                "tests/test_mcp_repo_map.py",
+            ],
+            "tools/local_llm_router.py": ["tests/test_router_profiles.py"],
+            "tools/local_llm_worker.py": [
+                "tests/test_worker_safety.py",
+                "tests/test_worker_ledger_env.py",
+            ],
+        }
+        return _make_minimal_repo_map(files=files, test_mapping=test_mapping)
+
+    # ------------------------------------------------------------------
+    # basic
+    # ------------------------------------------------------------------
+
+    def test_advisory_only_true(self):
+        ctx = rm.build_repo_map_context_for_path(
+            _make_minimal_repo_map(), "tools/app.py")
+        assert ctx["advisory_only"] is True
+
+    def test_known_target_returns_fields(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(rm_, "tools/local_llm_mcp_server.py")
+        t = ctx["target"]
+        assert t is not None
+        assert t["path"] == "tools/local_llm_mcp_server.py"
+        assert t["role"] == "mcp_server"
+        assert t["subsystem"] == "mcp"
+        assert "mcp" in t["risk_tags"]
+        assert t["entrypoint"] is True
+        assert t["size"] == 141159
+
+    def test_unknown_target_returns_null_target(self):
+        ctx = rm.build_repo_map_context_for_path(
+            _make_minimal_repo_map(), "does/not/exist.py")
+        assert ctx["target"] is None
+        assert ctx["related_tests"] == []
+        assert ctx["subsystem_peers"] == []
+        assert ctx["risk_tags_present"] == []
+        assert ctx["subsystems_touched"] == []
+        assert ctx["context_truncated"] is False
+
+    def test_windows_path_normalized(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools\\local_llm_mcp_server.py")
+        assert ctx["target"] is not None
+        assert ctx["target"]["path"] == "tools/local_llm_mcp_server.py"
+
+    # ------------------------------------------------------------------
+    # related tests
+    # ------------------------------------------------------------------
+
+    def test_related_tests_from_mapping(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        assert "tests/test_mcp_server.py" in ctx["related_tests"]
+        assert "tests/test_mcp_repo_map.py" in ctx["related_tests"]
+
+    def test_related_tests_capped(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_worker.py", max_related_tests=1)
+        assert len(ctx["related_tests"]) == 1
+
+    def test_no_tests_returns_empty(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/call_ledger.py")
+        assert ctx["related_tests"] == []
+
+    # ------------------------------------------------------------------
+    # subsystem peers
+    # ------------------------------------------------------------------
+
+    def test_subsystem_peers_excludes_self(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        peer_paths = [p["path"] for p in ctx["subsystem_peers"]]
+        assert "tools/local_llm_mcp_server.py" not in peer_paths
+
+    def test_peers_capped(self):
+        # Create a repo map with many files in the same subsystem
+        files = [
+            {"path": "tools/app.py", "role": "source", "subsystem": "source",
+             "risk_tags": [], "entrypoint": True, "size": 100, "mtime_ns": 0},
+        ]
+        for i in range(25):
+            files.append({
+                "path": f"tools/peer_{i:02d}.py", "role": "source",
+                "subsystem": "source", "risk_tags": [],
+                "entrypoint": False, "size": 50, "mtime_ns": i + 1,
+            })
+        rm_ = _make_minimal_repo_map(files=files)
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/app.py", max_subsystem_peers=5)
+        assert len(ctx["subsystem_peers"]) == 5
+        assert ctx["context_truncated"] is True
+
+    def test_peer_shapes_have_no_body(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        for peer in ctx["subsystem_peers"]:
+            # Must not contain file body/content/sample/text
+            assert "content" not in peer
+            assert "body" not in peer
+            assert "sample" not in peer
+            assert "text" not in peer
+            # Must contain only expected keys
+            assert set(peer.keys()) <= {
+                "path", "role", "risk_tags", "entrypoint", "subsystem"}
+
+    # ------------------------------------------------------------------
+    # risk tags / subsystems touched
+    # ------------------------------------------------------------------
+
+    def test_risk_tags_from_target_and_peers(self):
+        rm_ = self._sample_repo_map()
+        # Add a peer with different risk tag
+        rm_["files"].append({
+            "path": "tools/local_llm_preclassifier.py", "role": "preclassifier",
+            "subsystem": "mcp", "risk_tags": ["preclassifier"],
+            "entrypoint": False, "size": 15084, "mtime_ns": 7,
+        })
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        assert "mcp" in ctx["risk_tags_present"]
+        assert "preclassifier" in ctx["risk_tags_present"]
+        assert ctx["risk_tags_present"] == sorted(ctx["risk_tags_present"])
+
+    def test_subsystems_touched(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        assert "mcp" in ctx["subsystems_touched"]
+
+    # ------------------------------------------------------------------
+    # safety / content-free
+    # ------------------------------------------------------------------
+
+    def test_target_has_no_body_keys(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        t = ctx["target"]
+        banned = {"content", "body", "sample", "text", "source_code"}
+        for key in banned:
+            assert key not in t, f"target must not contain {key}"
+
+    def test_context_output_is_json_serializable(self):
+        rm_ = self._sample_repo_map()
+        ctx = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        dumped = json.dumps(ctx)
+        assert isinstance(dumped, str)
+        assert len(dumped) > 0
+
+    # ------------------------------------------------------------------
+    # edge cases
+    # ------------------------------------------------------------------
+
+    def test_empty_repo_map(self):
+        ctx = rm.build_repo_map_context_for_path(
+            _make_minimal_repo_map(), "anything.py")
+        assert ctx["advisory_only"] is True
+        assert ctx["target"] is None
+        assert ctx["related_tests"] == []
+        assert ctx["subsystem_peers"] == []
+
+    def test_no_test_mapping_key(self):
+        rm_ = _make_minimal_repo_map()  # no test_mapping
+        ctx = rm.build_repo_map_context_for_path(rm_, "any.py")
+        assert ctx["related_tests"] == []
+
+    def test_deterministic_order(self):
+        rm_ = self._sample_repo_map()
+        # Add extra peers to verify order stability
+        for i in range(3):
+            rm_["files"].append({
+                "path": f"tools/mcp_peer_{i}.py", "role": "source",
+                "subsystem": "mcp", "risk_tags": [],
+                "entrypoint": False, "size": 10, "mtime_ns": i,
+            })
+        ctx1 = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        ctx2 = rm.build_repo_map_context_for_path(
+            rm_, "tools/local_llm_mcp_server.py")
+        assert ctx1["subsystem_peers"] == ctx2["subsystem_peers"]
+        assert ctx1["related_tests"] == ctx2["related_tests"]

@@ -535,6 +535,109 @@ def build_repo_map(
 
 
 # ---------------------------------------------------------------------------
+# Context helper for advisory integration (C3-A)
+# ---------------------------------------------------------------------------
+
+def build_repo_map_context_for_path(
+    repo_map: dict,
+    target_path: str,
+    *,
+    max_related_tests: int = 10,
+    max_subsystem_peers: int = 20,
+) -> dict:
+    """Extract small advisory context for one target path from a repo map.
+
+    Returns target role/subsystem/risk_tags, related tests from test_mapping,
+    and subsystem peers.  Does NOT include file bodies, secrets, or sensitive
+    paths.  Does NOT read or write the filesystem.  Does NOT fail on missing
+    target — returns ``target=null`` and empty lists.
+
+    Args:
+        repo_map: A full repo map dict as returned by ``build_repo_map()``.
+        target_path: A file path (POSIX or Windows style) to look up.
+        max_related_tests: Max related test entries to return.
+        max_subsystem_peers: Max subsystem peer entries to return.
+
+    Returns:
+        A small dict with keys ``advisory_only``, ``target``, ``related_tests``,
+        ``subsystem_peers``, ``risk_tags_present``, ``subsystems_touched``,
+        ``context_truncated``.
+    """
+    # Normalise target_path to forward slashes
+    key = target_path.replace("\\", "/")
+
+    # Look up target in files list
+    files = repo_map.get("files", [])
+    target = None
+    for f in files:
+        if f["path"] == key:
+            target = dict(f)
+            break
+
+    # Related tests from test_mapping
+    test_mapping = repo_map.get("test_mapping", {})
+    related_tests: list[str] = []
+    if key in test_mapping:
+        related_tests = sorted(test_mapping[key])[:max_related_tests]
+
+    # Subsystem peers (same subsystem, exclude self)
+    subsystem_peers: list[dict] = []
+    risk_tags_set: set[str] = set()
+    subsystems_touched: set[str] = set()
+
+    if target is not None:
+        target_subsystem = target.get("subsystem", "other")
+        subsystems_touched.add(target_subsystem)
+        for tag in target.get("risk_tags", []):
+            risk_tags_set.add(tag)
+        for f in files:
+            if f["path"] == key:
+                continue
+            if f.get("subsystem") != target_subsystem:
+                continue
+            peer = {
+                "path": f["path"],
+                "role": f.get("role", "unknown"),
+                "risk_tags": f.get("risk_tags", []),
+                "entrypoint": f.get("entrypoint", False),
+                "subsystem": f["subsystem"],
+            }
+            subsystem_peers.append(peer)
+            for tag in peer["risk_tags"]:
+                risk_tags_set.add(tag)
+
+    # Sort peers deterministically
+    subsystem_peers.sort(key=lambda p: p["path"])
+
+    # Apply caps
+    context_truncated = False
+    if len(subsystem_peers) > max_subsystem_peers:
+        subsystem_peers = subsystem_peers[:max_subsystem_peers]
+        context_truncated = True
+
+    if len(related_tests) > max_related_tests:  # defensive — already sliced above
+        related_tests = related_tests[:max_related_tests]
+        context_truncated = True
+
+    return {
+        "advisory_only": True,
+        "target": {
+            "path": target["path"],
+            "role": target.get("role", "unknown"),
+            "subsystem": target.get("subsystem", "other"),
+            "risk_tags": target.get("risk_tags", []),
+            "entrypoint": target.get("entrypoint", False),
+            "size": target.get("size", 0),
+        } if target is not None else None,
+        "related_tests": related_tests,
+        "subsystem_peers": subsystem_peers,
+        "risk_tags_present": sorted(risk_tags_set),
+        "subsystems_touched": sorted(subsystems_touched),
+        "context_truncated": context_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Risk tags legend
 # ---------------------------------------------------------------------------
 
