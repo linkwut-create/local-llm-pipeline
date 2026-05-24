@@ -361,8 +361,23 @@
 		  No code / test / MCP schema / worker / ledger / hook / VERSION / tag
 		  changes.  **C3 chain complete** (C0 audit → C1 generator → C2 MCP tool
 		  → C3-A context helper → C3-B implementation + real MCP dogfood → C3-C
-		  docs/policy sync).  Next: C3 final closeout, then D read-only planning
-		  audit (test failure classifier).
+		  docs/policy sync).
+		- **v0.11.0-C3 final closeout**: all C3 sub-phases closed and verified.
+		  **C3 chain complete** (C0 audit → C1 generator → C1 dogfood closeout →
+		  C2 MCP tool → C2 dogfood closeout → C3-A context helper → C3-A dogfood
+		  closeout → C3-B implementation → C3-B real MCP dogfood → C3-B closeout →
+		  C3-C policy/docs sync → C3-C typo fix).  Capabilities delivered: repo
+		  map heuristically generable; `local_repo_map` exposed as 10th manual MCP
+		  tool (manual-only); context helper extracts target role / subsystem /
+		  risk_tags / related_tests / subsystem_peers; `local_generate_test_plan`
+		  supports `use_repo_map=true` opt-in with advisory-only context injection;
+		  missing/corrupt repo map never fails test-plan; default behavior unchanged.
+		  Boundaries held: no commit gate / release guard / dangerous command guard /
+		  hook auto-trigger / review_diff / debate change; no automatic repo map
+		  invocation; no VERSION bump; no tag; no zip; no push.  Validation: 1633/1633
+		  full suite, 13/13 run_checks, commit-gate reviews passed, real MCP dogfood
+		  verified for C2 and C3-B.  VERSION remains `0.10.0`, no tag.
+		  Next: v0.11.0-D read-only planning audit for test failure classifier.
 
 ## v0.10.0 - 2026-05-24
 
