@@ -97,6 +97,12 @@ KNOWN_EXTRA_KEYS = frozenset({
     "debate_skip_policy",
     "debate_skip_policy_version",
     "skipped_estimated_seconds_saved",
+    # Repo map tool fields (C2)
+    "repo_map_schema_version",
+    "repo_map_total_files",
+    "repo_map_test_mappings",
+    "repo_map_cache_hit",
+    "repo_map_advisory_only",
 })
 
 

@@ -534,7 +534,15 @@ plan.
 	  13/13 run_checks.  Boundaries: no MCP integration yet, no
 	  review/test-plan/hooks integration, no gate behavior changed.
 	  **C1 line closed.**
-	  Next: v0.11.0-C2 MCP tool `local_repo_map`.
+	- **v0.11.0-C2 implementation**: MCP tool `local_repo_map`
+	  landed.  10th MCP tool, heuristic-only, no model calls,
+	  manual invocation only.  `call_repo_map()` calls
+	  `local_llm_repo_map.py` directly.  Ledger records written.
+	  Response: `advisory_only=true`, `manual_only=true`.
+	  33 focused tests, 1594 full suite passed.
+	  Not connected to review/test-plan/hooks/auto-invocation.
+	  **C2 implementation complete.**
+	  Next: C2 real MCP dogfood.
 
 ## v0.10.0 Release-Prep Anchor
 

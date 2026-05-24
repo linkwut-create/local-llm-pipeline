@@ -259,7 +259,19 @@
 	  calls, no MCP tool, no ledger writes, no review/test-plan/hook
 	  integration.  Advisory-only foundation.  VERSION remains
 	  `0.10.0`, no tag.  **C1 line closed.**
-	  Next: v0.11.0-C2 MCP tool `local_repo_map`.
+	- **v0.11.0-C2**: MCP tool `local_repo_map` exposed as 10th tool.
+	  `call_repo_map()` in MCP server — heuristic-only, no model
+	  calls, manual invocation only.  Calls `local_llm_repo_map.py`
+	  directly (no subprocess).  Ledger records written with 5 new
+	  extra keys (`repo_map_schema_version`, `repo_map_total_files`,
+	  `repo_map_test_mappings`, `repo_map_cache_hit`,
+	  `repo_map_advisory_only`).  Response carries
+	  `advisory_only=true`, `manual_only=true`.  33 focused tests
+	  (`tests/test_mcp_repo_map.py`).  3 existing server tests
+	  updated (tool count 9→10).  Full suite 1594 passed.
+	  Not connected to review/test-plan/hooks/auto-invocation.
+	  **C2 implementation complete.**
+	  Next: C2 real MCP dogfood with `local_repo_map` call.
 
 ## v0.10.0 - 2026-05-24
 

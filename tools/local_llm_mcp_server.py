@@ -1013,6 +1013,39 @@ TOOLS = {
             "required": ["task"],
         },
     },
+    "local_repo_map": {
+        "description": "Generate a structured repo/codebase map. Returns file classification (19 roles), risk tags (15 types), entrypoint detection, test mapping inference, and subsystem grouping (14 subsystems). Heuristic-only, no model calls, advisory only. Use for understanding repo structure before planning changes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Repo root or subdirectory path (default: project root). Must exist and not be blocked.",
+                },
+                "max_files": {
+                    "type": "integer",
+                    "description": "Max files to include (default: unlimited).",
+                },
+                "include_tests": {
+                    "type": "boolean",
+                    "description": "Include test files (default: true).",
+                },
+                "include_docs": {
+                    "type": "boolean",
+                    "description": "Include documentation files (default: true).",
+                },
+                "refresh": {
+                    "type": "boolean",
+                    "description": "Force re-scan, bypass cache (default: false).",
+                },
+                "write_output": {
+                    "type": "boolean",
+                    "description": "Write output to .local_llm_out/repo_map.json (default: false).",
+                },
+            },
+            "required": [],
+        },
+    },
 }
 
 
@@ -2863,6 +2896,182 @@ def call_draft_code(params: dict) -> dict:
                                  mcp_tool_name="local_draft_code"))
 
 
+def call_repo_map(params: dict) -> dict:
+    """Generate a repo/codebase map — heuristic-only, no model calls (C2)."""
+    request_id = _make_request_id()
+    path_str = params.get("path", ".")
+
+    # Validate path (directory-aware variant)
+    path_obj = Path(path_str)
+    if not path_obj.is_absolute():
+        path_obj = _get_effective_project_root() / path_str
+    resolved = path_obj.resolve()
+
+    # Blocked path check
+    if is_blocked_path(resolved):
+        return {
+            "tool": "local_repo_map",
+            "ok": False,
+            "error": f"Path is blocked: {path_str}",
+            "error_type": "blocked_path",
+            "request_id": request_id,
+            "advisory_only": True,
+            "manual_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # Project boundary check
+    allow_outside = os.environ.get("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "") == "1"
+    if not allow_outside:
+        try:
+            resolved.relative_to(_get_effective_project_root().resolve())
+        except ValueError:
+            return {
+                "tool": "local_repo_map",
+                "ok": False,
+                "error": f"Path outside project: {path_str}",
+                "error_type": "blocked_path",
+                "request_id": request_id,
+                "advisory_only": True,
+                "manual_only": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+    if not resolved.exists() or not resolved.is_dir():
+        return {
+            "tool": "local_repo_map",
+            "ok": False,
+            "error": f"Path not found or not a directory: {path_str}",
+            "error_type": "invalid_path",
+            "request_id": request_id,
+            "advisory_only": True,
+            "manual_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    start = time.time()
+    max_files = params.get("max_files")
+    if max_files is not None:
+        max_files = int(max_files)
+    include_tests = params.get("include_tests", True)
+    if not isinstance(include_tests, bool):
+        include_tests = True
+    include_docs = params.get("include_docs", True)
+    if not isinstance(include_docs, bool):
+        include_docs = True
+    write_output = params.get("write_output", False)
+
+    # Import safely
+    try:
+        from local_llm_repo_map import build_repo_map
+    except ImportError:
+        return {
+            "tool": "local_repo_map",
+            "ok": False,
+            "error": "local_llm_repo_map module not available",
+            "error_type": "import_error",
+            "request_id": request_id,
+            "advisory_only": True,
+            "manual_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    repo_map = build_repo_map(
+        resolved,
+        include_tests=include_tests,
+        include_docs=include_docs,
+        max_files=max_files,
+    )
+
+    elapsed = round(time.time() - start, 2)
+    ok = repo_map.get("ok", False)
+    summary = repo_map.get("summary", {})
+    total_files = summary.get("total_files", 0)
+    test_mappings = len(repo_map.get("test_mapping", {}))
+
+    # Write ledger record
+    _try_write_repo_map_ledger(
+        request_id=request_id,
+        ok=ok,
+        total_files=total_files,
+        test_mappings=test_mappings,
+        schema_version=repo_map.get("schema_version", 1),
+        elapsed_seconds=elapsed,
+        error=repo_map.get("error") if not ok else None,
+    )
+
+    output_path = None
+    if write_output and ok:
+        out_dir = Path(".local_llm_out")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = str(out_dir / "repo_map.json")
+        try:
+            import json
+            out_json = json.dumps(repo_map, indent=2, ensure_ascii=False)
+            (out_dir / "repo_map.json").write_text(out_json, encoding="utf-8")
+        except OSError:
+            output_path = None
+
+    result = {
+        "tool": "local_repo_map",
+        "ok": ok,
+        "repo_map": repo_map,
+        "summary": summary,
+        "cache_hit": False,
+        "output_path": output_path,
+        "advisory_only": True,
+        "manual_only": True,
+        "request_id": request_id,
+        "elapsed_seconds": elapsed,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if not ok:
+        result["error"] = repo_map.get("error", "repo map generation failed")
+    return result
+
+
+def _try_write_repo_map_ledger(*, request_id: str, ok: bool,
+                                 total_files: int, test_mappings: int,
+                                 schema_version: int, elapsed_seconds: float,
+                                 error: str | None):
+    """Write a call ledger record for a local_repo_map invocation. Never raises."""
+    try:
+        from call_ledger import build_record, record_call, git_state
+        commit_before, dirty_before = git_state()
+        record = build_record(
+            task_type="repo-map",
+            tool_name="local_repo_map",
+            profile="repo_map",
+            model="none",
+            provider="heuristic",
+            base_url=None,
+            input_chars=0,
+            output_chars=total_files * 200,
+            duration_ms=int(elapsed_seconds * 1000),
+            success=ok,
+            cache_hit=False,
+            failure_reason=error,
+            result_summary=(
+                f"repo map: {total_files} files, {test_mappings} test mappings"
+                if ok else f"repo map failed: {error}"
+            ),
+            request_id=request_id,
+            git_commit_before=commit_before,
+            git_dirty_before=dirty_before,
+            extra={
+                "mcp_tool_name": "local_repo_map",
+                "source": "manual-mcp",
+                "repo_map_schema_version": schema_version,
+                "repo_map_total_files": total_files,
+                "repo_map_test_mappings": test_mappings,
+                "repo_map_cache_hit": False,
+                "repo_map_advisory_only": True,
+            },
+        )
+        record_call(record)
+    except Exception:
+        pass
+
+
 TOOL_HANDLERS = {
     "local_check": call_local_check,
     "local_summarize_file": call_summarize_file,
@@ -2873,6 +3082,7 @@ TOOL_HANDLERS = {
     "local_debate_review_diff": call_debate_review_diff,
     "local_parallel_review": call_parallel_review,
     "local_draft_code": call_draft_code,
+    "local_repo_map": call_repo_map,
 }
 
 
