@@ -614,6 +614,59 @@ plan.
 	  **C3-B line closed.**
 	  Next: C3-B real MCP dogfood (default + `use_repo_map=true`).
 
+## v0.11.0-FA — Project-Goal Alignment Audit (closed, no commit)
+
+- **F-A** (no commit): read-only project-goal alignment audit at
+  `423b632`.  Assessed 11 MCP tools, 12 worker tasks, 59 test files,
+  ~1800 tests against the core goal: "small models do heavy lifting,
+  large models audit."  Found 3 gaps: (A) no unified task bootstrap,
+  (B) zero cross-project dogfood metrics, (C) test failure helper lacks
+  convenience layer.  Recommended F-B: local-translator-agent real
+  downstream dogfood.
+  `F_A_PROJECT_GOAL_ALIGNMENT_AUDIT_PASS=yes`.
+
+## v0.11.0-FB — local-translator-agent Downstream Dogfood (closed, no commit)
+
+- **F-B** (no commit): read-only real downstream dogfood at `423b632`.
+  Tested local-llm-pipeline on local-translator-agent (`9f81601`,
+  `v0.9.2-129-g9f81601`).  Repo map: 1,244 files / 40 source / 11
+  subsystems / 29 entrypoints.  Summaries: tm_service.py (68KB) and
+  app.py (105KB) — both correctly identified architecture, key
+  functions, dependencies, risks.  Test plan for tm_service.py: 10
+  behaviors, 16 boundary conditions, 14 error paths.  Estimated token
+  saving: ~117K → ~5.5K (~95%).  Friction confirmed: MCP external path
+  blocking, no one-command bootstrap, large-file truncation.
+  `F_B_LOCAL_TRANSLATOR_AGENT_DOGFOOD_PASS=yes`.  Top gap: no task bootstrap.
+
+## v0.11.0-FC — Task Bootstrap Read-Only Design (closed, no commit)
+
+- **F-C** (no commit): read-only design audit at `423b632`.  Evaluated
+  3 candidates: CLI-only (A), MCP tool (B), docs-only (C).  Recommended
+  A (CLI-only): `tools/task_bootstrap.py`, `--project PATH`, thin
+  orchestration layer reusing repo_map Python API + router CLI.
+  Designed output schema (JSON + markdown), file selection strategy
+  (instruction files > entrypoints > largest sources), token budget
+  model (default 6,000), and safety boundaries (advisory-only, writes
+  `.local_llm_out/` only).  Two narrowing corrections applied:
+  instruction files listed but not auto-summarized; test plan deferred
+  to `suggested_next_calls`.  `F_C_TASK_BOOTSTRAP_DESIGN_PASS=yes`.
+
+## v0.11.0-FD — Task Bootstrap Implementation (in progress)
+
+- **FD** (pending commit): `tools/task_bootstrap.py` — thin
+  orchestration CLI.  Combines repo_map → instruction file detection
+  → file selection (entrypoint/size/keyword priority) → optional
+  summaries via router → risk hints → suggested next calls → what
+  NOT to read.  Outputs `<ts>_bootstrap.{md,json}` to `.local_llm_out/`.
+  41 tests.  Read-only, advisory-only.  No MCP/gate/hook/path-policy
+  changes.
+
+- **Tests**: 41 passed (`tests/test_task_bootstrap.py`) — instruction
+  file selection, summary candidate prioritization, test exclusion,
+  keyword matching, risk hints, what-not-to-read, suggested calls,
+  budget, CLI exit codes (0/1/2/3), dry-run, no-summaries, JSON/MD
+  output schema, advisory boundary, output file writing, git info.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`

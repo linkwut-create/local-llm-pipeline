@@ -2,6 +2,20 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-FD: added task bootstrap CLI (`tools/task_bootstrap.py`).
+  Thin orchestration layer combining repo_map → instruction file
+  detection → file selection (entrypoint/size/keyword priority) →
+  optional summaries via router → risk hints → suggested next calls
+  → "what NOT to read first" section.  Outputs
+  `<ts>_bootstrap.{md,json}` to `.local_llm_out/`.  41 tests.
+  CLI-only (not MCP), read-only, advisory-only.  No MCP server,
+  router, worker, path-policy, gate, or hook changes.
+  Next: local-translator-agent re-dogfood with one command.
+
+- v0.11.0-FA through v0.11.0-FC: project-goal alignment audit,
+  local-translator-agent downstream dogfood, and task bootstrap design.
+  All three read-only — no commits.
+
 - v0.11.0-A1: removed redundant MCP-layer summarize-file cache
   (`call_summarize_file` L2119-2153).  The MCP cache had three bugs:
   cache key lacked model/prompt_hash/size/mtime_ns, hardcoded 1h TTL,
