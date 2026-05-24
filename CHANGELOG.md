@@ -480,6 +480,19 @@
 		  failure-path tips after pytest failure.  42 tests.  No hooks/gates/guards/
 		  queue/VERSION/tag changes.  No changes to MCP server, worker, router,
 		  ledger, CLAUDE.md, or mcp-task-policy.md.  VERSION remains `0.10.0`.
+		- **v0.11.0-E-C**: real CLI dogfood of manual classifier helper.
+		  Initially failed — worker wraps classification in markdown code
+		  fence (` ```json\n{...}\n``` `) but `parse_worker_result` only
+		  handled pure JSON.  `E_C_MANUAL_HELPER_DOGFOOD_PASS=no`.
+		- **v0.11.0-E-C.1**: markdown-fenced JSON parser hotfix (`29cface`).
+		  Added `_strip_json_code_fence()` supporting ` ```json `, ` ```JSON `,
+		  bare ` ``` ` fence, and pure JSON.  48 helper tests (6 new).
+		  `E_C1_FENCED_JSON_PARSER_FIX_COMMITTED=yes`.
+		- **v0.11.0-E-C.2**: real CLI dogfood rerun (`29cface`).  4 valid
+		  cases all exit 0 with correct classification; invalid input exit 2;
+		  secret redaction passed; huge stderr passed.  Working tree clean.
+		  `E_C2_MANUAL_HELPER_DOGFOOD_PASS=yes`.  E-C chain closed.
+		  No automation/gate/hook/VERSION changes.
 
 ## v0.10.0 - 2026-05-24
 
