@@ -271,7 +271,26 @@
 	  updated (tool count 9→10).  Full suite 1594 passed.
 	  Not connected to review/test-plan/hooks/auto-invocation.
 	  **C2 implementation complete.**
-	  Next: C2 real MCP dogfood with `local_repo_map` call.
+	  - **v0.11.0-C2 real MCP dogfood**: verified.  `local_repo_map`
+		  visible as 10th real MCP tool via MCP tools/list; original
+		  9 tools intact.  Real MCP call returned `ok=true`,
+		  `schema_version=1`, `total_files=172`, `cache_hit=false`,
+		  `advisory_only=true`, `manual_only=true`.  Key roles
+		  verified: `mcp_server`, `worker`, `router`, `debate`,
+		  `ledger`, `hook`, `project_status`, `test`.  Parameter
+		  behavior verified: `include_tests=false` (115 files, 0 test),
+		  `include_docs=false` (129 files, 0 docs), `max_files=5`
+		  (exactly 5 files, deterministic), invalid path (`ok=false`,
+		  `error_type=invalid_path`), `write_output=true` (output
+		  `.local_llm_out/repo_map.json`, git-clean).  Ledger
+		  verified: `mcp_tool_name=local_repo_map`,
+		  `source=manual-mcp`, `profile=repo_map`, `model=none`,
+		  `provider=heuristic`, `repo_map_schema_version=1`,
+		  `repo_map_advisory_only=true`.  No auto integration:
+		  no review_diff/test-plan/hooks/gate changes.
+		  Working tree clean.  VERSION remains `0.10.0`, no tag.
+		  **C2 line closed.**
+		  Next: C3 test-plan repo-map advisory planning (read-only).
 
 ## v0.10.0 - 2026-05-24
 

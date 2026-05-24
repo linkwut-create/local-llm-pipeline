@@ -542,7 +542,31 @@ plan.
 	  33 focused tests, 1594 full suite passed.
 	  Not connected to review/test-plan/hooks/auto-invocation.
 	  **C2 implementation complete.**
-	  Next: C2 real MCP dogfood.
+	  **C2 real MCP dogfood verified.**
+	  `C2_IMPLEMENTED=yes`, `C2_REAL_MCP_DOGFOOD_VERIFIED=yes`.
+	  Real MCP tools/list shows 10 tools; `local_repo_map`
+	  present; all 9 original tools intact.  Real MCP call:
+	  `ok=true`, `schema_version=1`, `total_files=172`,
+	  `cache_hit=false`, `advisory_only=true`, `manual_only=true`.
+	  Files sorted deterministically by path, no file body,
+	  no `.local_llm_out` files, no `.env` content.  Key roles
+	  verified: `mcp_server`, `worker`, `router`, `debate`,
+	  `ledger`, `hook`, `project_status`, `test`.
+	  `tools/local_llm_repo_map.py` → `role=source` (acceptable
+	  for C2).  Parameter behavior: `include_tests=false`
+	  (115 files, test_files=0), `include_docs=false` (129 files,
+	  docs_files=0), `max_files=5` (exactly 5, deterministic),
+	  invalid path (`ok=false`, `error_type=invalid_path`),
+	  `write_output=true` (`.local_llm_out/repo_map.json`,
+	  48990 bytes, git-clean).  Ledger records confirmed:
+	  `mcp_tool_name=local_repo_map`, `source=manual-mcp`,
+	  `profile=repo_map`, `model=none`, `provider=heuristic`,
+	  `repo_map_schema_version=1`, `repo_map_advisory_only=true`.
+	  No auto integration: no hooks reference, no auto-hook
+	  trigger, no commit/release/danger guard changes.
+	  Working tree clean.  VERSION remains `0.10.0`, no tag.
+	  **C2 line closed.**
+	  Next: C3 test-plan repo-map advisory planning (read-only).
 
 ## v0.10.0 Release-Prep Anchor
 
