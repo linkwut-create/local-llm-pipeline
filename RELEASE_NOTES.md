@@ -2,7 +2,7 @@
 
 **Release**: v0.10.0 (from v0.9.8 baseline)
 **Date**: 2026-05-24
-**Status**: version bumped; tag not yet created
+**Status**: version bumped; tagged at `53bbe89`
 
 ## Summary
 
@@ -70,7 +70,7 @@ introducing new features, API changes, or breaking schema changes.
 | Step | Status |
 |------|--------|
 | Version bump to 0.10.0 | Done |
-| `v0.10.0` tag | Pending |
+| `v0.10.0` tag | Done (`53bbe89`) |
 | Full debate review (3-round) on HEAD | Pending |
 | Release auditor review | Pending |
 | Zip archive | Pending |
@@ -88,3 +88,25 @@ P6-B3-B/H5  55a34b8 (1 commit)
 Closeout 3a704ff (1 commit)
 Release bump (this commit)
 ```
+
+## Post-Release Maintenance (v0.10.0-30-g7b48010, unreleased)
+
+30 commits since the `v0.10.0` tag at `53bbe89`.  VERSION remains `0.10.0`.
+No new tag, no zip, no push.
+
+**D chain** — advisory-only MCP test failure classifier:
+- Worker prompt + response schema for `classify-test-failure`
+- `local_classify_test_failure` MCP tool (11th tool)
+- Real MCP dogfood + envelope propagation hotfix (`f354d32`)
+
+**E chain** — manual CLI helper + real CLI dogfood:
+- `tools/classify_failure_helper.py` (`9168c19`)
+- Real CLI dogfood failed — worker uses markdown-fenced JSON, parser only handled pure JSON
+- `_strip_json_code_fence()` parser hotfix (`29cface`)
+- Dogfood rerun passed — 4 valid cases all exit 0 (`E_C2_MANUAL_HELPER_DOGFOOD_PASS=yes`)
+
+**Boundary**: helper is advisory-only manual CLI; `run_checks.py` prints tip only, no auto-call.  No hooks, gates, guards, or queue integration.  No VERSION bump, no tag.
+
+**Other chains**: B1 preclassifier/advisory-debate-skip, C1-C3 repo map, A1-A2 summary cache — see CHANGELOG.md and PROJECT_STATUS.md for full details.
+
+**Known caveats**: several recent commit subjects have a cosmetic leading `@` (PowerShell here-string artifact).  Not amended — purely cosmetic, no functional impact.
