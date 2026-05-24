@@ -328,7 +328,29 @@
 		  changes.  `local_repo_map` remains manual-only.  22 new
 		  tests, 233 repo-map+MCP, 1633 full suite, 13/13 run_checks.
 		  VERSION remains `0.10.0`, no tag.  **C3-B line closed.**
-		  Next: C3-B real MCP dogfood (default + `use_repo_map=true`).
+		- **v0.11.0-C3-B real MCP dogfood**: verified.  Claude Code / MCP server
+		  restarted with new schema loaded — `repo_map_context_used` present
+		  in real MCP response (schema reload confirmed, not a stale process).
+		  All 8 steps passed via real MCP calls:
+		  (1) default mode: `repo_map_context_used=false`, no warning,
+		  no repo map injection, ledger clean.
+		  (2) opt-in mode: `use_repo_map=true` → `repo_map_context_used=true`,
+		  `repo_map_related_tests_count=1`, `repo_map_subsystems=["mcp"]`.
+		  (3) explicit `repo_map_path`: `repo_map_context_used=true`.
+		  (4) missing path fallback: in-memory build succeeded,
+		  `repo_map_context_used=true`.
+		  (5) corrupt path: `repo_map_context_warning="repo_map_corrupt"`,
+		  no failure, graceful degrade, warning recorded in ledger.
+		  (6) ledger verification: default call no `test_plan_repo_map_used`;
+		  opt-in/explicit/missing fallback `test_plan_repo_map_used=true`;
+		  corrupt call `test_plan_repo_map_warning=repo_map_corrupt`.
+		  (7) boundary integrity: MCP tool count 10, `local_repo_map`
+		  manual-only, no hooks/review/debate/gate/release/danger guard
+		  changes, git clean, no code/docs touched.
+		  `C3B_REAL_MCP_DOGFOOD_VERIFIED=yes`.
+		  VERSION remains `0.10.0`, no tag.  **C3-B implementation line
+		  closed — both direct Python and real MCP paths verified.**
+		  Next: C3-C policy/docs sync for test-plan repo-map advisory.
 
 ## v0.10.0 - 2026-05-24
 
