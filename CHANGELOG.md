@@ -290,7 +290,29 @@
 		  no review_diff/test-plan/hooks/gate changes.
 		  Working tree clean.  VERSION remains `0.10.0`, no tag.
 		  **C2 line closed.**
-		  Next: C3 test-plan repo-map advisory planning (read-only).
+		- **v0.11.0-C3-A**: repo map context helper
+		  `build_repo_map_context_for_path()` added (commit `9919b3c`).
+		  Pure helper — no filesystem I/O, no model calls, no MCP
+		  calls.  Extracts target role/subsystem/risk_tags,
+		  related_tests, subsystem_peers from a repo map dict.
+		  Returns `advisory_only=true`.  No MCP schema change,
+		  no `local_generate_test_plan` integration yet, no worker
+		  change, no ledger change, no hooks change.  17 new tests,
+		  110 repo map tests, 1611 full suite, 13/13 run_checks.
+		  Commit-gate `ok=true`.
+		- **v0.11.0-C3-A dogfood**: verified.  Target
+		  `tools/local_llm_mcp_server.py` → `role=mcp_server`,
+		  `subsystem=mcp`, `risk_tags=["mcp"]`,
+		  `entrypoint=true`.  `related_tests` returned
+		  `tests/test_mcp_server.py`.  `tests/test_mcp_repo_map.py`
+		  not mapped — known limitation of conservative name-based
+		  substring inference, not a helper failure.  `subsystem_peers`
+		  returned `.mcp.json` (role=mcp_config).  Cap behavior,
+		  unknown path, Windows path normalization, safety scan
+		  all passed.  Working tree clean.  VERSION remains
+		  `0.10.0`, no tag.  **C3-A line closed.**
+		  Next: C3-B `local_generate_test_plan` explicit
+		  `use_repo_map=false` default parameter planning.
 
 ## v0.10.0 - 2026-05-24
 

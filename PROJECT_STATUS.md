@@ -566,7 +566,24 @@ plan.
 	  trigger, no commit/release/danger guard changes.
 	  Working tree clean.  VERSION remains `0.10.0`, no tag.
 	  **C2 line closed.**
-	  Next: C3 test-plan repo-map advisory planning (read-only).
+	  **C3-A implemented and dogfood-verified.**
+	  `C3A_HELPER_DOGFOOD_VERIFIED=yes`.
+	  Commit `9919b3c`: pure helper `build_repo_map_context_for_path()`
+	  in `tools/local_llm_repo_map.py`.  No filesystem I/O, no model
+	  calls, no MCP calls.  Extracts target role/subsystem/risk_tags,
+	  related_tests, subsystem_peers.  Returns `advisory_only=true`.
+	  No MCP schema change, no `local_generate_test_plan` integration.
+	  17 new tests.  110 repo map tests, 1611 full suite, 13/13
+	  run_checks, commit-gate ok.
+	  Dogfood: `tools/local_llm_mcp_server.py` → `role=mcp_server`,
+	  `subsystem=mcp`, `risk_tags=["mcp"]`, `entrypoint=true`.
+	  `related_tests` → `tests/test_mcp_server.py`.  `tests/
+	  test_mcp_repo_map.py` not mapped (known name-based heuristic
+	  limitation).  `subsystem_peers` → `.mcp.json` (config).
+	  Cap/unknown-path/Windows-path/safety checks all passed.
+	  **C3-A line closed.**
+	  Next: C3-B `local_generate_test_plan` explicit
+	  `use_repo_map=false` default parameter planning.
 
 ## v0.10.0 Release-Prep Anchor
 
