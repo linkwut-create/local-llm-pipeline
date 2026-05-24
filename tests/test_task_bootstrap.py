@@ -907,6 +907,52 @@ class TestJSONPathSummary:
         assert result["ok"] is False
         assert "not readable" in result.get("error", "")
 
+    def test_parses_paths_from_stdout(self, tmp_path):
+        """MD path on stdout should be parsed (not just stderr)."""
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        md_file = out_dir / "test.md"
+        md_file.write_text("# Summary from stdout", encoding="utf-8")
+
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = f"JSON: {out_dir / 'test.json'}\nMD: {md_file}\n"
+            r.stderr = "Router: task=summarize-file\nOK: done\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is True
+        assert "Summary from stdout" in result["summary"]
+
+    def test_json_path_from_stdout_derives_md(self, tmp_path):
+        """JSON-only on stdout (cache hit) still derives and reads MD."""
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        md_file = out_dir / "cached_summary.md"
+        md_file.write_text("# Cached content works", encoding="utf-8")
+
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = f"JSON: {out_dir / 'cached_summary.json'}\n"
+            r.stderr = "Router: ...\nOK (cache hit): done\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is True
+        assert "Cached content" in result["summary"]
+
     def test_md_preferred_over_json_when_both_present(self, tmp_path):
         out_dir = tmp_path / ".local_llm_out"
         out_dir.mkdir(exist_ok=True)

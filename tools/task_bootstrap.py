@@ -478,12 +478,16 @@ def _run_summary(file_path: str, max_chars: int = 12000) -> dict:
                 "error": f"router exit {result.returncode}: "
                          f"{result.stderr[:200] if result.stderr else 'no stderr'}",
             }
-        # Find output file path from router stderr.
-        # On first call: router prints "MD: <path>" and "JSON: <path>".
-        # On cache hit:  router prints only "JSON: <path>" — derive MD.
+        # Find output file path from router output.
+        # Router writes path info to stdout, status to stderr.
+        # On first call: "MD: <path>" and "JSON: <path>" on stdout.
+        # On cache hit:  only "JSON: <path>" on stdout — derive MD.
+        combined = "\n".join(
+            p for p in (result.stdout, result.stderr) if p
+        )
         output_path = ""
         json_path = ""
-        for line in result.stderr.splitlines():
+        for line in combined.splitlines():
             stripped = line.strip()
             if stripped.startswith("MD:") or stripped.startswith("Markdown:"):
                 output_path = line.split(":", 1)[1].strip()
