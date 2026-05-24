@@ -434,6 +434,35 @@
 	  passed.  No hooks/gates/guards/debate/queue/VERSION/tag changes.
 	  VERSION remains `0.10.0`, no tag.  Next: re-run D-D real MCP dogfood
 	  after MCP server restart.
+		- **v0.11.0-D-D**: initial real MCP dogfood of `local_classify_test_failure`
+		  at `dcd68d7`.  MCP server restarted, 11 tools confirmed.  Real MCP calls
+		  worked end-to-end but discovered **stale envelope**: top-level
+		  `failure_class`/`confidence` returned handler fallback defaults
+		  (`unknown`/`medium`) while the worker's nested `result.result` JSON
+		  contained the correct classification.  `D_D_MCP_DOGFOOD_STALE_ENVELOPE
+		  =yes`.  Deferred fix to D-D.1.
+		- **v0.11.0-D-D.1**: response envelope propagation hotfix (`f354d32`).
+		  Fixed `call_classify_test_failure()` to parse the nested worker result
+		  JSON so top-level `failure_class`/`confidence`/`advisory_only` propagate
+		  from the worker's structured classification.  41 classifier tests passed,
+		  68 MCP server tests passed, 13/13 run_checks (1726 tests recorded).
+		  Commit gate `local_review_diff` passed.  Working tree clean.  No
+		  VERSION/tag/zip/push changes.
+		- **v0.11.0-D-D.2**: real MCP envelope re-dogfood at `f354d32`.  8 test
+		  cases via real MCP calls: assertion, import_error, dependency,
+		  syntax_error, timeout (all `high` confidence, correct top-level class);
+		  invalid input (`ok=false`, no worker); secret redaction (no token/API
+		  key in output); huge output (>50KB, no crash, degraded `unknown/low` —
+		  expected).  All valid inputs now propagate correct top-level envelope.
+		  Ledger privacy confirmed (char counts only).  `D_D2_REAL_MCP_ENVELOPE_
+		  RE_DOGFOOD_VERIFIED=yes`.  Working tree clean.
+		- **v0.11.0-D-E**: read-only integration boundary audit at `f354d32`.
+		  Confirmed `local_classify_test_failure` is advisory-only MCP tool with
+		  zero automation consumers: not in hooks, commit gate, release guard,
+		  dangerous command guard, background queue, `local_review_diff`, or
+		  `local_debate_review_diff`.  Ledger privacy and version/release boundary
+		  clean.  `D_E_READ_ONLY_CLOSEOUT_AUDIT_PASS=yes`.  No code changes.
+
 
 ## v0.10.0 - 2026-05-24
 
