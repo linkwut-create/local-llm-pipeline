@@ -104,6 +104,8 @@ def run_pytest() -> bool:
             if not ok and result.stdout:
                 for line in result.stdout.strip().split("\n")[-5:]:
                     print(f"         {line}")
+                print("         Tip: py -3 tools/classify_failure_helper.py"
+                      " --stderr \"...\" to classify this failure")
             return ok
         except Exception as e:
             print(f"  [{_status(False)}] pytest ({mode_label}): {e}")
@@ -129,6 +131,8 @@ def run_pytest() -> bool:
             if not ok and result.stdout:
                 for line in result.stdout.strip().split("\n")[-5:]:
                     print(f"         {line}")
+                print("         Tip: py -3 tools/classify_failure_helper.py"
+                      " --stderr \"...\" to classify this failure")
             return ok
         except Exception as e:
             print(f"  [{_status(False)}] pytest ({mode_label}): {e}")

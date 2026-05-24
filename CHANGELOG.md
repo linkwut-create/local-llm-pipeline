@@ -462,7 +462,24 @@
 		  dangerous command guard, background queue, `local_review_diff`, or
 		  `local_debate_review_diff`.  Ledger privacy and version/release boundary
 		  clean.  `D_E_READ_ONLY_CLOSEOUT_AUDIT_PASS=yes`.  No code changes.
-
+		- **v0.11.0-E-A**: read-only planning audit for classifier automation
+		  integration at `6af247d`.  Evaluated 8 candidate integration points;
+		  approved CLI helper + run_checks suggestion; rejected 8 automatic
+		  paths (commit gate, release guard, dangerous command guard, background
+		  queue, auto-fix, auto-skip hooks/gates, hook-driven auto-trigger,
+		  review/debate integration).  `E_A_READ_ONLY_PLANNING_AUDIT_PASS=yes`.
+		  No code changes.  VERSION remains `0.10.0`.
+		- **v0.11.0-E-B**: manual test-failure CLI helper implemented.
+		  New `tools/classify_failure_helper.py` — thin CLI wrapper reusing the
+		  existing `classify-test-failure` worker via router.  Supports
+		  `--stderr`/`--stdout`/`--exit-code`/`--test-command`/`--changed-file`/
+		  `--profile`/`--model`/`--json`/`--stderr-file`/`--stdout-file`/
+		  `--stdin-json`.  Exit codes: 0=completed, 2=invalid input, 3=worker/
+		  router failure — classification is advisory-only, never a gate.
+		  Same truncation caps as MCP handler.  `tools/run_checks.py` gains
+		  failure-path tips after pytest failure.  42 tests.  No hooks/gates/guards/
+		  queue/VERSION/tag changes.  No changes to MCP server, worker, router,
+		  ledger, CLAUDE.md, or mcp-task-policy.md.  VERSION remains `0.10.0`.
 
 ## v0.10.0 - 2026-05-24
 
