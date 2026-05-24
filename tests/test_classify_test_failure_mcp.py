@@ -432,3 +432,168 @@ def test_version_unchanged():
     if version_path.exists():
         v = version_path.read_text().strip()
         assert v == "0.10.0"
+
+
+# ── I. D-D.1 response envelope propagation ────────────────────────────
+
+def _mock_worker_output_nested(classification_dict):
+    """Return a realistic _wrap_worker_call-like dict with the classification
+    serialized as a JSON string inside result.result, matching what the real
+    worker pipeline produces."""
+    if isinstance(classification_dict, str):
+        inner = classification_dict
+    else:
+        inner = json.dumps(classification_dict, ensure_ascii=False)
+    return {
+        "ok": True,
+        "tool": "local_classify_test_failure",
+        "task": "classify-test-failure",
+        "result": {
+            "task": "classify-test-failure",
+            "tool": "classify-test-failure",
+            "profile": "code_worker",
+            "model": "qwen3-coder:30b",
+            "provider": "ollama",
+            "ok": True,
+            "result": inner,
+            "warnings": [],
+            "error": None,
+        },
+        "profile": "code_worker",
+        "model": "qwen3-coder:30b",
+    }
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_top_level_propagation_from_nested_json(mock_wrap):
+    """Worker returns classification as JSON string in result.result.result.
+    Top-level failure_class/confidence/advisory_only must reflect it."""
+    mock_wrap.return_value = _mock_worker_output_nested({
+        "ok": True,
+        "failure_class": "assertion",
+        "confidence": "high",
+        "summary": "assert 2 == 3 failed",
+        "likely_cause": "bad math",
+        "files_to_inspect": ["tests/test_math.py"],
+        "recommended_action": "check the add function",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({
+        "stderr": "AssertionError: assert 2 == 3",
+        "exit_code": 1,
+    })
+    assert result["failure_class"] == "assertion"
+    assert result["confidence"] == "high"
+    assert result["advisory_only"] is True
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_import_error_propagation_nested(mock_wrap):
+    """import_error/high in nested JSON propagates to top-level."""
+    mock_wrap.return_value = _mock_worker_output_nested({
+        "ok": True,
+        "failure_class": "import_error",
+        "confidence": "high",
+        "summary": "cannot import build_record",
+        "likely_cause": "missing export",
+        "files_to_inspect": ["tools/call_ledger.py"],
+        "recommended_action": "check call_ledger exports",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({
+        "stderr": "ImportError: cannot import name 'build_record'",
+        "exit_code": 1,
+    })
+    assert result["failure_class"] == "import_error"
+    assert result["confidence"] == "high"
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_malformed_inner_json_fallback(mock_wrap):
+    """When inner result string is not valid JSON, handler falls back
+    safely with unknown/low and classification_parse_warning."""
+    mock_wrap.return_value = _mock_worker_output_nested("not valid json {{{")
+    result = mcp.call_classify_test_failure({"stderr": "error"})
+    assert result["failure_class"] == "unknown"
+    assert result["confidence"] == "low"
+    assert result["advisory_only"] is True
+    assert "classification_parse_warning" in result
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_dependency_propagation_nested(mock_wrap):
+    """dependency/medium propagates correctly from nested JSON."""
+    mock_wrap.return_value = _mock_worker_output_nested({
+        "ok": True,
+        "failure_class": "dependency",
+        "confidence": "medium",
+        "summary": "missing pytest-mock",
+        "likely_cause": "not installed",
+        "files_to_inspect": [],
+        "recommended_action": "pip install pytest-mock",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({
+        "stderr": "ModuleNotFoundError: No module named 'pytest_mock'",
+    })
+    assert result["failure_class"] == "dependency"
+    assert result["confidence"] == "medium"
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_syntax_error_propagation_nested(mock_wrap):
+    """syntax_error/high propagates correctly from nested JSON."""
+    mock_wrap.return_value = _mock_worker_output_nested({
+        "ok": True,
+        "failure_class": "syntax_error",
+        "confidence": "high",
+        "summary": "unmatched brace",
+        "likely_cause": "typo",
+        "files_to_inspect": ["tools/local_llm_mcp_server.py"],
+        "recommended_action": "fix brace",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({
+        "stderr": "SyntaxError: unmatched '}'",
+    })
+    assert result["failure_class"] == "syntax_error"
+    assert result["confidence"] == "high"
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_timeout_propagation_nested(mock_wrap):
+    """timeout/high propagates correctly from nested JSON."""
+    mock_wrap.return_value = _mock_worker_output_nested({
+        "ok": True,
+        "failure_class": "timeout",
+        "confidence": "high",
+        "summary": "test timed out",
+        "likely_cause": "slow integration test",
+        "files_to_inspect": ["tests/test_slow.py"],
+        "recommended_action": "increase timeout or optimize",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({
+        "stderr": "TimeoutExpired: 120s",
+        "exit_code": 124,
+    })
+    assert result["failure_class"] == "timeout"
+    assert result["confidence"] == "high"
+
+
+@patch("local_llm_mcp_server._wrap_worker_call")
+def test_inner_result_is_dict_not_json_string(mock_wrap):
+    """Backward compat: when result.result is already a dict, use it directly."""
+    mock_wrap.return_value = _mock_worker_output({
+        "ok": True,
+        "failure_class": "flaky",
+        "confidence": "medium",
+        "summary": "intermittent failure",
+        "likely_cause": "race condition",
+        "files_to_inspect": [],
+        "recommended_action": "add retry",
+        "advisory_only": True,
+    })
+    result = mcp.call_classify_test_failure({"stderr": "sometimes fails"})
+    assert result["failure_class"] == "flaky"
+    assert result["confidence"] == "medium"

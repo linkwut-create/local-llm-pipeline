@@ -3297,17 +3297,34 @@ def call_classify_test_failure(params: dict) -> dict:
                                task="classify-test-failure",
                                extra_env=extra_env)
 
-    # Try to parse the worker result text for failure_class/confidence
+    # Try to parse the worker result for failure_class/confidence.
+    # The worker payload nests the classification JSON string inside
+    # result["result"]["result"].  Handle both the real nested structure
+    # (JSON string) and the flat dict form for backward compat with tests.
     classification_parsed = False
     try:
         result_text = result.get("result", "")
+        w = None
         if isinstance(result_text, dict):
-            w = result_text
+            # Worker payload dict: classification may be in result_text["result"]
+            inner = result_text.get("result", "")
+            if isinstance(inner, str) and inner.strip().startswith("{"):
+                try:
+                    w = json.loads(inner)
+                except json.JSONDecodeError:
+                    w = None
+            elif isinstance(inner, dict):
+                w = inner
+            elif result_text.get("failure_class"):
+                w = result_text
         elif isinstance(result_text, str):
-            # Try to extract JSON from the result text
-            w = json.loads(result_text) if result_text.strip().startswith("{") else None
-        else:
-            w = None
+            if result_text.strip().startswith("{"):
+                try:
+                    w = json.loads(result_text)
+                except json.JSONDecodeError:
+                    w = None
+            else:
+                w = None
 
         if isinstance(w, dict) and w.get("ok"):
             fc = w.get("failure_class", "unknown")
