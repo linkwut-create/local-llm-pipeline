@@ -1,3 +1,94 @@
+# v0.11.0 Release Notes
+
+**Release**: v0.11.0 (from v0.10.0 baseline)
+**Date**: 2026-05-25
+**Status**: release-prep / not tagged yet
+
+## Summary
+
+v0.11.0 introduces **task_bootstrap** as a CLI-first control-layer task
+entry: one command generates a structured project context package (repo map,
+selected file summaries, risk hints, suggested next calls, what-NOT-to-read).
+Validated on two downstream projects (local-translator-agent,
+local-durable-agent).  Completes the first full workflow dogfood loop:
+task_bootstrap → bounded implementation → tests → review_diff gate → commit.
+
+Also adds model-summary to the call ledger CLI.
+
+Infrastructure delivered in earlier post-v0.10.0 chains (D/E/B1/C/A):
+repo map generator + MCP tool, diff preclassifier safety core,
+test failure classifier MCP tool + manual CLI helper, call ledger
+library + CLI, and summary cache authority cleanup.
+
+## New User-Visible CLI
+
+| Tool | Purpose |
+|------|---------|
+| `tools/task_bootstrap.py` | project context package (repo_map + summaries + risk hints) |
+| `tools/call_ledger_cli.py model-summary` | per-model token/call usage recap |
+| `tools/call_ledger_cli.py by-mcp-tool` | per-MCP-tool grouping (existing) |
+| `tools/classify_failure_helper.py` | manual test-failure classifier (advisory-only CLI) |
+
+## MCP Tool Additions
+
+| Tool | Type |
+|------|------|
+| `local_repo_map` | heuristic repo/codebase map (10th tool) |
+| `local_classify_test_failure` | advisory test failure classification (11th tool) |
+
+## Validation
+
+| Item | Result |
+|------|--------|
+| task_bootstrap tests | 82/82 |
+| call_ledger tests | 162/162 |
+| Full suite (last run_checks) | 1858+ passed |
+| Full regression | **pending H-C** |
+| Downstream dogfood (translator-agent) | pass (F-M) |
+| Downstream dogfood (durable-agent) | pass (F-O) |
+| Workflow dogfood (full loop) | pass (G-B) |
+
+## Compatibility
+
+- No breaking changes
+- All existing MCP tools, router, worker, path-policy unchanged
+- CLI additions are purely additive
+- `.mcp.json` packaging hygiene — deferred to H-D (pre-existing)
+
+## Release Gate
+
+| Step | Status |
+|------|--------|
+| Version bump to 0.11.0 | Done (this commit) |
+| RELEASE_NOTES updated | Done |
+| CHANGELOG updated | Done |
+| Full regression | Pending (H-C) |
+| Mandatory debate review (full diff) | Pending (H-C) |
+| Release auditor review | Pending (H-C) |
+| `v0.11.0` tag | Pending (H-D) |
+| Source zip/package | Pending (H-D) |
+| Push | Pending (explicit approval) |
+
+## Commit Chain (39, v0.10.0..HEAD)
+
+```
+F-D  4471d1c  feat: add task bootstrap CLI
+F-G  d8dee6b  fix: refine task bootstrap selection and summaries
+F-J  8b0573e  fix: interleave task bootstrap selection and cache summaries
+F-L  487f8af  fix: parse task bootstrap summary paths from stdout
+F-N  a6ca16a  docs: close out task bootstrap workflow
+F-P  502b4d7  docs: record task bootstrap cross-project validation
+G-B  b3e217c  feat: add call ledger model-summary command
+G-C  c038528  docs: close out workflow dogfood loop
+
+    (plus 31 commits from D/E/B1/C/A chains pre-dating the F-series)
+```
+
+---
+*Previous release notes (v0.10.0) follow below.*
+
+---
+
 # v0.10.0 Release Notes
 
 **Release**: v0.10.0 (from v0.9.8 baseline)

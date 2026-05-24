@@ -1,6 +1,8 @@
 # Changelog
 
-## v0.11.0 (unreleased, post-v0.10.0)
+## v0.11.0 (release candidate, not tagged)
+
+*VERSION bumped to 0.11.0 in H-B. Release verification pending H-C.*
 
 - v0.11.0-GB/GC: workflow dogfood — first end-to-end control loop.
   task_bootstrap → implement model-summary CLI → 162 tests →

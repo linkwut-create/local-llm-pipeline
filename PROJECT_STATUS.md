@@ -823,6 +823,18 @@ plan.
 - **GC** (pending commit): docs-only record of G-A/G-B workflow loop.
   No code/test/VERSION changes.
 
+## v0.11.0-HA — Release-Prep Planning Audit (no commit)
+
+- **H-A** (no commit): read-only release-prep planning at `c038528`.
+  Confirmed VERSION as sole version source.  Designed H-B/H-C/H-D phases.
+  `H_A_RELEASE_PREP_PLANNING_AUDIT_PASS=yes`.
+
+## v0.11.0-HB — Release-Prep Implementation (in progress)
+
+- **HB** (pending commit): VERSION 0.10.0 → 0.11.0.  RELEASE_NOTES,
+  CHANGELOG, PROJECT_STATUS updated for v0.11.0.  No tag, no zip,
+  no push.  H-C verification pending.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`
