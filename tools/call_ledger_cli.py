@@ -3,6 +3,7 @@
 
 Subcommands:
     summary               aggregate totals across all records
+    model-summary         token/call usage grouped by model
     by-project            per-project totals
     by-task               per-task_type totals
     failures              list failing records
@@ -303,6 +304,13 @@ def cmd_by_mcp_tool(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_model_summary(args: argparse.Namespace) -> int:
+    """Show token/call usage grouped by model."""
+    records = read_records(_resolve_path(args.path))
+    _print_groups(group_by(records, "model"), args.format)
+    return 0
+
+
 def cmd_by_location(args: argparse.Namespace) -> int:
     records = read_records(_resolve_path(args.path))
     _print_groups(group_by(records, "execution_location"), args.format)
@@ -438,6 +446,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("by-profile", help="totals grouped by profile").set_defaults(func=cmd_by_profile)
 
     sub.add_parser("by-mcp-tool", help="totals grouped by MCP tool name").set_defaults(func=cmd_by_mcp_tool)
+
+    sub.add_parser("model-summary", help="token/call usage grouped by model").set_defaults(func=cmd_model_summary)
 
     sub.add_parser("by-location", help="totals grouped by execution_location").set_defaults(func=cmd_by_location)
 

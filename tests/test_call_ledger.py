@@ -1146,6 +1146,30 @@ def test_cli_by_mcp_tool_json(clean_env, ledger_path, capsys):
 
 
 # ---------------------------------------------------------------------------
+# G-B: model-summary command
+# ---------------------------------------------------------------------------
+
+
+def test_cli_model_summary_table(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "model-summary"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "gemma4:e4b" in captured
+    assert "qwen3-coder:30b" in captured
+
+
+def test_cli_model_summary_json(clean_env, ledger_path, capsys):
+    _seed_p2_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path),
+                                "--format", "json", "model-summary"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "gemma4:e4b" in data
+    assert "qwen3-coder:30b" in data
+
+
+# ---------------------------------------------------------------------------
 # P2-D1: CLI commands — escalations
 # ---------------------------------------------------------------------------
 
