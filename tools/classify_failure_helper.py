@@ -41,6 +41,18 @@ _VALID_CLASSES = {
 _VALID_CONFIDENCE = {"low", "medium", "high"}
 
 
+def _strip_json_code_fence(text: str) -> str:
+    s = text.strip()
+    if s.startswith("```"):
+        lines = s.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+    return s
+
+
 def build_error(code: int, error_type: str, error: str, suggestion: str = "") -> dict:
     return {
         "ok": False,
@@ -283,30 +295,36 @@ def parse_worker_result(router_stdout: str, output_path: str | None) -> dict:
             w = None
             if isinstance(result_field, dict):
                 inner = result_field.get("result", "")
-                if isinstance(inner, str) and inner.strip().startswith("{"):
-                    try:
-                        w = json.loads(inner)
-                    except json.JSONDecodeError:
-                        w = None
+                if isinstance(inner, str):
+                    inner_stripped = _strip_json_code_fence(inner)
+                    if inner_stripped.startswith("{"):
+                        try:
+                            w = json.loads(inner_stripped)
+                        except json.JSONDecodeError:
+                            w = None
                 elif isinstance(inner, dict):
                     w = inner
                 elif result_field.get("failure_class"):
                     w = result_field
-            elif isinstance(result_field, str) and result_field.strip().startswith("{"):
-                try:
-                    w = json.loads(result_field)
-                except json.JSONDecodeError:
-                    w = None
+            elif isinstance(result_field, str):
+                field_stripped = _strip_json_code_fence(result_field)
+                if field_stripped.startswith("{"):
+                    try:
+                        w = json.loads(field_stripped)
+                    except json.JSONDecodeError:
+                        w = None
 
             if isinstance(w, dict) and w.get("ok"):
                 classification = w
 
     # Fallback: try parsing router stdout as JSON
-    if classification is None and router_stdout.strip().startswith("{"):
-        try:
-            classification = json.loads(router_stdout)
-        except json.JSONDecodeError:
-            pass
+    if classification is None:
+        stdout_stripped = _strip_json_code_fence(router_stdout)
+        if stdout_stripped.startswith("{"):
+            try:
+                classification = json.loads(stdout_stripped)
+            except json.JSONDecodeError:
+                pass
 
     return classification
 

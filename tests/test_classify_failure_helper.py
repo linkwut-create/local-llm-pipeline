@@ -56,6 +56,23 @@ def _mock_router_output(classification=None, returncode=0, stderr=""):
     }
 
 
+def _mock_router_output_fenced(classification=None):
+    """Build a mock router output where result.result is fenced JSON (real worker format)."""
+    if classification is None:
+        classification = _mock_worker_result()
+    fenced = "```json\n" + json.dumps(classification) + "\n```"
+    return {
+        "ok": True,
+        "result": {
+            "result": fenced,
+            "ok": True,
+            "summary": "mock",
+            "confidence": "medium",
+        },
+        "error": None,
+    }
+
+
 def _write_mock_output(output: dict):
     """Write a mock router output JSON to .local_llm_out/."""
     out_dir = helper.OUT_DIR
@@ -102,6 +119,74 @@ class TestClassificationParsing:
         result = helper.parse_worker_result("", str(out_file))
         assert result is not None
         assert result["failure_class"] == "bogus_class"  # raw from worker
+
+    def test_parse_fenced_json_string(self, tmp_path):
+        """E-C.1: parse_worker_result handles ```json fenced JSON."""
+        classification = _mock_worker_result("assertion", "high")
+        output = _mock_router_output_fenced(classification)
+        out_file = tmp_path / "out.json"
+        out_file.write_text(json.dumps(output), encoding="utf-8")
+
+        result = helper.parse_worker_result("", str(out_file))
+        assert result is not None
+        assert result["failure_class"] == "assertion"
+        assert result["confidence"] == "high"
+
+    def test_parse_fenced_json_uppercase(self, tmp_path):
+        """E-C.1: parse_worker_result handles ```JSON (uppercase)."""
+        classification = _mock_worker_result("import_error", "high")
+        fenced = "```JSON\n" + json.dumps(classification) + "\n```"
+        output = {
+            "ok": True,
+            "result": {"result": fenced, "ok": True},
+            "error": None,
+        }
+        out_file = tmp_path / "out.json"
+        out_file.write_text(json.dumps(output), encoding="utf-8")
+
+        result = helper.parse_worker_result("", str(out_file))
+        assert result is not None
+        assert result["failure_class"] == "import_error"
+
+    def test_parse_bare_fence(self, tmp_path):
+        """E-C.1: parse_worker_result handles bare ``` fence (no language tag)."""
+        classification = _mock_worker_result("dependency", "high")
+        fenced = "```\n" + json.dumps(classification) + "\n```"
+        output = {
+            "ok": True,
+            "result": {"result": fenced, "ok": True},
+            "error": None,
+        }
+        out_file = tmp_path / "out.json"
+        out_file.write_text(json.dumps(output), encoding="utf-8")
+
+        result = helper.parse_worker_result("", str(out_file))
+        assert result is not None
+        assert result["failure_class"] == "dependency"
+
+    def test_pure_json_still_works(self, tmp_path):
+        """E-C.1: pure JSON string (existing format) still works."""
+        classification = _mock_worker_result("syntax_error", "high")
+        output = _mock_router_output(classification)  # non-fenced
+        out_file = tmp_path / "out.json"
+        out_file.write_text(json.dumps(output), encoding="utf-8")
+
+        result = helper.parse_worker_result("", str(out_file))
+        assert result is not None
+        assert result["failure_class"] == "syntax_error"
+
+    def test_malformed_fenced_json_returns_none(self, tmp_path):
+        """E-C.1: malformed fenced JSON safely returns None."""
+        output = {
+            "ok": True,
+            "result": "```json\nnot valid json\n```",
+            "error": None,
+        }
+        out_file = tmp_path / "out.json"
+        out_file.write_text(json.dumps(output), encoding="utf-8")
+
+        result = helper.parse_worker_result("", str(out_file))
+        assert result is None
 
     def test_parse_worker_result_missing_file(self):
         result = helper.parse_worker_result("", "nonexistent.json")
@@ -380,6 +465,23 @@ class TestFullFlow:
             result = helper.classify_failure(args)
             assert result["ok"] is False
             assert result["exit_code"] == 3
+
+    def test_classify_with_fenced_output(self, tmp_path):
+        """E-C.1: full classify_failure with fenced JSON worker output returns ok=true."""
+        classification = _mock_worker_result("timeout", "high", "timed out")
+        output = _mock_router_output_fenced(classification)
+        _write_mock_output(output)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = json.dumps(output)
+            mock_run.return_value.stderr = ""
+            args = helper.parse_args(["--stderr", "TimeoutExpired", "--exit-code", "124",
+                                       "--json"])
+            result = helper.classify_failure(args)
+            assert result["ok"] is True
+            assert result["failure_class"] == "timeout"
+            assert result["confidence"] == "high"
 
 
 # ── F. Output schema ──────────────────────────────────────────────────
