@@ -87,7 +87,7 @@ via three opt-in parameters:
 1. If `repo_map_path` is provided and exists, that file is loaded.
 2. If `repo_map_path` is provided but missing, an in-memory repo map is built as fallback.
 3. If `repo_map_path` is provided but the file is corrupt JSON, the call succeeds
-   with `repo_map_context_warning="repo_map_corrupt"` — the corrent file never fails
+   with `repo_map_context_warning="repo_map_corrupt"` — the corrupt file never fails
    the test-plan call.
 4. The C3-A helper `build_repo_map_context_for_path()` extracts a *small advisory
    context* (target role, subsystem, related tests, subsystem peers) from the repo map.
