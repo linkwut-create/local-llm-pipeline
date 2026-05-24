@@ -779,6 +779,25 @@ plan.
 | **F-M** | **final acceptance** | **clean pass** — exit 0, 3/3 OK |
 | **F-N** | **docs closeout** | **this commit** |
 
+## v0.11.0-FO — Cross-Project Validation (no commit)
+
+- **F-O** (no commit, corrected path rerun): task_bootstrap cross-project
+  validation on local-durable-agent at
+  `C:\Users\Zero\Documents\New project 3\local-durable-agent`
+  (HEAD `1f81290`, `v0.8.3-39-g1f81290`, clean).  Dry-run selected:
+  lda/cli.py, lda/core/task_manager.py, lda/db/sqlite_store.py,
+  lda/policy/gate.py, lda/workspace_mutation/readiness.py.
+  Normal mode exit 0, summaries 3/3 OK (3,779 / 5,599 / 4,610 chars
+  real markdown), context budget 5,997/6,000.  Confirmed:
+  task_bootstrap works across both translator-agent (flat app+services)
+  and durable-agent (lda/cli+core+db+policy modular) project types.
+  `F_O_LOCAL_DURABLE_AGENT_BOOTSTRAP_VALIDATION_PASS=yes`.
+
+## v0.11.0-FP — Cross-Project Validation Record (in progress)
+
+- **FP** (pending commit): docs-only record of F-O validation.
+  No code/test/version/MCP changes.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`

@@ -2,6 +2,12 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-FP: docs record — task_bootstrap validated on second
+  downstream project (local-durable-agent, `1f81290`).  Confirms
+  cross-project generality across translator-agent (flat app+services)
+  and durable-agent (lda/cli+core+db+policy modular).  Exit 0,
+  3/3 summaries OK.  `F_O_PASS=yes`.
+
 - v0.11.0-FN: task bootstrap chain closeout.  Task bootstrap CLI
   (`tools/task_bootstrap.py`) accepted after 5 refinement iterations
   (F-D through F-M) validated on local-translator-agent (HEAD `9f81601`).

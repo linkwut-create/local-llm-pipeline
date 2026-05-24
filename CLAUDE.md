@@ -77,6 +77,7 @@ are deprioritized. Instruction files are root-level only.
 
 Boundaries: CLI-only, advisory-only, writes only `.local_llm_out/`,
 no MCP tool, no hooks/gates/guards/queue, does not modify target project.
+Validated on local-translator-agent and local-durable-agent.
 
 ### MCP Integration (v0.7.0+)
 
