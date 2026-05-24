@@ -494,3 +494,286 @@ class TestGitInfo:
         info = TB._get_git_info(tmp_path)
         assert info["head"] == ""
         assert info["describe"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: Vendor path detection
+# ---------------------------------------------------------------------------
+
+class TestVendorPathDetection:
+    def test_flags_local_llm_tools(self):
+        assert TB._looks_like_vendor_embedded("tools/local_llm_worker.py")
+        assert TB._looks_like_vendor_embedded("tools/local_llm_mcp_server.py")
+        assert TB._looks_like_vendor_embedded("tools/claude_hooks/mcp_gate.py")
+
+    def test_flags_models_dir(self):
+        assert TB._looks_like_vendor_embedded("models/faster-whisper/README.md")
+
+    def test_flags_node_modules(self):
+        assert TB._looks_like_vendor_embedded("node_modules/react/index.js")
+
+    def test_flags_data_dir(self):
+        assert TB._looks_like_vendor_embedded("data/jobs/sub_001.json")
+
+    def test_does_not_flag_app_source(self):
+        assert not TB._looks_like_vendor_embedded("app.py")
+        assert not TB._looks_like_vendor_embedded("services/tm_service.py")
+        assert not TB._looks_like_vendor_embedded("scripts/verify_env.py")
+
+    def test_case_insensitive(self):
+        assert TB._looks_like_vendor_embedded("Tools/Local_LLM_Worker.py")
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: Instruction file depth filtering
+# ---------------------------------------------------------------------------
+
+class TestInstructionFileDepthFiltering:
+    def test_root_readme_included(self):
+        files = [_make_file("README.md", role="readme", size=2000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 1
+
+    def test_models_readme_excluded(self):
+        files = [_make_file("models/faster-whisper/README.md", role="readme", size=1000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 0
+
+    def test_tools_readme_excluded(self):
+        files = [_make_file("tools/README.md", role="readme", size=1000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 0
+
+    def test_data_readme_excluded(self):
+        files = [_make_file("data/README.md", role="readme", size=1000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 0
+
+    def test_claude_md_included(self):
+        files = [_make_file("CLAUDE.md", role="claude_instructions", size=5000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 1
+
+    def test_agents_md_included(self):
+        files = [_make_file("AGENTS.md", role="claude_instructions", size=3000)]
+        result = TB._select_instruction_files(files)
+        assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: Task keyword expansion with synonyms
+# ---------------------------------------------------------------------------
+
+class TestTaskKeywordExpansion:
+    def test_translation_expands_to_tm(self):
+        kw = TB._task_keywords("translation memory architecture")
+        assert "tm" in kw
+
+    def test_subtitle_expands_to_srt(self):
+        kw = TB._task_keywords("fix subtitle generation")
+        assert "srt" in kw
+
+    def test_realtime_expands_to_live(self):
+        kw = TB._task_keywords("realtime streaming issue")
+        assert "live" in kw or "streaming" in kw
+
+    def test_ocr_expands_to_paddleocr(self):
+        kw = TB._task_keywords("ocr image recognition")
+        assert any(s in kw for s in ("paddleocr", "paddle", "image"))
+
+    def test_glossary_expands_to_terms(self):
+        kw = TB._task_keywords("glossary management")
+        assert "terminology" in kw or "terms" in kw
+
+
+# ---------------------------------------------------------------------------
+# Fix 1+4: File selection with vendor filtering + task boost
+# ---------------------------------------------------------------------------
+
+class TestFileSelectionRefined:
+    @pytest.fixture
+    def translator_files(self):
+        """Simulates local-translator-agent file structure."""
+        return [
+            _make_file("CLAUDE.md", role="claude_instructions", size=14000),
+            _make_file("app.py", role="source", size=109000),
+            _make_file("services/tm_service.py", role="source", size=70000),
+            _make_file("services/subtitle_service.py", role="source", size=11000),
+            _make_file("services/realtime_service.py", role="source", size=26000),
+            _make_file("prompts.py", role="source", size=15000),
+            _make_file("tools/local_llm_worker.py", role="worker", size=42000,
+                       entrypoint=True),
+            _make_file("tools/local_llm_mcp_server.py", role="mcp_server", size=36000,
+                       entrypoint=True),
+            _make_file("tools/local_llm_debate.py", role="debate", size=18000,
+                       entrypoint=True),
+            _make_file("tools/run_checks.py", role="source", size=8000,
+                       entrypoint=True),
+            _make_file("scripts/smoke_tm_ollama.py", role="source", size=15000,
+                       entrypoint=True),
+            _make_file("tests/test_tm.py", role="test", size=5000, entrypoint=True),
+        ]
+
+    def test_app_py_selected_as_largest_source(self, translator_files):
+        selected = TB._select_summary_candidates(translator_files, "", 3)
+        paths = [s["path"] for s in selected]
+        assert "app.py" in paths
+
+    def test_vendor_entrypoints_not_selected(self, translator_files):
+        selected = TB._select_summary_candidates(translator_files, "", 3)
+        paths = [s["path"] for s in selected]
+        assert "tools/local_llm_worker.py" not in paths
+        assert "tools/local_llm_mcp_server.py" not in paths
+
+    def test_task_keyword_boosts_tm_service(self, translator_files):
+        selected = TB._select_summary_candidates(
+            translator_files, "translation memory architecture", 5,
+        )
+        paths = [s["path"] for s in selected]
+        assert "services/tm_service.py" in paths
+
+    def test_task_keyword_boosts_subtitle_service(self, translator_files):
+        selected = TB._select_summary_candidates(
+            translator_files, "fix subtitle generation bug", 5,
+        )
+        paths = [s["path"] for s in selected]
+        assert "services/subtitle_service.py" in paths
+
+    def test_non_vendor_run_checks_still_entrypoint(self, translator_files):
+        selected = TB._select_summary_candidates(translator_files, "", 5)
+        paths = [s["path"] for s in selected]
+        assert "tools/run_checks.py" in paths
+
+    def test_tests_excluded_by_default(self, translator_files):
+        selected = TB._select_summary_candidates(translator_files, "", 10)
+        paths = [s["path"] for s in selected]
+        assert "tests/test_tm.py" not in paths
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Summary extraction (mocked router)
+# ---------------------------------------------------------------------------
+
+class TestSummaryExtraction:
+    def test_reads_markdown_file_via_absolute_path(self, tmp_path):
+        """_run_summary reads markdown file via absolute path in stderr."""
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        md_file = out_dir / "test_summary.md"
+        md_content = "# Summary\n\nThis is the actual summary from file."
+        md_file.write_text(md_content, encoding="utf-8")
+
+        src = tmp_path / "src.py"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text("def foo(): pass", encoding="utf-8")
+
+        # Call with the actual subprocess.run mocked to return a path
+        # that point to a real file.
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            MockResult = type("MockResult", (), {})
+            r = MockResult()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = f"OK: done\nMD: {str(md_file)}\n"
+            mock_run.return_value = r
+            result = TB._run_summary(str(src))
+
+        assert result["ok"] is True, f"Expected ok=True, got {result}"
+        assert "actual summary" in result["summary"], \
+            f"Summary should contain file content, got: {result['summary'][:200]}"
+
+        assert result["ok"] is True
+        assert "actual summary" in result["summary"]
+
+    def test_missing_summary_file_returns_failed(self, tmp_path):
+        file_to_summarize = tmp_path / "src.py"
+        file_to_summarize.parent.mkdir(exist_ok=True)
+        file_to_summarize.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            mock_result = type("Result", (), {
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "OK: done\\nMD: /nonexistent/path.md\\n",
+            })()
+            mock_run.return_value = mock_result
+            result = TB._run_summary(str(file_to_summarize))
+
+        assert result["ok"] is False
+        assert "not readable" in result.get("error", "")
+
+    def test_router_stderr_not_stored_as_summary(self, tmp_path):
+        file_to_summarize = tmp_path / "src.py"
+        file_to_summarize.parent.mkdir(exist_ok=True)
+        file_to_summarize.write_text("def foo(): pass", encoding="utf-8")
+
+        with patch("task_bootstrap.subprocess.run") as mock_run:
+            mock_result = type("Result", (), {
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "Router: task=summarize-file\\nOK: summarize-file completed\\n",
+            })()
+            mock_run.return_value = mock_result
+            result = TB._run_summary(str(file_to_summarize))
+
+        # No MD line, so no output_path, summary should be empty → fails
+        assert result["ok"] is False
+        assert "Router:" not in result.get("summary", "")
+
+
+# ---------------------------------------------------------------------------
+# Regression: boundaries unchanged
+# ---------------------------------------------------------------------------
+
+class TestRegressionBoundaries:
+    def test_dry_run_no_router_call(self, sample_repo_map, tmp_path):
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        with patch("sys.argv", [
+            "task_bootstrap.py", "--project", str(tmp_path), "--dry-run",
+        ]):
+            with patch("task_bootstrap.build_repo_map",
+                       return_value=sample_repo_map):
+                with patch("task_bootstrap._run_summary") as mock_run:
+                    TB.main()
+                    mock_run.assert_not_called()
+
+    def test_no_summaries_no_router_call(self, sample_repo_map, tmp_path):
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        with patch("sys.argv", [
+            "task_bootstrap.py", "--project", str(tmp_path), "--no-summaries",
+        ]):
+            with patch("task_bootstrap.build_repo_map",
+                       return_value=sample_repo_map):
+                with patch("task_bootstrap._run_summary") as mock_run:
+                    TB.main()
+                    mock_run.assert_not_called()
+
+    def test_json_output_includes_advisory_only(self, sample_repo_map, tmp_path):
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        out_dir = tmp_path / ".local_llm_out"
+        out_dir.mkdir(exist_ok=True)
+        with patch("sys.argv", [
+            "task_bootstrap.py", "--project", str(tmp_path),
+            "--no-summaries", "--out-dir", str(out_dir),
+        ]):
+            with patch("task_bootstrap.build_repo_map",
+                       return_value=sample_repo_map):
+                TB.main()
+        json_files = list(out_dir.glob("*_bootstrap.json"))
+        doc = json.loads(json_files[0].read_text(encoding="utf-8"))
+        assert doc.get("advisory_only") is True
+
+    def test_instruction_files_not_counted_against_max_summaries(self, tmp_path):
+        """When max_summaries=1, instruction files should not take a slot."""
+        files = [
+            _make_file("CLAUDE.md", role="claude_instructions", size=5000),
+            _make_file("README.md", role="readme", size=2000),
+            _make_file("app.py", role="source", size=50000, entrypoint=False),
+            _make_file("services/tm.py", role="source", size=30000),
+        ]
+        inst = TB._select_instruction_files(files)
+        selected = TB._select_summary_candidates(files, "", 1)
+        # Instruction files are tracked separately, not in selected
+        assert len(inst) == 2
+        # max_summaries limits selected, not instructions
+        assert len(selected) == 1

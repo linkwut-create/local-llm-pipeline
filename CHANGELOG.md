@@ -2,6 +2,21 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-FG: task bootstrap refinement (4 fixes from F-E dogfood).
+  1) Vendor path deprioritization: embedded `tools/local_llm_*`,
+  `models/`, `node_modules/` paths no longer crowd out project
+  source files in entrypoint priority.
+  2) Summary extraction: actual worker markdown files are read,
+  router stderr is never stored as summary content.
+  3) Instruction file filtering: only root-level CLAUDE.md /
+  AGENTS.md / README.* are included; `models/` and vendor READMEs
+  are excluded.
+  4) Task keyword priority: keyword-matching source files are
+  boosted above generic largest-source ordering; synonym expansion
+  added (translation→tm, subtitle→srt, ocr→paddleocr, etc.).
+  71 tests.  CLI-only, advisory-only.  No MCP/server/router/
+  worker/path-policy changes.
+
 - v0.11.0-FD: added task bootstrap CLI (`tools/task_bootstrap.py`).
   Thin orchestration layer combining repo_map → instruction file
   detection → file selection (entrypoint/size/keyword priority) →

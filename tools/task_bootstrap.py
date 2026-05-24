@@ -51,6 +51,26 @@ INSTRUCTION_FILE_NAMES = {
     "readme", "codex.md",
 }
 
+_VENDOR_PATH_PREFIXES = (
+    "tools/local_llm_", "tools/claude_", ".venv/", "node_modules/",
+    "models/", "vendor/", "third_party/", "external/", "runtime/",
+    "cache/", "data/",
+)
+
+_TASK_SYNONYMS: dict[str, list[str]] = {
+    "translation": ["tm", "translate", "translator"],
+    "memory": ["tm", "cache", "storage"],
+    "subtitle": ["srt", "subtitle", "caption", "transcription"],
+    "realtime": ["live", "stream", "streaming"],
+    "ocr": ["ocr", "paddleocr", "paddle", "image"],
+    "glossary": ["terminology", "terms", "glossary"],
+    "terminology": ["terms", "glossary", "glossary"],
+    "tm": ["translation", "memory"],
+    "embed": ["embedding", "semantic", "vector"],
+    "voice": ["audio", "speech", "whisper"],
+    "screenshot": ["screen", "capture", "overlay"],
+}
+
 ROUTER_PATH = SCRIPT_DIR / "local_llm_router.py"
 
 
@@ -112,7 +132,24 @@ def _task_keywords(task_text: str) -> set[str]:
     stop = {"the", "and", "for", "with", "that", "this", "from", "have",
             "has", "are", "not", "but", "its", "it's", "can", "all", "will",
             "should", "would", "could", "does", "when", "where", "which"}
-    return {w for w in words if w not in stop}
+    base = {w for w in words if w not in stop}
+    # Expand synonyms
+    expanded = set(base)
+    for kw in base:
+        for syn in _TASK_SYNONYMS.get(kw, []):
+            expanded.add(syn)
+    return expanded
+
+
+def _looks_like_vendor_embedded(path: str) -> bool:
+    p = path.lower().replace("\\", "/")
+    return any(p.startswith(prefix) for prefix in _VENDOR_PATH_PREFIXES)
+
+
+def _is_root_level(path: str) -> bool:
+    """True if the path has at most one directory component (root level)."""
+    p = path.replace("\\", "/")
+    return "/" not in p
 
 
 # ---------------------------------------------------------------------------
@@ -120,16 +157,23 @@ def _task_keywords(task_text: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 def _select_instruction_files(files: list[dict]) -> list[dict]:
-    """Return CLAUDE.md / AGENTS.md / README.* entries from the repo map."""
+    """Return root-level CLAUDE.md / AGENTS.md / README.* entries."""
     result = []
     seen = set()
     for f in files:
-        name = Path(f["path"]).name.lower()
-        if name in INSTRUCTION_FILE_NAMES and f["path"] not in seen:
-            seen.add(f["path"])
+        path = f["path"].replace("\\", "/")
+        name = Path(path).name.lower()
+        if name not in INSTRUCTION_FILE_NAMES:
+            continue
+        # Only root-level or docs/ level
+        if "/" in path and not path.startswith("docs/"):
+            continue
+        if _looks_like_vendor_embedded(path):
+            continue
+        if path not in seen:
+            seen.add(path)
             result.append(f)
     result.sort(key=lambda f: (
-        # CLAUDE.md / AGENTS.md first, then README
         0 if Path(f["path"]).name.lower() in ("claude.md", "agents.md")
         else 1,
         f["path"],
@@ -146,42 +190,78 @@ def _select_summary_candidates(
     if max_summaries <= 0:
         return []
 
-    candidates: list[dict] = []
-    entrypoints = [f for f in files if f.get("entrypoint")]
-    sources = [f for f in files if f.get("role") == "source"]
     task_kw = _task_keywords(task_text)
     task_mentions_test = _task_mentions_tests(task_text)
 
-    # Priority 1: entrypoints, largest first
+    def _ok(f: dict) -> bool:
+        if _looks_like_test(f["path"]) and not task_mentions_test:
+            return False
+        return True
+
+    def _task_match_score(f: dict) -> int:
+        """Score a file against task keywords. Higher = more relevant."""
+        if not task_kw:
+            return 0
+        parts = f["path"].lower().replace("\\", "/").split("/")
+        filename = parts[-1]
+        score = 0
+        for kw in task_kw:
+            if kw in filename:
+                score += 3
+            elif any(kw in part for part in parts[:-1]):
+                score += 1
+        return score
+
+    # Collect candidates with scores
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    # Priority 1: entrypoints (non-vendor, non-test)
+    entrypoints = [f for f in files if f.get("entrypoint")
+                   and not _looks_like_vendor_embedded(f["path"])]
     entrypoints.sort(key=lambda f: f.get("size", 0), reverse=True)
     for f in entrypoints:
-        if not _looks_like_test(f["path"]) or task_mentions_test:
+        if _ok(f):
+            seen.add(f["path"])
             candidates.append({**f, "selection_reason": "entrypoint"})
 
-    # Priority 2: largest source files not already selected
+    # Priority 1.5: task keyword matched sources (boosted above generic size)
+    if task_kw:
+        scored_source = [
+            (f, _task_match_score(f))
+            for f in files
+            if f.get("role") == "source"
+            and f["path"] not in seen
+            and not _looks_like_vendor_embedded(f["path"])
+            and _ok(f)
+        ]
+        scored_source.sort(key=lambda x: x[1], reverse=True)
+        for f, score in scored_source:
+            if score > 0:
+                seen.add(f["path"])
+                candidates.append({**f, "selection_reason": "task_keyword_match"})
+
+    # Priority 2: largest project source files not already selected
+    sources = [f for f in files if f.get("role") == "source"
+               and not _looks_like_vendor_embedded(f["path"])]
     sources.sort(key=lambda f: f.get("size", 0), reverse=True)
-    seen = {c["path"] for c in candidates}
     for f in sources:
         if f["path"] in seen:
             continue
-        if _looks_like_test(f["path"]) and not task_mentions_test:
+        if not _ok(f):
             continue
         seen.add(f["path"])
         candidates.append({**f, "selection_reason": "largest_source"})
 
-    # Priority 3: task keyword match (boosts existing candidates, adds new)
-    if task_kw:
-        for f in files:
-            if f["path"] in seen:
-                continue
-            if f.get("role") not in ("source", "unknown"):
-                continue
-            path_lower = f["path"].lower()
-            if any(kw in path_lower for kw in task_kw):
-                if _looks_like_test(f["path"]) and not task_mentions_test:
-                    continue
-                seen.add(f["path"])
-                candidates.append({**f, "selection_reason": "task_keyword_match"})
+    # Priority 3: remaining entrypoints (including vendor) as fallback
+    remaining_eps = [f for f in files if f.get("entrypoint")
+                     and f["path"] not in seen]
+    remaining_eps.sort(key=lambda f: f.get("size", 0), reverse=True)
+    for f in remaining_eps:
+        if not _ok(f):
+            continue
+        seen.add(f["path"])
+        candidates.append({**f, "selection_reason": "entrypoint"})
 
     # Slice to max_summaries
     selected = candidates[:max_summaries]
@@ -327,7 +407,11 @@ def _build_context_budget(
 
 
 def _run_summary(file_path: str, max_chars: int = 12000) -> dict:
-    """Run summarize-file via router. Returns {ok, summary, output_path, error}."""
+    """Run summarize-file via router. Returns {ok, summary, output_path, error}.
+
+    Reads the actual markdown summary file produced by the worker.
+    Never returns router stderr/status lines as summary content.
+    """
     try:
         result = subprocess.run(
             [
@@ -344,21 +428,35 @@ def _run_summary(file_path: str, max_chars: int = 12000) -> dict:
                 "error": f"router exit {result.returncode}: "
                          f"{result.stderr[:200] if result.stderr else 'no stderr'}",
             }
-        # Try to find output file from stderr (router prints "MD: <path>")
+        # Find output file path from router stderr
         output_path = ""
         for line in result.stderr.splitlines():
-            if line.strip().startswith("MD:"):
-                output_path = line.split("MD:", 1)[1].strip()
+            stripped = line.strip()
+            if stripped.startswith("MD:") or stripped.startswith("Markdown:"):
+                output_path = line.split(":", 1)[1].strip()
                 break
-        # Read the summary
+        # Read summary from the worker's output file
         summary = ""
         if output_path:
-            try:
-                summary = Path(output_path).read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                summary = result.stdout[:5000] if result.stdout else ""
-        elif result.stdout:
-            summary = result.stdout[:5000]
+            candidates = [
+                Path(output_path),
+                Path.cwd() / output_path,
+                SCRIPT_DIR.parent / output_path,
+            ]
+            for sp in candidates:
+                try:
+                    if sp.exists() and sp.is_file():
+                        summary = sp.read_text(encoding="utf-8", errors="replace")
+                        break
+                except Exception:
+                    continue
+        if not summary:
+            return {
+                "ok": False,
+                "summary": "",
+                "error": f"summary file not readable: {output_path or 'no path found'}",
+                "output_path": output_path,
+            }
         return {
             "ok": True,
             "summary": summary[:6000],

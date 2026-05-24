@@ -667,6 +667,41 @@ plan.
   budget, CLI exit codes (0/1/2/3), dry-run, no-summaries, JSON/MD
   output schema, advisory boundary, output file writing, git info.
 
+## v0.11.0-FE — Task Bootstrap Re-Dogfood (closed, no commit)
+
+- **F-E** (no commit): re-dogfood of `task_bootstrap.py` on local-translator-agent
+  at `4471d1c`.  Confirmed one command replaces F-B's three.  Dry-run exit 0,
+  normal mode exit 0.  Found 4 refinement issues: (1) file selection biased
+  toward embedded tools — `tools/local_llm_*` entrypoints crowded out `app.py`
+  and `services/tm_service.py`; (2) summary extraction stored router stderr
+  (112 chars) instead of actual markdown file content (4.5KB); (3) instruction
+  files included `models/faster-whisper-*/README.md` dependency noise;
+  (4) task keywords "translation memory subtitle" could not influence selection
+  because Priority 3 was never reached.  `F_E_TASK_BOOTSTRAP_RE_DOGFOOD_PASS=yes`.
+
+## v0.11.0-FF — Task Bootstrap Refinement Audit (closed, no commit)
+
+- **F-F** (no commit): read-only refinement audit at `4471d1c`.  Pinpointed
+  all 4 issues to specific code locations in `tools/task_bootstrap.py`.
+  Designed minimal fix plan with no new features, no MCP/path-policy changes.
+  `F_F_TASK_BOOTSTRAP_REFINEMENT_AUDIT_PASS=yes`.
+
+## v0.11.0-FG — Task Bootstrap Refinement Implementation (in progress)
+
+- **FG** (pending commit): 4 targeted fixes.
+  1) `_VENDOR_PATH_PREFIXES` + `_looks_like_vendor_embedded()` —
+  deprioritizes `tools/local_llm_*`, `models/`, `node_modules/`, etc.
+  2) `_run_summary()` — reads actual markdown file via candidate path
+  resolution; never stores router stderr as summary; returns `ok=false`
+  when file not readable.
+  3) `_select_instruction_files()` — depth filtering; only root or
+  `docs/` level; excludes `models/` and vendor paths.
+  4) `_select_summary_candidates()` — restructured: P1 filtered
+  entrypoints → P1.5 task keyword boost → P2 largest project sources
+  → P3 remaining entrypoints as fallback.  Task keyword synonym
+  expansion (translation→tm, subtitle→srt, ocr→paddleocr, etc.).
+  71 tests.  No MCP/server/router/worker/path-policy changes.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`
