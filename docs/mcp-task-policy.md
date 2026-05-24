@@ -65,6 +65,64 @@ and explicit commit gate review.
 | Fixing a bug | `local_generate_test_plan` | `code_worker` |
 | Preparing a release | `local_generate_test_plan` | `code_worker` |
 
+#### Repo Map Advisory (C3-B)
+
+`local_generate_test_plan` supports an optional repo-map advisory context injection
+via three opt-in parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `use_repo_map` | boolean | `false` | Enable repo-map context injection |
+| `repo_map_path` | string | `.local_llm_out/repo_map.json` | Path to a pre-built repo map file |
+| `repo_map_max_files` | integer | 300 | File limit if a fresh repo map must be built |
+
+**Default behavior (`use_repo_map=false`, the only path for all existing callers):**
+- No repo map context is injected.
+- `.local_llm_out/repo_map.json` is NOT read.
+- `local_repo_map` is NOT called.
+- No `test_plan_repo_map_used` key appears in the ledger.
+
+**Opt-in behavior (`use_repo_map=true`):**
+
+1. If `repo_map_path` is provided and exists, that file is loaded.
+2. If `repo_map_path` is provided but missing, an in-memory repo map is built as fallback.
+3. If `repo_map_path` is provided but the file is corrupt JSON, the call succeeds
+   with `repo_map_context_warning="repo_map_corrupt"` — the corrent file never fails
+   the test-plan call.
+4. The C3-A helper `build_repo_map_context_for_path()` extracts a *small advisory
+   context* (target role, subsystem, related tests, subsystem peers) from the repo map.
+   The full repo map is NOT injected.  File bodies are NOT injected.
+5. The advisory context is prepended as a prompt prefix before the source file content.
+6. Response carries additive metadata: `repo_map_context_used`, `repo_map_related_tests_count`,
+   `repo_map_subsystems`.
+7. Ledger MAY record: `test_plan_repo_map_used`, `test_plan_related_tests_count`,
+   `test_plan_subsystems`, `test_plan_repo_map_warning`.
+
+**Safety boundaries:**
+- Repo map context is advisory-only — it does NOT make the test plan claim
+  that tests already pass.
+- Repo map absence or corruption MUST NOT fail the test-plan call.
+- No commit gate, release guard, or dangerous command guard change.
+- No hook auto-trigger for repo map.
+- No `local_review_diff` or `local_debate_review_diff` behavior change.
+- `local_repo_map` remains manual-only (never auto-invoked).
+
+**Example — default (safe, unchanged):**
+```json
+{"path": "tools/local_llm_mcp_server.py"}
+```
+
+**Example — opt-in with repo map advisory:**
+```json
+{
+  "path": "tools/local_llm_mcp_server.py",
+  "use_repo_map": true,
+  "repo_map_max_files": 300
+}
+```
+Note: adds advisory repo-map context and may improve related-test recommendations,
+but still does NOT prove that tests pass.
+
 ### Code Drafting (advisory only)
 
 | When | Tool | Constraint |

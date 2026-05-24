@@ -53,13 +53,14 @@ Claude Code is the controller. The local worker is advisory only.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 9 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 10 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
-`local_parallel_review`, `local_draft_code`, `local_contextual_analyze`.
+`local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
+`local_repo_map`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
-Verify with `/mcp` — should show `local-llm connected 9 tools`.
+Verify with `/mcp` — should show `local-llm connected 10 tools`.
 
 ### Auto-Invocation (Phase 2.0)
 
@@ -80,7 +81,7 @@ Results land in `.local_llm_out/auto/`. Dedup prevents duplicate spawns
 The existing manual MCP invocation path still works and is required for:
 - `local_debate_review_diff` (high-risk changes, sequential 2-3 round)
 - `local_parallel_review` (release audit, multi-model parallel ~150s)
-- `local_generate_test_plan` (new API/schema)
+- `local_generate_test_plan` (new API/schema; optional `use_repo_map=true` for advisory repo-map context)
 - `local_draft_code` (code generation)
 - Commit gate review (explicit `commit_gate=true`)
 
@@ -163,6 +164,7 @@ MCP Usage Matrix
 | Hook/gate/MCP server/router logic | `local_debate_review_diff` | fast mode | Must use debate |
 | Safety policy, blocked paths | `local_debate_review_diff` | fast mode | Must use debate |
 | Feature/bug/release test plan | `local_generate_test_plan` | `code_worker` | Before implementing |
+| Test plan with repo-map advisory | `local_generate_test_plan` + `use_repo_map=true` | `code_worker` | Opt-in; repo map advisory only, does not prove tests pass |
 | Draft code (fix/feature/refactor) | `local_draft_code` | `code_worker` | Output → `.local_llm_out/` only |
 | DB schema, CLI, import/export, parser | `local_generate_test_plan` | `code_worker` | Before implementing |
 | Phase freeze, release audit | `local_parallel_review` | parallel multi-family | Must use parallel |

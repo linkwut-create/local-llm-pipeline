@@ -350,7 +350,19 @@
 		  `C3B_REAL_MCP_DOGFOOD_VERIFIED=yes`.
 		  VERSION remains `0.10.0`, no tag.  **C3-B implementation line
 		  closed — both direct Python and real MCP paths verified.**
-		  Next: C3-C policy/docs sync for test-plan repo-map advisory.
+		- **v0.11.0-C3-C**: policy/docs sync completed.
+		  Documented `local_generate_test_plan` repo-map advisory behavior in
+		  `docs/mcp-task-policy.md` and `CLAUDE.md`: default-off behavior
+		  (`use_repo_map=false`), opt-in params (`use_repo_map`, `repo_map_path`,
+		  `repo_map_max_files`), advisory-only nature, corrupt/missing fallback
+		  semantics, safety boundaries (no commit gate / release guard / dangerous
+		  command guard / hook auto-trigger / review_diff / debate change;
+		  `local_repo_map` remains manual-only), ledger keys, and examples.
+		  No code / test / MCP schema / worker / ledger / hook / VERSION / tag
+		  changes.  **C3 chain complete** (C0 audit → C1 generator → C2 MCP tool
+		  → C3-A context helper → C3-B implementation + real MCP dogfood → C3-C
+		  docs/policy sync).  Next: C3 final closeout, then D read-only planning
+		  audit (test failure classifier).
 
 ## v0.10.0 - 2026-05-24
 
