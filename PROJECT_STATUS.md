@@ -729,6 +729,56 @@ plan.
   weighted higher within their priority tier.
   80 tests.  No MCP/server/router/worker/path-policy changes.
 
+## v0.11.0-FK — Acceptance Dogfood (no commit)
+
+- **F-K** (no commit): acceptance dogfood at `8b0573e`.  Dry-run selection
+  passed — app.py, tm_service, realtime, subtitle all selected.  Normal
+  mode still exit 3: `_run_summary()` only checked stderr, but router
+  paths are on stdout when called via `subprocess.run(capture_output=True)`.
+  `F_K_PASS=yes (1 trivial fix needed)`.
+
+## v0.11.0-FL — Stdout Path Fix (committed)
+
+- **FL** (`487f8af`): one fix — `_run_summary()` now combines stdout+stderr
+  before scanning for MD:/JSON: path lines.  82 tests.  `F_L_COMMITTED=yes`.
+
+## v0.11.0-FM — Final Acceptance (no commit)
+
+- **F-M** (no commit): final acceptance dogfood at `487f8af` on
+  local-translator-agent (`9f81601`).  **Clean pass.**  Dry-run selection:
+  scripts/smoke + tm_service + app.py + realtime + subtitle.  Normal mode
+  exit 0, summaries 3/3 OK (4,183 / 3,806 / 3,899 chars real markdown).
+  tm_service correctly classified as "TM-1A.1 Translation Memory data
+  persistence layer."  app.py as "central backend hub orchestrating
+  translation workflows."  `F_M_TASK_BOOTSTRAP_FINAL_ACCEPTANCE_PASS=yes`.
+
+## v0.11.0-FN — Task Bootstrap Chain Closeout (in progress)
+
+- **FN** (pending commit): docs-only closeout.  Task bootstrap workflow
+  documented in CLAUDE.md.  Full chain (F-D → F-M) recorded in
+  PROJECT_STATUS.md and CHANGELOG.md.
+  Next: cross-project validation (local-durable-agent) or
+  task_bootstrap MCP tool evaluation — not yet authorized.
+
+### Task Bootstrap Chain Summary
+
+| Phase | Type | Result |
+|-------|------|--------|
+| F-A | alignment audit | 3 gaps identified |
+| F-B | downstream dogfood | 95% token saving estimate |
+| F-C | design audit | CLI-only recommended |
+| F-D | implementation | v0.1.0 committed (`4471d1c`) |
+| F-E | first dogfood | 4 issues found |
+| F-F | refinement audit | root causes pinpointed |
+| F-G | refinement impl | vendor+instr+kw+summary fixes (`d8dee6b`) |
+| F-H | second dogfood | mixed — 2 issues remain |
+| F-I | second audit | slot+JSON+core boost plan |
+| F-J | second impl | slot alloc+JSON+core boost (`8b0573e`) |
+| F-K | acceptance | selection pass, summary stdout gap |
+| F-L | stdout fix | combined stdout+stderr (`487f8af`) |
+| **F-M** | **final acceptance** | **clean pass** — exit 0, 3/3 OK |
+| **F-N** | **docs closeout** | **this commit** |
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`

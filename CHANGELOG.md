@@ -2,6 +2,15 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-FN: task bootstrap chain closeout.  Task bootstrap CLI
+  (`tools/task_bootstrap.py`) accepted after 5 refinement iterations
+  (F-D through F-M) validated on local-translator-agent (HEAD `9f81601`).
+  One command replaces F-B multi-step manual workflow.  Selection
+  correctly picks app.py, services/tm_service.py, services/realtime,
+  services/subtitle.  Normal mode exit 0, summaries 3/3 OK with real
+  markdown content.  82 tests.  Workflow documented in CLAUDE.md.
+  `F_M_TASK_BOOTSTRAP_FINAL_ACCEPTANCE_PASS=yes`.
+
 - v0.11.0-FJ: second refinement — slot allocation + cache-hit summary.
   1) Selection slot allocation: entrypoints limited to at most 1/3
   of max_summaries; task keyword and largest source files each

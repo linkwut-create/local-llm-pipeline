@@ -51,6 +51,33 @@ Claude Code is the controller. The local worker is advisory only.
 
 - `local-worker-auditor` — uses the local worker and audits its output.
 
+### Task Bootstrap (v0.11.0-F)
+
+For cross-file, cross-module, or unfamiliar-repo tasks, start with:
+
+```bash
+# Quick file selection check (no LLM calls):
+py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>" \
+  --max-summaries 5 --dry-run --json
+
+# Full task context package (repo_map + summaries):
+py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>" \
+  --max-summaries 3 --budget 6000
+```
+
+Output (written to `.local_llm_out/`):
+- `*_bootstrap.md` — human-readable context: repo map summary, selected files,
+  summaries, risk hints, suggested next calls, what NOT to read first.
+- `*_bootstrap.json` — machine-readable structured output.
+
+The bootstrap selects files by slot allocation: entrypoints (≤1/3 slots),
+task keyword matches (≤1/3 slots), largest project sources (remaining).
+Embedded/vendor paths (`tools/local_llm_*`, `models/`, `node_modules/`)
+are deprioritized. Instruction files are root-level only.
+
+Boundaries: CLI-only, advisory-only, writes only `.local_llm_out/`,
+no MCP tool, no hooks/gates/guards/queue, does not modify target project.
+
 ### MCP Integration (v0.7.0+)
 
 The pipeline exposes 10 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
