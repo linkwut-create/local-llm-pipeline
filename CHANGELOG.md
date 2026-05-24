@@ -2,6 +2,13 @@
 
 ## v0.11.0 (unreleased, post-v0.10.0)
 
+- v0.11.0-GB/GC: workflow dogfood — first end-to-end control loop.
+  task_bootstrap → implement model-summary CLI → 162 tests →
+  review_diff gate → commit.  Proves the full pipeline cycle works:
+  bootstrap understands the repo, implementation is bounded,
+  review catches issues, tests gate the change.
+  `G_B_WORKFLOW_DOGFOOD_IMPLEMENTATION_COMMITTED=yes`.
+
 - v0.11.0-FP: docs record — task_bootstrap validated on second
   downstream project (local-durable-agent, `1f81290`).  Confirms
   cross-project generality across translator-agent (flat app+services)

@@ -798,6 +798,31 @@ plan.
 - **FP** (pending commit): docs-only record of F-O validation.
   No code/test/version/MCP changes.
 
+## v0.11.0-GA — Workflow Dogfood Planning (no commit)
+
+- **G-A** (no commit): planning audit at `502b4d7`.  Selected minimal task:
+  call ledger model-summary CLI.  Designed full control loop:
+  task_bootstrap → implementation → tests → review_diff → commit.
+  `G_A_WORKFLOW_DOGFOOD_PLAN_PASS=yes`.
+
+## v0.11.0-GB — Workflow Dogfood Implementation (committed)
+
+- **GB** (`b3e217c`): first end-to-end control loop dogfood.
+  task_bootstrap on local-llm-pipeline → 3/3 summaries OK →
+  implemented `model-summary` in `call_ledger_cli.py` (+8 lines,
+  reuses `group_by`/`_print_groups`) + 2 tests.  162/162 call_ledger,
+  1858 full suite, 13/13 run_checks, review_diff gate ok=true.
+  `G_B_WORKFLOW_DOGFOOD_IMPLEMENTATION_COMMITTED=yes`.
+
+  Usage:
+  - `py -3 tools/call_ledger_cli.py model-summary` (per-model)
+  - `py -3 tools/call_ledger_cli.py by-mcp-tool` (per-MCP-tool, existing)
+
+## v0.11.0-GC — Workflow Dogfood Docs Closeout (in progress)
+
+- **GC** (pending commit): docs-only record of G-A/G-B workflow loop.
+  No code/test/VERSION changes.
+
 ## v0.10.0 Release-Prep Anchor
 
 - VERSION: `0.9.8` → `0.10.0`
