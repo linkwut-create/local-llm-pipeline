@@ -317,17 +317,18 @@ def test_draft_code_writes_only_to_local_llm_out(tmp_path, isolated_out_dir, mon
     assert any(isolated_out_dir.glob("*_draft-fix.json"))
 
 
-def test_mcp_tool_count_is_ten():
+def test_mcp_tool_count_is_eleven():
     """Acceptance #9 — adding/removing MCP tools is a contract change. Lock
-    the surface area at exactly ten (v0.11.0-C2 added local_repo_map)."""
+    the surface area at exactly eleven (v0.11.0-D-C added local_classify_test_failure)."""
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff",
         "local_debate_review_diff", "local_parallel_review",
         "local_draft_code", "local_contextual_analyze",
-        "local_repo_map",
+        "local_repo_map", "local_classify_test_failure",
     }
     assert set(mcp.TOOLS.keys()) == expected
     assert set(mcp.TOOL_HANDLERS.keys()) == expected
-    assert len(mcp.TOOLS) == 10
+    assert len(mcp.TOOLS) == 11
+    assert len(mcp.TOOL_HANDLERS) == 11

@@ -174,51 +174,43 @@ def test_build_prompt_no_mcp_required():
     assert "failure_class" in user
 
 
-# ── G. No MCP integration yet ──────────────────────────────────────────
+# ── G. D-C MCP integration ────────────────────────────────────────────
 
-def test_mcp_server_unchanged_tool_count():
-    """D-B must NOT add local_classify_test_failure to MCP TOOLS. Count stays 10."""
-    # We check by scanning the MCP server source — no import, just text check.
+def test_mcp_tool_exists_in_source():
+    """D-C: local_classify_test_failure IS in MCP TOOLS (tool count now 11)."""
     mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
     text = mcp_path.read_text(encoding="utf-8")
-    assert 'local_classify_test_failure' not in text, \
-        "D-B must NOT add local_classify_test_failure to MCP server"
+    assert 'local_classify_test_failure' in text, \
+        "D-C must add local_classify_test_failure to MCP server"
 
 
-def test_mcp_tool_count():
-    """MCP TOOLS count must remain 10."""
+def test_mcp_tool_count_11():
+    """D-C: MCP TOOLS count is now 11."""
     mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
     text = mcp_path.read_text(encoding="utf-8")
-    # Count the tool keys in TOOLS dict — look for 'local_' entries
-    # Quick heuristic: count the top-level tool names
     import re
     tool_names = re.findall(r'"local_\w+":\s*\{', text)
-    # local_check, local_summarize_file, local_summarize_tree,
-    # local_generate_test_plan, local_review_diff, local_debate_review_diff,
-    # local_parallel_review, local_contextual_analyze, local_draft_code, local_repo_map
-    assert len(tool_names) == 10, f"expected 10 MCP tools, found {len(tool_names)}: {tool_names}"
+    assert len(tool_names) == 11, f"expected 11 MCP tools, found {len(tool_names)}: {tool_names}"
 
 
-def test_call_ledger_unchanged():
-    """call_ledger.py must NOT contain test-failure-classifier keys yet."""
+def test_call_ledger_has_test_failure_keys():
+    """D-C: call_ledger.py now has the 3 test_failure extra keys."""
     ledger_path = SCRIPT_DIR / "call_ledger.py"
     text = ledger_path.read_text(encoding="utf-8")
-    assert "test_failure_class" not in text, \
-        "D-B must NOT add test_failure_class to call_ledger.py"
+    assert "test_failure_class" in text
+    assert "test_failure_confidence" in text
+    assert "test_failure_exit_code" in text
 
 
-def test_mcp_server_imports_unchanged():
-    """MCP server must not import classify-test-failure related modules."""
-    mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
-    text = mcp_path.read_text(encoding="utf-8")
-    assert "classify_test_failure" not in text
-    assert "classify-test-failure" not in text
+def test_mcp_handler_exists():
+    """D-C: call_classify_test_failure handler exists and is importable."""
+    from local_llm_mcp_server import call_classify_test_failure
+    assert callable(call_classify_test_failure)
 
 
 def test_worker_has_no_classify_handler():
-    """Worker has the prompt but no handler function for classify-test-failure."""
+    """Worker has the prompt but no handler function — handler is in MCP server."""
     worker_path = SCRIPT_DIR / "local_llm_worker.py"
     text = worker_path.read_text(encoding="utf-8")
-    # The prompt key exists but no function named handle_classify or similar
     assert "def classify_test_failure" not in text
     assert "def handle_classify" not in text

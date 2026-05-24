@@ -85,6 +85,7 @@ _ESCALATION_CHAIN = {
                      "qwen3.6_27b_mtp"],
     "extract-todos": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     "find-related-files": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    "classify-test-failure": ["code_worker", "reasoning_checker", "qwen3.6_27b_mtp"],
 }
 
 # Security-sensitive patterns that auto-trigger reasoning model review.
@@ -1056,6 +1057,39 @@ TOOLS = {
                 },
             },
             "required": [],
+        },
+    },
+
+    "local_classify_test_failure": {
+        "description": "Classify a test failure from stderr/stdout as advisory-only. Does not rerun tests, modify files, or affect gates.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stderr": {
+                    "type": "string",
+                    "description": "Test failure stderr — traceback, assertion output, or error text. Required.",
+                },
+                "stdout": {
+                    "type": "string",
+                    "description": "Optional test runner stdout before failure.",
+                },
+                "exit_code": {
+                    "type": "integer",
+                    "description": "Optional test process exit code.",
+                },
+                "test_command": {
+                    "type": "string",
+                    "description": "Optional command that produced the failure.",
+                },
+                "changed_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional files changed since last passing run.",
+                },
+                "profile": {"type": "string", "description": "Optional profile override."},
+                "model": {"type": "string", "description": "Optional model override."},
+            },
+            "required": ["stderr"],
         },
     },
 }
@@ -3157,6 +3191,150 @@ def _try_write_repo_map_ledger(*, request_id: str, ok: bool,
     except Exception:
         pass
 
+# ── D-C: test failure classifier ─────────────────────────────────────
+
+_STDERR_MAX_CHARS = 50_000
+_STDOUT_MAX_CHARS = 20_000
+_TEST_COMMAND_MAX_CHARS = 1_000
+_CHANGED_FILES_MAX = 50
+
+
+def call_classify_test_failure(params: dict) -> dict:
+    """Classify a test failure from stderr/stdout — advisory-only."""
+    tool_name = "local_classify_test_failure"
+    stderr_raw = params.get("stderr", "")
+    stdout_raw = params.get("stdout", "")
+    exit_code = params.get("exit_code")
+    test_command = params.get("test_command", "")
+    changed_files = params.get("changed_files", [])
+
+    # Validate
+    if not isinstance(stderr_raw, str):
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="stderr must be a string",
+            suggestion="pass stderr as a string",
+        )
+    if not isinstance(stdout_raw, str):
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="stdout must be a string",
+            suggestion="pass stdout as a string or omit it",
+        )
+    if exit_code is not None and not isinstance(exit_code, int):
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="exit_code must be an integer",
+            suggestion="pass exit_code as int or omit it",
+        )
+    if not isinstance(test_command, str):
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="test_command must be a string",
+            suggestion="pass test_command as a string or omit it",
+        )
+    if not isinstance(changed_files, list) or not all(isinstance(x, str) for x in changed_files):
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="changed_files must be a list of strings",
+            suggestion="pass changed_files as string[] or omit it",
+        )
+    if not stderr_raw.strip() and not stdout_raw.strip():
+        return build_error_response(
+            tool=tool_name, error_type="invalid_input",
+            error="at least one of stderr or stdout must be non-empty",
+            suggestion="provide test failure output to classify",
+        )
+
+    # Truncate
+    stderr_text = stderr_raw[:_STDERR_MAX_CHARS]
+    stdout_text = stdout_raw[:_STDOUT_MAX_CHARS]
+    tc_text = test_command[:_TEST_COMMAND_MAX_CHARS] if test_command else ""
+    cf_list = changed_files[:_CHANGED_FILES_MAX] if changed_files else []
+
+    # Build JSON payload for the worker
+    payload_obj = {
+        "stderr": stderr_text,
+        "stdout": stdout_text,
+    }
+    if exit_code is not None:
+        payload_obj["exit_code"] = exit_code
+    if tc_text:
+        payload_obj["test_command"] = tc_text
+    if cf_list:
+        payload_obj["changed_files"] = cf_list
+
+    stdin_data = json.dumps(payload_obj, ensure_ascii=False)
+
+    # Ledger extra
+    ledger_extra = _build_ledger_extra_env(
+        mcp_tool_name=tool_name,
+    )
+    if exit_code is not None:
+        ledger_extra["test_failure_exit_code"] = exit_code
+
+    # Resolve profile
+    user_profile = params.get("profile", "")
+    proactive_profile = _resolve_starting_profile(
+        "classify-test-failure",
+        {"complexity_tier": "light", "cjk_ratio": 0.0, "has_security_patterns": False,
+         "has_architecture_keywords": False, "is_mixed_content": False,
+         "detected_content_type": "code"},
+        user_profile or None,
+    )
+
+    cmd = build_router_cmd("classify-test-failure", None, None, None,
+                           proactive_profile or user_profile, params.get("model"))
+    result = _wrap_worker_call(tool_name, cmd, stdin_data=stdin_data,
+                               task="classify-test-failure",
+                               extra_env=ledger_extra)
+
+    # Try to parse the worker result text for failure_class/confidence
+    classification_parsed = False
+    try:
+        result_text = result.get("result", "")
+        if isinstance(result_text, dict):
+            w = result_text
+        elif isinstance(result_text, str):
+            # Try to extract JSON from the result text
+            w = json.loads(result_text) if result_text.strip().startswith("{") else None
+        else:
+            w = None
+
+        if isinstance(w, dict) and w.get("ok"):
+            fc = w.get("failure_class", "unknown")
+            if fc not in ("assertion", "import_error", "syntax_error", "dependency",
+                          "timeout", "environment", "flaky", "unknown"):
+                fc = "unknown"
+            conf = w.get("confidence", "low")
+            if conf not in ("low", "medium", "high"):
+                conf = "low"
+            result["failure_class"] = fc
+            result["confidence"] = conf
+            result["advisory_only"] = bool(w.get("advisory_only", True))
+            # Propagate into ledger extra for this call
+            ledger_extra["test_failure_class"] = fc
+            ledger_extra["test_failure_confidence"] = conf
+            classification_parsed = True
+    except Exception:
+        pass
+
+    if not classification_parsed:
+        result["failure_class"] = "unknown"
+        result["confidence"] = "low"
+        result["advisory_only"] = True
+        result["classification_parse_warning"] = "invalid_json"
+        ledger_extra["test_failure_class"] = "unknown"
+        ledger_extra["test_failure_confidence"] = "low"
+
+    # Rebuild ledger extra with classification fields
+    result["_ledger_extra"] = ledger_extra
+
+    return result
+
+
+
+
 
 TOOL_HANDLERS = {
     "local_check": call_local_check,
@@ -3169,7 +3347,9 @@ TOOL_HANDLERS = {
     "local_parallel_review": call_parallel_review,
     "local_draft_code": call_draft_code,
     "local_repo_map": call_repo_map,
+    "local_classify_test_failure": call_classify_test_failure,
 }
+
 
 
 def handle_tools_call(msg_id: int | str, params: dict) -> dict:

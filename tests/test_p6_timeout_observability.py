@@ -283,6 +283,6 @@ def test_health_store_schema_version_unchanged():
 
 
 def test_mcp_tool_count_unchanged():
-    """MCP tool count must remain 10."""
+    """MCP tool count must remain 11."""
     from local_llm_mcp_server import TOOLS  # noqa: E402
-    assert len(TOOLS) == 10
+    assert len(TOOLS) == 11

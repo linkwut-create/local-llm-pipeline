@@ -103,6 +103,10 @@ KNOWN_EXTRA_KEYS = frozenset({
     "repo_map_test_mappings",
     "repo_map_cache_hit",
     "repo_map_advisory_only",
+    # Test failure classification fields (D-C)
+    "test_failure_class",
+    "test_failure_confidence",
+    "test_failure_exit_code",
     # Test-plan repo-map advisory fields (C3-B)
     "test_plan_repo_map_used",
     "test_plan_related_tests_count",

@@ -17,7 +17,7 @@ FORBIDDEN_TOOL_KEYWORDS = [
 
 
 def test_tools_count():
-    assert len(mcp.TOOLS) == 10
+    assert len(mcp.TOOLS) == 11
 
 
 def test_tool_names():
@@ -25,7 +25,7 @@ def test_tool_names():
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff", "local_debate_review_diff",
         "local_parallel_review", "local_draft_code", "local_contextual_analyze",
-        "local_repo_map",
+        "local_repo_map", "local_classify_test_failure",
     }
     assert set(mcp.TOOLS.keys()) == expected
 
@@ -112,7 +112,7 @@ def test_handle_tools_list():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 2
     tools = response["result"]["tools"]
-    assert len(tools) == 10
+    assert len(tools) == 11
     tool_names = {t["name"] for t in tools}
     assert "local_check" in tool_names
 

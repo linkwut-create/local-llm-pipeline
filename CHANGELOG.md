@@ -400,7 +400,22 @@
 		  focused tests in `tests/test_classify_test_failure_prompt.py`.
 		  Helper-only — no MCP tool, handler, ledger, or hook integration yet.
 		  MCP tool count remains 10.  VERSION remains `0.10.0`, no tag.
-		  Next: D-C MCP tool implementation (11th tool).
+		- **v0.11.0-D-C**: MCP tool `local_classify_test_failure` implemented as 11th
+		  tool.  Added to TOOLS dict, TOOL_HANDLERS, and _ESCALATION_CHAIN
+		  (`classify-test-failure` → code_worker / reasoning_checker).  New handler
+		  `call_classify_test_failure()` validates input (stderr required, types
+		  enforced), truncates oversized inputs, builds a JSON payload for the
+		  D-B worker prompt, and post-processes the worker result: parses JSON
+		  classification on success (validates failure_class enum and confidence
+		  enum, coerces unknowns), falls back to `classification_parse_warning=
+		  "invalid_json"` / `failure_class="unknown"` / `confidence="low"` on
+		  parse failure.  Added 3 ledger extra keys to `call_ledger.py`:
+		  `test_failure_class`, `test_failure_confidence`,
+		  `test_failure_exit_code`.  28 focused tests in
+		  `tests/test_classify_test_failure_mcp.py`.  Updated 8 existing tests
+		  for tool count 10→11 across 6 test suites.  No hooks/gates/guards/
+		  debate/queue/VERSION/tag changes.  VERSION remains `0.10.0`, no tag.
+		  Next: D-D real MCP dogfood (requires MCP server restart).
 
 ## v0.10.0 - 2026-05-24
 

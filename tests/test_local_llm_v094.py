@@ -120,11 +120,11 @@ def test_docs_no_longer_say_6_read_only_tools(docfile):
 # --------------------------------------------------------------------------- #
 
 
-def test_global_launcher_exposes_seven_tools():
+def test_global_launcher_exposes_eleven_tools():
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = set(mcp.TOOLS.keys())
-    assert len(expected) == 10, f"Expected 10 tools, got {len(expected)}"
+    assert len(expected) == 11, f"Expected 11 tools, got {len(expected)}"
 
 
 def test_global_launcher_find_project_root_returns_none_outside_git(tmp_path, monkeypatch):
