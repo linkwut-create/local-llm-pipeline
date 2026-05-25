@@ -1,6 +1,36 @@
 # Changelog
 
-## Post-v0.11.0 (I-B, 2026-05-26)
+## Post-v0.11.0 (GH-chain, 2026-05-26)
+
+- **GH-D**: Repository visibility changed to **Public**.  Anonymous browser
+  access verified.  Anonymous download of release zip verified.  No code,
+  test, VERSION, or tag changes.  v0.11.0 tag remains at `6f146e7`.
+
+- **GH-E**: GitHub Release publication preparation.  Local git state verified
+  (HEAD `9d91c7b`, tag `6f146e7`, working tree clean).  Remote state verified
+  (master `9d91c7b`, tag `6f146e7`).  Source archive zip located and verified
+  (`local-llm-pipeline-v0.11.0.zip`, 628,754 bytes, VERSION 0.11.0 inside,
+  191 entries, `.mcp.json` clean, forbidden artifact scan clean).  Release
+  fields prepared: title "local-llm-pipeline v0.11.0", conservative release
+  body, zip asset path.  Manual browser publication — no automated
+  create/edit/upload.
+
+- **GH-F**: Post-release remote verification.  All checks passed: GitHub
+  Release published (not draft, not pre-release), tag `v0.11.0` at `6f146e7`,
+  asset `local-llm-pipeline-v0.11.0.zip` uploaded (628,754 bytes), sha256
+  three-way match (local / downloaded / GitHub digest), downloaded zip
+  VERSION=0.11.0, forbidden artifact scan clean, working tree clean.
+  SHA256: `6F946175FABBA7278986A4456106A81F6C907315DF2BFA931E7D6BE43BBB236B`.
+  Verdict: **GH-F PASS**.
+
+- **GH-G** (this commit): Docs/status closeout for public v0.11.0 release.
+  RELEASE_NOTES.md release gate updated to reflect completed publication.
+  PROJECT_STATUS.md records GH-D through GH-G phases.  CHANGELOG.md records
+  GH-chain.  No code, test, VERSION, or tag changes.  v0.11.0 tag remains
+  at `6f146e7`.  Advisory-only status unchanged.  Next: J-A Productivity
+  Advisor Planning Audit.
+
+## Post-v0.11.0 (I-chain, 2026-05-26)
 
 - **I-B**: Codex adaptation docs — AGENTS.md rewritten as primary Codex-facing
   instruction file with task_bootstrap workflow, safety boundaries, verification

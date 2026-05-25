@@ -2,7 +2,7 @@
 
 **Release**: v0.11.0 (from v0.10.0 baseline)
 **Date**: 2026-05-25
-**Status**: release-prep / not tagged yet
+**Status**: released / public — GitHub Release published 2026-05-25
 
 ## Summary
 
@@ -59,15 +59,20 @@ library + CLI, and summary cache authority cleanup.
 
 | Step | Status |
 |------|--------|
-| Version bump to 0.11.0 | Done (this commit) |
+| Version bump to 0.11.0 | Done |
 | RELEASE_NOTES updated | Done |
 | CHANGELOG updated | Done |
-| Full regression | Pending (H-C) |
-| Mandatory debate review (full diff) | Pending (H-C) |
-| Release auditor review | Pending (H-C) |
-| `v0.11.0` tag | Pending (H-D) |
-| Source zip/package | Pending (H-D) |
-| Push | Pending (explicit approval) |
+| Full regression | 1858+ passed |
+| `v0.11.0` tag at `6f146e7` | Done — pushed |
+| Source zip generated + verified | Done (H-G) |
+| `.mcp.json` audit | Done — clean, env empty |
+| Forbidden artifact scan | Done — clean |
+| GitHub Release published | Done (GH-E) |
+| Zip asset uploaded | Done — 628,754 bytes |
+| Post-release remote verification | Done (GH-F) |
+| Public repo + anonymous access verified | Done (GH-F) |
+| SHA256 | `6F946175FABBA7278986A4456106A81F6C907315DF2BFA931E7D6BE43BBB236B` |
+| Docs/status closeout | This commit (GH-G) |
 
 ## Commit Chain (39, v0.10.0..HEAD)
 

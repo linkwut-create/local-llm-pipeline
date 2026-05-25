@@ -1,5 +1,14 @@
 # Project Status
 
+## Public Release (Post-v0.11.0, GH-chain)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| GH-D | Done (no code) | Repository visibility changed to **Public**. Anonymous browser access + anonymous release zip download verified. |
+| GH-E | Done (no code) | GitHub Release publication prep: local/remote git state verified, source zip located (628,754 bytes), .mcp.json audited, forbidden artifact scan clean. Manual browser publication. |
+| GH-F | Done (no code) | Post-release verification: Release published (not draft, not pre-release), SHA256 three-way match, downloaded zip VERSION=0.11.0, forbidden artifact scan clean. **PASS.** |
+| GH-G | Done (this commit) | Docs/status closeout for public v0.11.0 release. RELEASE_NOTES.md release gate updated. Advisory-only status unchanged. Next: J-A Productivity Advisor Planning Audit. |
+
 ## Codex Adaptation (Post-v0.11.0, I-chain)
 
 | Phase | Status | Notes |
@@ -7,7 +16,7 @@
 | I-A | Done (`429ed29`) | Read-only audit: AGENTS.md missing task_bootstrap, outdated MCP count, no safety boundaries. `.codex/` config clean. |
 | I-B | Done (`429ed29`) | AGENTS.md rewritten as primary Codex instruction file. `.codex/local-llm-worker.md` updated with task_bootstrap, MCP 9→11, `py -3` commands. Cross-reference in CLAUDE.md. No code/test/VERSION/tag changes. |
 | I-C | Done | Smoke test passed: AGENTS.md instruction coverage 6/6, task_bootstrap exit 0 with 3/3 summaries, 82/82 tests passed, git diff --check clean, working tree clean. |
-| I-D | Done (this commit) | Docs/status closeout. Codex adaptation functionally closed. Remaining gaps require real Codex environment: MCP invocation, PowerShell quoting, `.codex/config.toml` `python`→`py -3`. |
+| I-D | Done (`9d91c7b`) | Docs/status closeout. Codex adaptation functionally closed. Remaining gaps require real Codex environment: MCP invocation, PowerShell quoting, `.codex/config.toml` `python`→`py -3`. |
 
 ## MCP Cost Discipline
 
