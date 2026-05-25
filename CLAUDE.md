@@ -50,6 +50,12 @@ Claude Code is the controller. The local worker is advisory only.
 - `/local-test-plan` — generate a test plan for a file.
 - `/local-debate` — multi-model cross-review (3 rounds: coder → reasoning → deep).
 
+### Available CLI Tasks
+
+- `draft-commit-message` — draft a commit message from staged diff:
+  `git diff --cached | py -3 tools/local_llm_router.py draft-commit-message --stdin`
+  (advisory-only, output to `.local_llm_out/`, controller decides final message)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.

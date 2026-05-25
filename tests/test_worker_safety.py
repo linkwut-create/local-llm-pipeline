@@ -218,10 +218,38 @@ def test_empty_response_still_works():
 
 def test_no_retry_tasks_exclude_draft():
     from local_llm_worker import NO_RETRY_TASKS
+    assert "draft-commit-message" in NO_RETRY_TASKS
     assert "draft-fix" in NO_RETRY_TASKS
     assert "draft-feature" in NO_RETRY_TASKS
     assert "draft-refactor" in NO_RETRY_TASKS
     assert "benchmark" in NO_RETRY_TASKS
+
+
+def test_draft_commit_message_task_config():
+    """J-B: draft-commit-message must be advisory-only."""
+    import json
+    from pathlib import Path
+    tasks_path = Path(__file__).parent.parent / "tools" / "local_llm_tasks.json"
+    tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+    t = tasks["tasks"].get("draft-commit-message")
+    assert t is not None, "draft-commit-message missing from tasks.json"
+    assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
+    assert t["may_modify_code"] is False, "may_modify_code must be false"
+    assert t["controller_must_verify"] is True, "controller_must_verify must be true"
+    assert t["default_profile"] == "code_worker"
+
+
+def test_draft_commit_message_prompt_exists():
+    """J-B: prompt must exist and contain advisory-only boundaries."""
+    from local_llm_worker import TASK_PROMPTS
+    prompt = TASK_PROMPTS.get("draft-commit-message")
+    assert prompt is not None, "draft-commit-message prompt missing from TASK_PROMPTS"
+    assert "NEVER run git commit" in prompt
+    assert "NEVER stage files" in prompt
+    assert "NEVER edit source files" in prompt
+    assert "ADVISORY ONLY" in prompt or "advisory" in prompt.lower()
+    assert "DRAFT" in prompt
+    assert "empty" in prompt.lower() or "meaningless" in prompt.lower()
 
 
 def test_short_tasks_can_retry():

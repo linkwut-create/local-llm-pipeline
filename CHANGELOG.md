@@ -1,5 +1,21 @@
 # Changelog
 
+## Post-v0.11.0 (J-chain, 2026-05-26)
+
+- **J-A**: Productivity Advisor Planning Audit (read-only, no commit).  Evaluated
+  5 candidate features (draft-commit-message, draft-pr-summary, draft-changelog-entry,
+  related-files advisory, architecture-advice).  Recommended draft-commit-message as
+  J-B: smallest, highest value, best dogfood, clearest advisory-only boundary.
+
+- **J-B** (this commit): Implement draft-commit-message productivity advisor.
+  New task `draft-commit-message` in `tools/local_llm_tasks.json` (risk=low,
+  profile=code_worker, may_modify_code=false).  Worker prompt in
+  `tools/local_llm_worker.py` with advisory-only boundaries (NEVER git commit,
+  NEVER stage, NEVER edit).  Added to NO_RETRY_TASKS.  Tests verify task config
+  and prompt safety boundaries.  Usage:
+  `git diff --cached | py -3 tools/local_llm_router.py draft-commit-message --stdin`.
+  CLI-only, advisory-only, output to .local_llm_out/.  No code, VERSION, or tag changes.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

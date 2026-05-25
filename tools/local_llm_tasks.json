@@ -160,6 +160,15 @@
       "allowed_use": "Draft an implementation for a described feature. Output goes to .local_llm_out/ only. Controller must review before applying.",
       "forbidden_use": "Must not modify source files. Must not claim completeness. Controller writes the final code."
     },
+    "draft-commit-message": {
+      "risk": "low",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 3000,
+      "allowed_use": "Draft a commit message from a git diff. Advisory only. Output is a suggestion — controller reviews, edits, and decides whether to use.",
+      "forbidden_use": "Must not run git commit. Must not stage files. Must not edit source files. Must not claim the message is final. If diff is empty or meaningless, say so instead of fabricating."
+    },
     "draft-refactor": {
       "risk": "medium-high",
       "default_profile": "code_worker",
