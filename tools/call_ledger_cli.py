@@ -48,6 +48,8 @@ def _print_summary(summary: dict, fmt: str) -> None:
     print(f"calls:               {summary['calls']}")
     print(f"  successes:         {summary['successes']}")
     print(f"  failures:          {summary['failures']}")
+    if summary.get("unknown", 0) > 0:
+        print(f"  unknown:           {summary['unknown']}")
     print(f"input tokens:        {summary['total_input_tokens']}")
     print(f"output tokens:       {summary['total_output_tokens']}")
     print(f"total tokens:        {summary['total_tokens']}")
@@ -65,7 +67,7 @@ def _print_groups(groups: dict[str, dict], fmt: str) -> None:
         print("(no records)")
         return
     header = (
-        f"{'key':<32} {'calls':>7} {'ok':>5} {'fail':>5} "
+        f"{'key':<32} {'calls':>7} {'ok':>5} {'fail':>5} {'unkn':>5} "
         f"{'in_tok':>10} {'out_tok':>10} {'cost_cny':>10}"
     )
     print(header)
@@ -75,6 +77,7 @@ def _print_groups(groups: dict[str, dict], fmt: str) -> None:
         key_display = k if len(k) <= 32 else k[:29] + "..."
         print(
             f"{key_display:<32} {s['calls']:>7} {s['successes']:>5} {s['failures']:>5} "
+            f"{s.get('unknown', 0):>5} "
             f"{s['total_input_tokens']:>10} {s['total_output_tokens']:>10} "
             f"{s['total_cost_cny']:>10}"
         )
@@ -89,7 +92,13 @@ def _print_records(records: list[dict], fmt: str) -> None:
         return
     for r in records:
         ts = (r.get("timestamp") or "")[:19]
-        ok = "OK" if r.get("success") else "FAIL"
+        s = r.get("success")
+        if s is True:
+            ok = "OK"
+        elif s is False:
+            ok = "FAIL"
+        else:
+            ok = "UNKN"
         project = (r.get("project") or "-")[:20]
         task = (r.get("task_type") or "-")[:24]
         model = (r.get("model") or "-")[:24]
@@ -128,7 +137,13 @@ def _print_escalations(records: list[dict], fmt: str) -> None:
         to_p = (extra.get("escalation_to_profile") or "-")[:16]
         depth = extra.get("escalation_depth", "?")
         profile = (r.get("profile") or "-")[:21]
-        ok = "OK" if r.get("success") else "FAIL"
+        s = r.get("success")
+        if s is True:
+            ok = "OK"
+        elif s is False:
+            ok = "FAIL"
+        else:
+            ok = "UNKN"
         dur = r.get("duration_ms") or 0
         cost = r.get("estimated_cost_cny")
         cost_s = f"{cost:.4f}" if isinstance(cost, (int, float)) else "?"
@@ -159,7 +174,13 @@ def _print_debates(records: list[dict], fmt: str) -> None:
         total = extra.get("debate_rounds", "?")
         profile = (r.get("profile") or "-")[:21]
         provider = (r.get("provider") or "-")[:9]
-        ok = "OK" if r.get("success") else "FAIL"
+        s = r.get("success")
+        if s is True:
+            ok = "OK"
+        elif s is False:
+            ok = "FAIL"
+        else:
+            ok = "UNKN"
         dur = r.get("duration_ms") or 0
         cost = r.get("estimated_cost_cny")
         cost_s = f"{cost:.4f}" if isinstance(cost, (int, float)) else "?"

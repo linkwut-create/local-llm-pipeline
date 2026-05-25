@@ -195,6 +195,38 @@ def resolve_base_url(provider: str, args_base_url: str | None = None) -> str:
     return _resolve_endpoint(provider, args_base_url)
 
 
+def _format_call_error(e: Exception) -> str:
+    """Build a diagnostic error string that distinguishes failure types.
+
+    requests.HTTPError's str() is just the response body — e.g. "fail" when
+    Ollama returns HTTP 500.  This helper prepends the status code so the
+    ledger and CLI output can distinguish "HTTP 500: fail" (model load
+    failure) from "HTTP 404: Not Found" (missing model) from "ConnectionError"
+    or "Timeout".
+    """
+    try:
+        import requests as _requests
+    except ImportError:
+        return f"{type(e).__name__}: {e}"[:300]
+
+    if isinstance(e, _requests.HTTPError):
+        status = "?"
+        body = ""
+        try:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                status = resp.status_code
+                body = (resp.text or "")[:200].replace("\n", " ").strip()
+        except Exception:
+            pass
+        return f"HTTP {status}: {body}"[:300]
+    if isinstance(e, _requests.ConnectionError):
+        return f"ConnectionError: {e}"[:300]
+    if isinstance(e, _requests.Timeout):
+        return f"Timeout: {e}"[:300]
+    return f"{type(e).__name__}: {e}"[:300]
+
+
 def get_round_prompt(round_num: int, task: str) -> str:
     round_prompts = ROUND_PROMPTS.get(round_num, {})
     return round_prompts.get(task, round_prompts.get("_default", f"Round {round_num}: Analyze the input."))
@@ -336,7 +368,7 @@ def run_round(round_num: int, task: str, original_input: str,
         }
     except Exception as e:
         elapsed = round(time.time() - start, 2)
-        error_str = str(e)[:300]
+        error_str = _format_call_error(e)
         _emit_debate_round_ledger(
             task_type=f"debate-{task}",
             profile=profile_name,

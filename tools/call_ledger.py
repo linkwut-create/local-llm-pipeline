@@ -586,18 +586,28 @@ def _zero_summary() -> dict[str, Any]:
         "total_cost_cny": 0.0,
         "cost_known_calls": 0,
         "cost_unknown_calls": 0,
+        "unknown": 0,
     }
 
 
 def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """Aggregate ledger records into totals."""
+    """Aggregate ledger records into totals.
+
+    Records with ``success=True`` count as success.
+    Records with ``success=False`` count as failure.
+    Records where ``success`` is missing or neither are counted as unknown
+    (placeholder records, legacy records with different schemas, etc.).
+    """
     summary = _zero_summary()
     for r in records:
         summary["calls"] += 1
-        if r.get("success"):
+        s = r.get("success")
+        if s is True:
             summary["successes"] += 1
-        else:
+        elif s is False:
             summary["failures"] += 1
+        else:
+            summary["unknown"] += 1
         summary["total_input_tokens"] += int(r.get("input_tokens") or 0)
         summary["total_output_tokens"] += int(r.get("output_tokens") or 0)
         summary["total_tokens"] += int(r.get("total_tokens") or 0)
@@ -643,7 +653,12 @@ def breakdown_counts(records: Iterable[Mapping[str, Any]], key: str,
 
 
 def filter_failures(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    return [dict(r) for r in records if not r.get("success")]
+    """Return records where success is explicitly False.
+
+    Records where success is None (placeholder) or missing are excluded —
+    they were never actually attempted and should not show as failures.
+    """
+    return [dict(r) for r in records if r.get("success") is False]
 
 
 def recent(records: Iterable[Mapping[str, Any]], limit: int) -> list[dict[str, Any]]:
