@@ -1,5 +1,13 @@
 # Project Status
 
+## Codex Adaptation (Post-v0.11.0, I-chain)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| I-A | Done | Read-only audit: AGENTS.md exists but missing task_bootstrap, outdated MCP count (9→11), no safety boundaries, no `py -3` commands. `.codex/` config exists and is clean. No code/test/VERSION/tag changes. |
+| I-B | In progress | AGENTS.md rewritten as primary Codex-facing instruction file. `.codex/local-llm-worker.md` updated. No code/test/VERSION/tag changes. v0.11.0 tag at `6f146e7` unchanged. |
+| I-C | Not started | Codex workflow smoke test: verify Codex can follow AGENTS.md for task_bootstrap → bounded work → tests/review. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |

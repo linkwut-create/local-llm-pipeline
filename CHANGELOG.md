@@ -1,8 +1,17 @@
 # Changelog
 
-## v0.11.0 (release candidate, not tagged)
+## Post-v0.11.0 (I-B, 2026-05-26)
 
-*VERSION bumped to 0.11.0 in H-B. Release verification pending H-C.*
+- **I-B**: Codex adaptation docs — AGENTS.md rewritten as primary Codex-facing
+  instruction file with task_bootstrap workflow, safety boundaries, verification
+  commands, review gates, ledger commands, and Codex-specific notes.  Updated
+  `.codex/local-llm-worker.md` with MCP tool count (9→11), task_bootstrap
+  reference, and `py -3` commands.  No code, test, VERSION, or tag changes.
+  v0.11.0 tag remains at `6f146e7`.
+
+## v0.11.0 (tagged at 6f146e7)
+
+*VERSION bumped to 0.11.0 in H-B. Tag created in H-E. Source archive in H-G.*
 
 - v0.11.0-GB/GC: workflow dogfood — first end-to-end control loop.
   task_bootstrap → implement model-summary CLI → 162 tests →

@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+Codex users: see AGENTS.md for Codex-facing instructions (CLAUDE.md contains
+Claude-specific slash commands, auto-invocation hooks, and subagent references).
+
 ## Local Multi-Model Worker Policy
 
 This project uses a local multi-model LLM worker for low-risk, read-only assistance.
