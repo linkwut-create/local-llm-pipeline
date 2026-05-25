@@ -103,6 +103,12 @@
       "file": "draft-refactor.v1.md",
       "hash": "2eb28042f582e703"
     },
+    "draft-commit-message": {
+      "prompt_id": "draft-commit-message",
+      "version": "v1",
+      "file": "draft-commit-message.v1.md",
+      "hash": "6117a4477b85b779"
+    },
     "suggest-improvements": {
       "prompt_id": "suggest-improvements",
       "version": "v1",
