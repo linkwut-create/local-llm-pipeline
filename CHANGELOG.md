@@ -2,19 +2,29 @@
 
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
-- **J-A**: Productivity Advisor Planning Audit (read-only, no commit).  Evaluated
-  5 candidate features (draft-commit-message, draft-pr-summary, draft-changelog-entry,
-  related-files advisory, architecture-advice).  Recommended draft-commit-message as
-  J-B: smallest, highest value, best dogfood, clearest advisory-only boundary.
+- **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,
+  recommended draft-commit-message as J-B.
 
-- **J-B** (this commit): Implement draft-commit-message productivity advisor.
-  New task `draft-commit-message` in `tools/local_llm_tasks.json` (risk=low,
-  profile=code_worker, may_modify_code=false).  Worker prompt in
-  `tools/local_llm_worker.py` with advisory-only boundaries (NEVER git commit,
-  NEVER stage, NEVER edit).  Added to NO_RETRY_TASKS.  Tests verify task config
-  and prompt safety boundaries.  Usage:
-  `git diff --cached | py -3 tools/local_llm_router.py draft-commit-message --stdin`.
-  CLI-only, advisory-only, output to .local_llm_out/.  No code, VERSION, or tag changes.
+- **J-B** (`aad90ba`): Implement draft-commit-message advisor.  New task in
+  `local_llm_tasks.json` + worker prompt.  Profile: code_worker.  advisory-only.
+
+- **J-C1a** (`28b96c2`): Fix debate error capture and ledger accounting.
+  `_format_call_error()` replaces bare `str(e)` with diagnostic HTTP status+body.
+  `summarize()` distinguishes `success=True/False/unknown`.  `filter_failures()`
+  excludes `success=None`.  CLI displays UNKN column.
+
+- **J-C1**: llama.cpp backend manager planning audit (read-only).  All 4 endpoints
+  offline, no GGUF files, no llama-server binary.  Ollama-first strategy confirmed.
+
+- **J-C2**: Hybrid backend planning audit (read-only).  23/24 profiles have models
+  in Ollama.  0 ledger records have `backend` field.  Recommended profile backend
+  classification before ledger/router changes.
+
+- **J-C3** (this commit): Add explicit `_backend_class` to every profile.
+  23 profiles classified: 12 ollama, 5 ollama_heavy_manual, 2 ollama_mtp_pending,
+  2 unavailable, 1 llamacpp_unconfigured, 1 placeholder.  Tests validate
+  class presence, allowed values, unavailable profiles not used as task defaults.
+  Metadata-only — no runtime behavior change.  No VERSION/tag changes.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 

@@ -22,7 +22,8 @@
       ],
       "risk_level": "low",
       "_benchmark": "31s summarize-file (zero12)",
-      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks."
+      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
+      "_backend_class": "ollama"
     },
     "smart_summary": {
       "model": "qwen3.5-claude-opus-9b-q8_0:latest",
@@ -42,7 +43,8 @@
       "risk_level": "low",
       "_benchmark": "28.6s summarize, 47.6s review — Opus-distilled quality in 9.5GB (zero12)",
       "_community_reputation": "Qwen3.5 distilled from Claude Opus. Hidden gem — small (9.5GB) but high-quality output. Confirmed 67.5s summarize on worker.py (2026-05-12 live test).",
-      "_last_tested": "2026-05-12"
+      "_last_tested": "2026-05-12",
+      "_backend_class": "ollama"
     },
     "code_worker": {
       "model": "qwen3-coder:30b",
@@ -71,7 +73,8 @@
       ],
       "risk_level": "medium",
       "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
-      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks."
+      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks.",
+      "_backend_class": "ollama"
     },
     "commit_reviewer": {
       "model": "qwen3-coder:30b",
@@ -95,7 +98,8 @@
       "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
       "_commit_gate_allowed": true,
       "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s.",
-      "_last_tested": "2026-05-12"
+      "_last_tested": "2026-05-12",
+      "_backend_class": "ollama"
     },
     "diff_reviewer": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
@@ -113,7 +117,8 @@
       "risk_level": "medium",
       "_benchmark": "27s review + reasoning capability — best combo (zero12)",
       "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Good balance of reasoning depth and speed.",
-      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap."
+      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
+      "_backend_class": "ollama"
     },
     "deep_reviewer": {
       "model": "qwen3.6:35b-q8-ud",
@@ -138,7 +143,8 @@
       "risk_level": "high",
       "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)",
       "_community_reputation": "Qwen3.6 35B is a strong generalist with wide community adoption. Reliable on this machine (0 timeouts).",
-      "_constraints": "Not for commit gate (>30B). Use qwen3.6:35b-q8-ud (native MTP heads for ~1.5x speedup) over qwen3.5-35b for deep review."
+      "_constraints": "Not for commit gate (>30B). Use qwen3.6:35b-q8-ud (native MTP heads for ~1.5x speedup) over qwen3.5-35b for deep review.",
+      "_backend_class": "ollama_heavy_manual"
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
@@ -157,7 +163,8 @@
       "risk_level": "high",
       "_benchmark": "70s review, 23s summarize — 120B model (zero12)",
       "_community_reputation": "GPT-OSS 120B is a large open-source model. Good review quality for its size. Backup for Mistral Medium.",
-      "_constraints": "Backup only. Prefer mistral-medium for release audit. Never in commit gate."
+      "_constraints": "Backup only. Prefer mistral-medium for release audit. Never in commit gate.",
+      "_backend_class": "ollama_heavy_manual"
     },
     "reasoning_checker": {
       "model": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-q8_k_xl:latest",
@@ -182,7 +189,8 @@
       "risk_level": "medium-high",
       "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)",
       "_community_reputation": "Qwen3.5 reasoning variant. Reliable for structured analysis. Top performer in local benchmarks (2/2 passed).",
-      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only."
+      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only.",
+      "_backend_class": "ollama"
     },
     "deep_reasoning": {
       "model": "deepseek-r1-distill-qwen:32b-q8-fixed",
@@ -202,7 +210,8 @@
       "risk_level": "high",
       "_benchmark": "140s risk — CLI only, critical reasoning (zero12)",
       "_community_reputation": "DeepSeek R1 reasoning distilled into Qwen 32B. Official model card targets reasoning, math, and code. Strong community validation for deep analysis tasks.",
-      "_constraints": "CLI only. Only for architecture changes, security risks, root cause analysis. Never for commit gate or default routing."
+      "_constraints": "CLI only. Only for architecture changes, security risks, root cause analysis. Never for commit gate or default routing.",
+      "_backend_class": "ollama"
     },
     "translation": {
       "model": "glm-4.7-flash-q8:latest",
@@ -220,7 +229,8 @@
       "risk_level": "low",
       "_benchmark": "151s translate — only reliable option via MCP (zero12)",
       "_community_reputation": "GLM-4.7 Flash is the only CLI-verified translation model on this machine (151.4s, 2026-05-12 live test). translategemma-12b-it can translate via immersive plugin but the CLI prompt template does not trigger its translation behavior — prompt fix needed before it can be used as a faster alternative.",
-      "_last_tested": "2026-05-12"
+      "_last_tested": "2026-05-12",
+      "_backend_class": "ollama"
     },
     "release_auditor": {
       "model": "mistral-medium-3.5-128b-q5_k_xl:latest",
@@ -246,7 +256,8 @@
       "risk_level": "high",
       "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)",
       "_community_reputation": "Mistral Medium 3.5 128B MoE. Widely regarded for accuracy in deep review tasks. Top of local benchmarks.",
-      "_constraints": "Release audit only. Must never enter commit gate or default review path."
+      "_constraints": "Release audit only. Must never enter commit gate or default review path.",
+      "_backend_class": "ollama_heavy_manual"
     },
     "gemma4_26b_llamacpp": {
       "model": "gemma-4-26b",
@@ -275,7 +286,8 @@
       "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
       "_variant_of": "gemma4_26b",
       "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
-      "_status": "available — port 8080, -ngl 30"
+      "_status": "available — port 8080, -ngl 30",
+      "_backend_class": "llamacpp_unconfigured"
     },
     "gemma4_26b": {
       "model": "gemma4-26b-it:q8_0",
@@ -294,7 +306,8 @@
         "rewrite-text"
       ],
       "risk_level": "medium",
-      "_benchmark": "37.8s summarize-file — Gemma 4 26B A4B MoE, good mid-size generalist (zero12)"
+      "_benchmark": "37.8s summarize-file — Gemma 4 26B A4B MoE, good mid-size generalist (zero12)",
+      "_backend_class": "ollama"
     },
     "gemma4_26b_mtp": {
       "model": "gemma4-26b-it:q8_0",
@@ -315,7 +328,8 @@
       "_variant_of": "gemma4_26b",
       "_acceleration": "mtp",
       "_drafter": "gemma-4-26B-A4B-it-assistant-F16.gguf (815MB, on laptop)",
-      "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup."
+      "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup.",
+      "_backend_class": "ollama"
     },
     "gemma4_31b": {
       "model": "gemma4-31b-opus:latest",
@@ -344,7 +358,8 @@
       "risk_level": "medium",
       "_benchmark": "Gemma 4 31B — Google's 31B flagship. Opus-distilled variant available. 32-35GB.",
       "_drafter": "gemma-4-31B-it-assistant-F16.gguf (911MB, on zero12) — MTP ready when llama.cpp supports Gemma 4 MTP",
-      "_status": "available — Ollama"
+      "_status": "available — Ollama",
+      "_backend_class": "ollama_heavy_manual"
     },
     "deepseek_r1_70b": {
       "model": "deepseek-r1-distill-llama:70b-q8-k-xl",
@@ -371,7 +386,8 @@
       "risk_level": "high",
       "_benchmark": "DeepSeek R1 distill 70B — stronger reasoning than 32B variant. Sits between deep_reasoning (32B) and release_auditor (128B).",
       "_constraints": "Not for commit gate. 70B model — deep reasoning and architecture only.",
-      "_status": "unavailable — times out on API (>60s). Too slow for routing chains. Marked 2026-05-19."
+      "_status": "unavailable — times out on API (>60s). Too slow for routing chains. Marked 2026-05-19.",
+      "_backend_class": "unavailable"
     },
     "nemotron_super": {
       "model": "nemotron-3-super:latest",
@@ -397,7 +413,8 @@
       "risk_level": "high",
       "_benchmark": "Nemotron-3 Super — NVIDIA large reasoning model. Release-audit tier.",
       "_constraints": "Not for commit gate. Heavy model.",
-      "_status": "available — Ollama, CLI-only"
+      "_status": "available — Ollama, CLI-only",
+      "_backend_class": "ollama_heavy_manual"
     },
     "command_r": {
       "model": "command-r:35b",
@@ -422,7 +439,8 @@
       "risk_level": "medium",
       "_benchmark": "Command-R 35B — Cohere mid-size generalist, good instruct following",
       "_constraints": "Mid-size generalist. Good alternative to Qwen3.6 for summarization/suggestions.",
-      "_status": "available — Ollama"
+      "_status": "available — Ollama",
+      "_backend_class": "ollama"
     },
     "mistral_119b_llamacpp": {
       "model": "mistral-small-119b:q5",
@@ -441,7 +459,8 @@
         "mistral-medium-3.5-128b-q5_k_xl:latest",
         "qwen3.6:35b-q8-ud"
       ],
-      "_status": "unavailable — requires ollama llama.cpp update for mistral4 architecture"
+      "_status": "unavailable — requires ollama llama.cpp update for mistral4 architecture",
+      "_backend_class": "unavailable"
     },
     "qwen3.6_27b_mtp": {
       "model": "qwen3.6:27b-q8-ud",
@@ -471,7 +490,8 @@
       "_constraints": "Not for commit gate. Ollama backend (llama.cpp MTP on port 8082 pending upstream Qwen3.6 tensor fix).",
       "_last_tested": "2026-05-19",
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
-      "_acceleration": "mtp (pending upstream llama.cpp)"
+      "_acceleration": "mtp (pending upstream llama.cpp)",
+      "_backend_class": "ollama_mtp_pending"
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b-q8-ud",
@@ -502,7 +522,8 @@
       "_constraints": "Not for commit gate (>30B). Ollama backend (llama.cpp MTP on port 8083 pending upstream Qwen3.6 tensor fix).",
       "_last_tested": "2026-05-19",
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
-      "_acceleration": "mtp (pending upstream llama.cpp)"
+      "_acceleration": "mtp (pending upstream llama.cpp)",
+      "_backend_class": "ollama_mtp_pending"
     },
     "v4_flash_local_experimental": {
       "model": "v4-flash",
@@ -523,7 +544,8 @@
       "risk_level": "experimental",
       "_local_only": true,
       "_constraints": "Manual invocation only. Not a default for any task. Requires explicit profile override. Model weights/binary must be provisioned separately.",
-      "_community_reputation": "Reserved local experimental profile. Provider is auto-detected from LOCAL_LLM_BASE_URL / LOCAL_LLM_PROVIDER; no tongyi provider is introduced."
+      "_community_reputation": "Reserved local experimental profile. Provider is auto-detected from LOCAL_LLM_BASE_URL / LOCAL_LLM_PROVIDER; no tongyi provider is introduced.",
+      "_backend_class": "placeholder"
     },
     "embedding": {
       "model": "nomic-embed-text-v2-moe:latest",
@@ -533,7 +555,8 @@
       "use_for": [
         "embedding"
       ],
-      "risk_level": "low"
+      "risk_level": "low",
+      "_backend_class": "ollama"
     }
   },
   "default_profile": "fast_summary",

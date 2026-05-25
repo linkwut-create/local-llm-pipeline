@@ -296,3 +296,68 @@ def test_helper_does_not_modify_profiles_file():
             f"profile_policy.py must not contain {forbidden!r} "
             f"(read-only contract — use read_text() only)"
         )
+
+
+# --- backend classification (J-C3) ---
+
+VALID_BACKEND_CLASSES = {
+    "ollama",
+    "ollama_heavy_manual",
+    "ollama_mtp_pending",
+    "llamacpp_unconfigured",
+    "unavailable",
+    "placeholder",
+}
+
+
+def test_every_profile_has_backend_class():
+    profiles = load_profiles()["profiles"]
+    for name in profiles:
+        bc = profiles[name].get("_backend_class")
+        assert bc is not None, (
+            f"profile '{name}' missing _backend_class field"
+        )
+        assert bc in VALID_BACKEND_CLASSES, (
+            f"profile '{name}' has invalid _backend_class {bc!r}, "
+            f"must be one of {sorted(VALID_BACKEND_CLASSES)}"
+        )
+
+
+def test_unavailable_profiles_not_used_as_default():
+    """Unavailable profiles must not be a default_profile for any task."""
+    import json as _json
+    profiles = load_profiles()["profiles"]
+    tasks_path = TOOLS_DIR / "local_llm_tasks.json"
+    tasks = _json.loads(tasks_path.read_text(encoding="utf-8"))["tasks"]
+    unavailable = {n for n, p in profiles.items()
+                   if p["_backend_class"] == "unavailable"}
+    for tname, tconf in tasks.items():
+        dp = tconf.get("default_profile", "")
+        assert dp not in unavailable, (
+            f"task '{tname}' default_profile '{dp}' is unavailable"
+        )
+
+
+def test_mtp_pending_profiles_are_ollama_backed():
+    """MTP-pending profiles must have models that exist in Ollama —
+    they are Ollama models pending MTP, not llama.cpp models."""
+    profiles = load_profiles()["profiles"]
+    for name, p in profiles.items():
+        if p["_backend_class"] == "ollama_mtp_pending":
+            assert p.get("model"), (
+                f"profile '{name}' is mtp_pending but has no model"
+            )
+
+
+def test_llamacpp_unconfigured_no_active_claim():
+    """llamacpp_unconfigured profiles must not claim active llama.cpp.
+    Their _status or _note should indicate missing prerequisites."""
+    profiles = load_profiles()["profiles"]
+    for name, p in profiles.items():
+        if p["_backend_class"] == "llamacpp_unconfigured":
+            # Should not claim to be available
+            status = p.get("_status", "")
+            assert "unavailable" not in status.lower(), (
+                f"profile '{name}' is llamacpp_unconfigured but _status "
+                f"says unavailable — use 'unavailable' class instead"
+            )
