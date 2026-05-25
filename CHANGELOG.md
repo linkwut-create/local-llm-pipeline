@@ -9,6 +9,15 @@
   reference, and `py -3` commands.  No code, test, VERSION, or tag changes.
   v0.11.0 tag remains at `6f146e7`.
 
+- **I-C**: Codex workflow smoke test passed.  AGENTS.md instruction coverage
+  6/6, task_bootstrap exit 0 with 3/3 summaries OK, AGENTS.md correctly
+  recognized as instruction file, 82/82 task_bootstrap tests passed, git
+  diff --check clean, working tree clean.  No code/test/VERSION/tag changes.
+
+- **I-D**: Docs/status closeout.  Codex adaptation functionally closed.
+  Remaining gaps (real Codex MCP invocation, PowerShell quoting behavior,
+  `.codex/config.toml` `python`→`py -3`) require real Codex environment.
+
 ## v0.11.0 (tagged at 6f146e7)
 
 *VERSION bumped to 0.11.0 in H-B. Tag created in H-E. Source archive in H-G.*

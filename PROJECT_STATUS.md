@@ -4,9 +4,10 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| I-A | Done | Read-only audit: AGENTS.md exists but missing task_bootstrap, outdated MCP count (9→11), no safety boundaries, no `py -3` commands. `.codex/` config exists and is clean. No code/test/VERSION/tag changes. |
-| I-B | In progress | AGENTS.md rewritten as primary Codex-facing instruction file. `.codex/local-llm-worker.md` updated. No code/test/VERSION/tag changes. v0.11.0 tag at `6f146e7` unchanged. |
-| I-C | Not started | Codex workflow smoke test: verify Codex can follow AGENTS.md for task_bootstrap → bounded work → tests/review. |
+| I-A | Done (`429ed29`) | Read-only audit: AGENTS.md missing task_bootstrap, outdated MCP count, no safety boundaries. `.codex/` config clean. |
+| I-B | Done (`429ed29`) | AGENTS.md rewritten as primary Codex instruction file. `.codex/local-llm-worker.md` updated with task_bootstrap, MCP 9→11, `py -3` commands. Cross-reference in CLAUDE.md. No code/test/VERSION/tag changes. |
+| I-C | Done | Smoke test passed: AGENTS.md instruction coverage 6/6, task_bootstrap exit 0 with 3/3 summaries, 82/82 tests passed, git diff --check clean, working tree clean. |
+| I-D | Done (this commit) | Docs/status closeout. Codex adaptation functionally closed. Remaining gaps require real Codex environment: MCP invocation, PowerShell quoting, `.codex/config.toml` `python`→`py -3`. |
 
 ## MCP Cost Discipline
 
