@@ -86,18 +86,17 @@ Projects that the pipeline has dogfooded against or is designed to support:
 Z-0: quality/value verification planning audit       ← DONE (audit, no commit)
 Z-1: project brief/current baseline doc               ← DONE (`6941d78`)
 Z-2: local model output quality smoke                 ← DONE (`ac3d5c3`)
-Z-3: cost/token savings report                        ← next, code
-Z-3: cost/token savings report                        ← code
-Z-4: cross-project feedback ledger                    ← code
+Z-3: cost/token savings report                        ← next, code (not started)
+Z-4: cross-project feedback ledger                    ← code (not started)
 ```
 
 | Phase | Type | Description |
 |-------|------|-------------|
-| Z-0 | Audit (no code) | Design quality smoke, cost savings, feedback loop. Pick first slice. |
-| Z-1 | Docs-only | This baseline document. |
+| Z-0 | Audit (no code) | Design quality smoke, cost savings, feedback loop. Pick first slice. | Done |
+| Z-1 | Docs-only | This baseline document. | Done (`6941d78`) |
 | Z-2 | Code | `tools/quality_smoke.py` — CLI battery of fixed-input model calls with heuristic quality checks. | Done (`ac3d5c3`) |
-| Z-3 | Code | `tools/call_ledger_cli.py savings` — read-only aggregation over call ledger with cloud-equivalent cost table. |
-| Z-4 | Code | `tools/feedback_ledger.py` — append-only manual cross-project feedback tracking. |
+| Z-3 | Code | `tools/call_ledger_cli.py savings` — read-only aggregation over call ledger with cloud-equivalent cost table. | Not started |
+| Z-4 | Code | `tools/feedback_ledger.py` — append-only manual cross-project feedback tracking. | Not started |
 
 ### Hard constraints (all Z-chain phases)
 
