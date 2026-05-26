@@ -13,7 +13,7 @@ Captured at Z-4 (2026-05-27):
 
 | Item | Value |
 |------|-------|
-| HEAD | `8a6ff00` |
+| HEAD | `d3ce4d6` |
 | VERSION | `0.12.0` |
 | Working tree | clean |
 | Tests | 2119 passed (`py -3 -m pytest tests/ -q`) |
