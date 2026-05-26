@@ -91,8 +91,6 @@
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |
-
-| Phase | Status | Notes |
 |-------|--------|-------|
 | P0 | Done (`a499dba`) | Policy doc landed (`docs/MCP_COST_DISCIPLINE_PLAN.md`) |
 | P1-A | Done (`b8f681e`) | Derivation-only helper `tools/profile_policy.py`. No JSON or runtime change. See plan §12. |
