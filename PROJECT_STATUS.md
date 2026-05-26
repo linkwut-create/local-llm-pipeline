@@ -74,7 +74,8 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | S-0 | Done (audit, no commit) | MCP exposure planning for local_workflow_plan. Recommended: expose as 12th tool via direct module import (pure-heuristic, no LLM). High-risk path (MCP server). |
-| S-1 | Done (`7544264`) | **Expose local_workflow_plan as MCP tool.** Direct module import (pure-heuristic, no LLM). 12th tool. 14 focused tests + tool count 11→12 across 8 locations. review-diff ok=true, debate-review-diff ok=true. 1971 passed. S-chain closed. |
+| S-1 | Done (`7544264`) | **Expose local_workflow_plan as MCP tool.** Direct module import (pure-heuristic, no LLM). 12th tool. 14 focused tests + tool count 11→12 across 8 locations. review-diff ok=true, debate-review-diff ok=true. 1971 passed. |
+| S-2 | Done (audit, no commit) | MCP runtime smoke: TOOLS=12, HANDLERS=12, all 4 call types PASS (docs-only/high-risk/small-code/release), advisory_only=true, no file modification. S-chain closed. |
 
 ## MCP Cost Discipline
 

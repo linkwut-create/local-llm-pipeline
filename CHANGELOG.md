@@ -182,6 +182,11 @@
   review-diff ok=true, debate-review-diff (fast mode) ok=true.
   S-chain closed.
 
+- **S-2** (audit, no commit): MCP runtime smoke for `local_workflow_plan`.
+  TOOLS=12, HANDLERS=12 confirmed.  4 call types all PASS
+  (docs-only/high-risk/small-code/release).  advisory_only=true.
+  No file modification.  Real Claude Code UI client smoke deferred.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser
