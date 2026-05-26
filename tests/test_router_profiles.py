@@ -270,3 +270,104 @@ def test_fast_code_still_default_for_its_tasks():
         if tasks.get(task_name):
             # fast_code exists but review-diff now uses commit_reviewer
             pass  # structural check only
+
+
+# --- backend class eligibility (J-C5) ---
+
+from local_llm_router import (  # noqa: E402
+    get_backend_class,
+    is_profile_auto_eligible,
+    resolve_profile,
+)
+
+
+class TestBackendClassHelpers:
+    def test_get_backend_class_ollama(self):
+        assert get_backend_class({"_backend_class": "ollama"}) == "ollama"
+
+    def test_get_backend_class_unknown_when_missing(self):
+        assert get_backend_class({}) == "unknown"
+
+    def test_get_backend_class_unknown_when_empty(self):
+        assert get_backend_class({"_backend_class": ""}) == "unknown"
+
+
+class TestProfileAutoEligibility:
+    def test_ollama_is_eligible(self):
+        ok, reason = is_profile_auto_eligible("code_worker",
+                                               {"_backend_class": "ollama"})
+        assert ok is True
+        assert reason == ""
+
+    def test_ollama_mtp_pending_is_eligible(self):
+        ok, _ = is_profile_auto_eligible("qwen3.6_27b_mtp",
+                                          {"_backend_class": "ollama_mtp_pending"})
+        assert ok is True
+
+    def test_unavailable_not_auto_eligible(self):
+        ok, reason = is_profile_auto_eligible("deepseek_r1_70b",
+                                               {"_backend_class": "unavailable"})
+        assert ok is False
+
+    def test_unavailable_with_explicit_is_eligible(self):
+        ok, _ = is_profile_auto_eligible("deepseek_r1_70b",
+                                          {"_backend_class": "unavailable"},
+                                          explicit=True)
+        assert ok is True
+
+    def test_placeholder_not_auto_eligible(self):
+        ok, _ = is_profile_auto_eligible("v4_flash",
+                                          {"_backend_class": "placeholder"})
+        assert ok is False
+
+    def test_llamacpp_unconfigured_not_auto_eligible(self):
+        ok, _ = is_profile_auto_eligible("gemma4_26b_llamacpp",
+                                          {"_backend_class": "llamacpp_unconfigured"})
+        assert ok is False
+
+    def test_heavy_manual_not_auto_for_low_risk(self):
+        ok, reason = is_profile_auto_eligible("release_auditor",
+                                               {"_backend_class": "ollama_heavy_manual"},
+                                               task_risk="low")
+        assert ok is False
+        assert "heavy_manual" in reason
+
+    def test_heavy_manual_allowed_for_high_risk(self):
+        ok, _ = is_profile_auto_eligible("release_auditor",
+                                          {"_backend_class": "ollama_heavy_manual"},
+                                          task_risk="high")
+        assert ok is True
+
+    def test_heavy_manual_with_explicit_is_eligible(self):
+        ok, _ = is_profile_auto_eligible("release_auditor",
+                                          {"_backend_class": "ollama_heavy_manual"},
+                                          explicit=True)
+        assert ok is True
+
+    def test_unknown_backend_class_is_eligible(self):
+        ok, _ = is_profile_auto_eligible("legacy_profile", {})
+        assert ok is True
+
+
+class TestExistingTaskResolutionStillWorks:
+    """J-C5 must not break existing task → profile resolution."""
+
+    def test_review_diff_resolves(self):
+        p, m, r = resolve_profile("review-diff", None, None)
+        assert p == "commit_reviewer"
+
+    def test_draft_commit_message_resolves(self):
+        p, m, r = resolve_profile("draft-commit-message", None, None)
+        assert p == "code_worker"
+
+    def test_summarize_file_resolves(self):
+        p, m, r = resolve_profile("summarize-file", None, None)
+        assert p == "fast_summary"
+
+    def test_risk_analysis_resolves(self):
+        p, m, r = resolve_profile("risk-analysis", None, None)
+        assert p == "reasoning_checker"
+
+    def test_suggest_improvements_resolves(self):
+        p, m, r = resolve_profile("suggest-improvements", None, None)
+        assert p == "qwen3.6_27b_mtp"

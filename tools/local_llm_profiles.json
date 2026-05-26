@@ -64,7 +64,8 @@
         "generate-test-draft",
         "draft-fix",
         "draft-feature",
-        "draft-refactor"
+        "draft-refactor",
+        "draft-commit-message"
       ],
       "candidates": [
         "qwen3-coder-next-q8:latest",

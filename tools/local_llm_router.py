@@ -60,6 +60,64 @@ def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
         return False
 
 
+# --- backend class eligibility (J-C5) ---
+
+BACKEND_CLASS_AUTO_ALLOWED = {"ollama", "ollama_mtp_pending"}
+
+BACKEND_CLASS_HEAVY = {"ollama_heavy_manual"}
+
+BACKEND_CLASS_NOT_ELIGIBLE = {
+    "llamacpp_unconfigured", "unavailable", "placeholder",
+}
+
+
+def get_backend_class(profile_config: dict) -> str:
+    """Extract _backend_class from a profile config dict, defaulting to unknown."""
+    bc = profile_config.get("_backend_class", "")
+    if not bc:
+        return "unknown"
+    return bc
+
+
+def is_profile_auto_eligible(profile_name: str, profile_config: dict,
+                             explicit: bool = False,
+                             task_risk: str | None = None) -> tuple[bool, str]:
+    """Check whether a profile is eligible for selection.
+
+    Returns (eligible, reason).
+    - ollama / ollama_mtp_pending: always eligible
+    - ollama_heavy_manual: only if explicit or task risk >= medium-high
+    - llamacpp_unconfigured / unavailable / placeholder: only if explicit
+    - unknown (missing _backend_class): allowed with warning for backward compat
+    """
+    bc = get_backend_class(profile_config)
+
+    if bc in BACKEND_CLASS_AUTO_ALLOWED:
+        return True, ""
+
+    if bc in BACKEND_CLASS_HEAVY:
+        if explicit:
+            return True, ""
+        # Allow heavy manual profiles for high-risk / deep review tasks
+        if task_risk and task_risk in ("high", "medium-high"):
+            return True, ""
+        return False, (
+            f"profile '{profile_name}' is {bc} — requires explicit --profile "
+            f"or a high-risk task (current risk: {task_risk or 'unknown'})"
+        )
+
+    if bc in BACKEND_CLASS_NOT_ELIGIBLE:
+        if explicit:
+            return True, ""
+        return False, (
+            f"profile '{profile_name}' is {bc} — not auto-eligible. "
+            f"Use --profile {profile_name} to override."
+        )
+
+    # unknown: allow with warning
+    return True, ""
+
+
 def resolve_profile(task: str, profile_override: str | None, model_override: str | None,
                     profiles_data: dict | None = None, tasks_data: dict | None = None) -> tuple[str, str, str]:
     """Returns (profile_name, model_name, risk_level)."""
@@ -74,6 +132,13 @@ def resolve_profile(task: str, profile_override: str | None, model_override: str
 
     model = model_override or profile.get("model", "")
     risk = task_conf.get("risk", profile.get("risk_level", "unknown"))
+
+    # J-C5: check backend class eligibility (warning only — main() enforces)
+    eligible, reason = is_profile_auto_eligible(
+        profile_name, profile, explicit=bool(profile_override),
+        task_risk=task_conf.get("risk"))
+    if not eligible:
+        print(f"WARNING: {reason}", file=sys.stderr)
 
     return profile_name, model, risk
 
@@ -318,6 +383,15 @@ def main():
         task, profile_override, model_override,
         profiles_data=profiles_data, tasks_data=tasks_data)
     profile_cfg = profiles_data.get("profiles", {}).get(profile_name, {})
+
+    # J-C5: enforce backend class eligibility
+    task_conf = tasks_data.get("tasks", {}).get(task, {})
+    eligible, reason = is_profile_auto_eligible(
+        profile_name, profile_cfg, explicit=bool(profile_override),
+        task_risk=task_conf.get("risk"))
+    if not eligible:
+        print(f"ERROR: {reason}", file=sys.stderr)
+        sys.exit(1)
 
     # Resolve model availability (with cross-backend fallback)
     if not profile_cfg.get("_env"):
