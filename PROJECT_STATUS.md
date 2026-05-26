@@ -54,6 +54,13 @@
 | J-L4 | Done (audit, no commit) | Post-fix debate smoke + ledger sanity audit. J-L3 code fix verified effective. 2 residual non-blocker issues noted (nonexistent model refs = test artifact; 35B model load via Ollama pending separate hw smoke). |
 | J-M1 | Done (audit, no commit) | Model availability + debate profile health audit. Confirmed: qwen3.6:35b-q8-ud works through Ollama (deep_reviewer, 13265ms). Problem is MTP/llama.cpp path, not model. nonexistent model refs are test fixtures only. deep_reviewer suitable as default round 3. |
 
+## Workflow Orchestration (Post-v0.12.0, P-chain, 2026-05-26)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| P-0 | Done (audit, no commit) | Workflow orchestration planning audit. 4 workflow types designed from 12 existing tools. Decision tree for debate triggers. Recommended P-1. |
+| P-1 | In progress | **Add `local_workflow_plan` heuristic planner.** Pure heuristic (no LLM). Classifies change type, outputs 7-phase command sequence. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |

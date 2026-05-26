@@ -139,6 +139,17 @@
   J-L chain closed.  No further efficiency work needed unless MTP
   backend is explicitly reopened.
 
+- **P-0** (audit, no commit): Local workflow orchestration planning audit.
+  Designed 4 recommended workflows from existing tools: small code change,
+  docs-only, high-risk runtime, release/checkpoint.  Decision tree for
+  debate triggers.  Recommended P-1: heuristic `local_workflow_plan` command.
+
+- **P-1** (this commit): Add `local_workflow_plan` heuristic workflow
+  planner.  Pure heuristic classification (no LLM calls).  Input: task
+  description + file listing.  Output: workflow type, risk level, debate
+  decision, 7-phase command sequence.  36 focused tests.  Updated CLAUDE.md,
+  CHANGELOG, and PROJECT_STATUS.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

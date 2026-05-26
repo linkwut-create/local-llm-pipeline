@@ -69,6 +69,11 @@ Claude Code is the controller. The local worker is advisory only.
   `git ls-files | py -3 tools/local_llm_router.py find-related-files --stdin`
   (advisory-only, output to `.local_llm_out/`, controller decides what to read/edit)
 
+- `local_workflow_plan` — heuristic workflow planner (no LLM calls). Recommends
+  command sequence for the current task based on change type:
+  `git diff --name-only | py -3 tools/local_workflow_plan.py --stdin --task "description"`
+  (advisory-only, stdout or JSON, controller decides final workflow)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.
