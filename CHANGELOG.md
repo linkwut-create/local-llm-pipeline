@@ -43,7 +43,7 @@
   "bundled alternative".  4 files, +10/-9.  Docs-only — no runtime/test/
   VERSION changes.
 
-- **U-2** (this commit): Add work_order_template to local_workflow_plan JSON
+- **U-2** (`0eca250`): Add work_order_template to local_workflow_plan JSON
   output.  New `_build_work_order_template()` helper maps each workflow type
   to a U-1 Controller Delegation Contract-aligned work order: allowed_tools,
   local_steps_requested, review_level, debate_policy, stop_conditions, budget
@@ -53,6 +53,20 @@
   drafting.  MCP handler surfaces `work_order_template` in response.
   24 new tests (19 planner + 5 MCP server).  1995 passed.  MCP tool count
   remains 12.  No VERSION change.  No push.
+
+- **U-2.1** (`b603842`): Fix PROJECT_STATUS.md duplicate table header.
+  1 file, -2 lines.  Docs-only.
+
+- **U-3** (dogfood, no commit): Controller delegation flow dogfood.
+  Verdict: PASS (PARTIAL).  Real delegation workflow executed end-to-end:
+  CLI path delivers work_order_template; controller inspected template and
+  followed local_steps_requested; summarize-file delegated via MCP for
+  AGENTS.md + docs/mcp-task-policy.md.  F6: MCP server process must be
+  restarted after handler changes to expose new response fields (stale
+  process).  F7: `.codex/local-llm-worker.md` not recognized by
+  `_is_docs_path()` — known heuristic limitation, recorded.  No code
+  changes, no push.  U-chain core objective validated: work_order_template
+  useful for reducing ambiguity in delegation.  U-line can pause here.
 
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 

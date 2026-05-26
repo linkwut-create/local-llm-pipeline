@@ -86,7 +86,9 @@
 | U-1.1 | Done (amend, no file change) | Fix accidental leading `@` in U-1 commit subject. Message-only amend. |
 | U-1.5 | Done (audit, no commit) | Delegation contract consistency audit. Found 3 issues: F1 (CLAUDE.md stale 10→12 tool count), F2 (tool enumeration missing local_workflow_plan), F3 ("Every development task" conflict with MAY skip). Verdict: PASS (PARTIAL). |
 | U-1.6 | Done (`7b918e0`) | Docs-only consistency fix for F1/F2/F3/F4. 4 files, +10/-9. |
-| U-2 | Done (this commit) | **Add work_order_template to local_workflow_plan.** New `_build_work_order_template()` helper maps each of 5 workflow types to a U-1-aligned work order with allowed_tools, local_steps_requested, review_level, debate_policy, stop_conditions, budget limits, forbidden_actions, and controller_notes. MCP handler surfaces `work_order_template` in response. 24 new tests. 1995 passed. MCP tool count remains 12. |
+| U-2 | Done (`0eca250`) | **Add work_order_template to local_workflow_plan.** New `_build_work_order_template()` helper maps each of 5 workflow types to a U-1-aligned work order with allowed_tools, local_steps_requested, review_level, debate_policy, stop_conditions, budget limits, forbidden_actions, and controller_notes. MCP handler surfaces `work_order_template` in response. 24 new tests. 1995 passed. MCP tool count remains 12. |
+| U-2.1 | Done (`b603842`) | Fix PROJECT_STATUS.md duplicate table header. 1 file, -2 lines. |
+| U-3 | Done (dogfood, no commit) | **PASS (PARTIAL).** Real delegation flow dogfood on docs review task. Verified: CLI delivers work_order_template; controller inspected template and followed local_steps_requested; summarize-file executed for AGENTS.md and docs/mcp-task-policy.md via MCP. F6: MCP server process must be restarted after handler changes to expose new response fields (stale process at time of dogfood). F7: `.codex/local-llm-worker.md` not recognized by `_is_docs_path()` — known heuristic limitation, recorded. No code changes, no push. U-chain core objective validated: work_order_template useful for reducing ambiguity in delegation. |
 
 ## MCP Cost Discipline
 
