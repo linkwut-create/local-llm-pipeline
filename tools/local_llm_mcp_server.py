@@ -3231,6 +3231,7 @@ def call_workflow_plan(params: dict) -> dict:
         "debate_required": plan["debate_required"],
         "debate_reason": plan["debate_reason"],
         "estimated_cost_seconds": plan["estimated_cost_seconds"],
+        "work_order_template": plan.get("work_order_template"),
         "phases": {},
         "controller_must_decide": plan["controller_must_decide"],
         "advisory_only": True,

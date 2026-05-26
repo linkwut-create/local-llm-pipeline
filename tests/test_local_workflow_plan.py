@@ -281,3 +281,153 @@ def test_is_high_risk_path_negative():
     assert wp._is_high_risk_path("src/main.py") is False
     assert wp._is_high_risk_path("tests/test_main.py") is False
     assert wp._is_high_risk_path("docs/guide.md") is False
+
+
+# ---------------------------------------------------------------------------
+# U-2: work_order_template
+# ---------------------------------------------------------------------------
+
+def test_work_order_template_present_in_plan():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    assert "work_order_template" in plan
+    tmpl = plan["work_order_template"]
+    assert tmpl["schema_version"] == 1
+    assert tmpl["advisory_only"] is True
+
+
+def test_work_order_template_schema_version():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    assert plan["work_order_template"]["schema_version"] == 1
+
+
+def test_work_order_template_forbidden_actions():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    forbidden = plan["work_order_template"]["forbidden_actions"]
+    assert "edit" in forbidden
+    assert "stage" in forbidden
+    assert "commit" in forbidden
+    assert "push" in forbidden
+
+
+def test_work_order_template_docs_debate_policy_skip():
+    plan = wp.build_plan(["docs/guide.md"], "Update docs")
+    tmpl = plan["work_order_template"]
+    assert tmpl["debate_policy"] == "skip"
+    assert "local_debate_review_diff" not in tmpl["allowed_tools"]
+
+
+def test_work_order_template_high_risk_debate_policy_required():
+    plan = wp.build_plan(["tools/local_llm_router.py"], "Change router logic")
+    tmpl = plan["work_order_template"]
+    assert tmpl["debate_policy"] == "required"
+    assert "local_debate_review_diff" in tmpl["allowed_tools"]
+
+
+def test_work_order_template_high_risk_review_level():
+    plan = wp.build_plan(["tools/local_llm_mcp_server.py"], "Add tool")
+    tmpl = plan["work_order_template"]
+    assert tmpl["review_level"] in ("debate_fast", "debate_full")
+
+
+def test_work_order_template_small_code_review_level_is_commit_gate():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    tmpl = plan["work_order_template"]
+    assert tmpl["review_level"] == "commit_gate"
+    assert tmpl["debate_policy"] == "optional"
+
+
+def test_work_order_template_small_code_includes_review():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    allowed = plan["work_order_template"]["allowed_tools"]
+    assert "local_review_diff" in allowed
+    assert "local_summarize_file" in allowed
+
+
+def test_work_order_template_release_includes_changelog():
+    plan = wp.build_plan(["CHANGELOG.md"], "Release checkpoint")
+    tmpl = plan["work_order_template"]
+    assert "draft-changelog-entry" in tmpl["allowed_tools"]
+    assert "draft-pr-summary" in tmpl["allowed_tools"]
+
+
+def test_work_order_template_release_high_risk_paths_require_debate():
+    plan = wp.build_plan(["tools/call_ledger.py", "CHANGELOG.md"],
+                         "Release v0.13.0")
+    tmpl = plan["work_order_template"]
+    assert tmpl["debate_policy"] == "required"
+    assert "local_debate_review_diff" in tmpl["allowed_tools"]
+
+
+def test_work_order_template_unknown():
+    plan = wp.build_plan([], "")
+    tmpl = plan["work_order_template"]
+    assert tmpl["workflow_type"] == "unknown"
+    assert "local_review_diff" in tmpl["allowed_tools"]
+
+
+def test_work_order_template_has_budget_limits():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    budget = plan["work_order_template"]["budget_limits"]
+    assert budget["max_files_to_summarize"] == 5
+    assert budget["max_runtime_seconds"] == 300
+    assert budget["max_model_calls"] == 10
+
+
+def test_work_order_template_local_steps():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    steps = plan["work_order_template"]["local_steps_requested"]
+    assert isinstance(steps, list)
+    assert len(steps) > 0
+    assert all("step_id" in s for s in steps)
+    assert all("tool" in s for s in steps)
+    assert all("reason" in s for s in steps)
+
+
+def test_work_order_template_controller_notes_are_advisory():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    notes = plan["work_order_template"]["controller_notes"]
+    assert "advisory" in notes.lower()
+    assert "never edit" in notes.lower()
+
+
+def test_work_order_template_target_files():
+    plan = wp.build_plan(["src/main.py", "tests/test_main.py"],
+                         "Fix bug")
+    assert plan["work_order_template"]["target_files"] == [
+        "src/main.py", "tests/test_main.py"
+    ]
+
+
+def test_work_order_template_task_description():
+    plan = wp.build_plan(["src/main.py"], "Fix login timeout bug")
+    assert plan["work_order_template"]["task_description"] == "Fix login timeout bug"
+
+
+def test_work_order_template_debate_reason():
+    plan = wp.build_plan(["tools/local_llm_router.py"], "Change router")
+    tmpl = plan["work_order_template"]
+    assert isinstance(tmpl["debate_reason"], str)
+    assert len(tmpl["debate_reason"]) > 0
+
+
+def test_work_order_template_stop_conditions():
+    plan = wp.build_plan(["src/main.py"], "Fix bug")
+    stops = plan["work_order_template"]["stop_conditions"]
+    assert "ok=false" in stops
+    assert "timeout" in stops
+    assert "safety_boundary" in stops
+
+
+def test_work_order_template_present_in_all_workflow_types():
+    scenarios = [
+        (["src/main.py"], "Fix bug"),
+        (["docs/guide.md"], "Update docs"),
+        (["tools/local_llm_router.py"], "Change router"),
+        (["CHANGELOG.md"], "Release checkpoint"),
+        ([], ""),
+    ]
+    for files, task in scenarios:
+        plan = wp.build_plan(files, task)
+        assert "work_order_template" in plan
+        assert plan["work_order_template"]["schema_version"] == 1
+        assert plan["work_order_template"]["advisory_only"] is True

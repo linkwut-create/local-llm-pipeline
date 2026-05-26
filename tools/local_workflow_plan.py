@@ -170,6 +170,215 @@ def classify_debate_required(workflow_type: str, files: list[str]) -> tuple[bool
 
 
 # ---------------------------------------------------------------------------
+# Work order template generator
+# ---------------------------------------------------------------------------
+
+def _build_work_order_template(
+    workflow_type: str,
+    risk_level: str,
+    debate_required: bool,
+    debate_reason: str,
+    files: list[str],
+    task_desc: str,
+) -> dict:
+    """Build a U-1 Controller Delegation Contract-aligned work order template.
+
+    Pure heuristic — no LLM calls.  Advisory-only.
+    The controller (big model) uses this template to delegate read-only heavy
+    work to local models before editing.
+    """
+    allowed_tools: list[str] = ["local_workflow_plan"]
+    stop_conditions = ["ok=false", "timeout", "high_uncertainty", "safety_boundary"]
+    local_steps: list[dict] = [
+        {
+            "step_id": "orient",
+            "tool": "local_workflow_plan",
+            "reason": "classify workflow type and risk level",
+        },
+    ]
+
+    # --- Determine review level and debate policy ---
+    if workflow_type == "docs-only-change":
+        review_level = "commit_gate"
+        debate_policy = "skip"
+        allowed_tools.extend([
+            "draft-commit-message",
+        ])
+        local_steps.append({
+            "step_id": "review",
+            "tool": "local_review_diff",
+            "reason": "pre-commit gate review",
+        })
+    elif workflow_type == "small-code-change":
+        review_level = "commit_gate"
+        debate_policy = "optional"
+        allowed_tools.extend([
+            "find-related-files",
+            "local_repo_map",
+            "local_summarize_file",
+            "local_generate_test_plan",
+            "local_review_diff",
+            "draft-commit-message",
+        ])
+        local_steps.extend([
+            {
+                "step_id": "discover",
+                "tool": "find-related-files",
+                "reason": "identify related source/test/config files",
+            },
+            {
+                "step_id": "understand",
+                "tool": "local_summarize_file",
+                "reason": "summarize key files > 200 lines before editing",
+            },
+            {
+                "step_id": "review",
+                "tool": "local_review_diff",
+                "reason": "commit gate review after edits",
+            },
+        ])
+    elif workflow_type == "high-risk-runtime-change":
+        review_level = "debate_fast" if debate_required else "commit_gate"
+        debate_policy = "required" if debate_required else "optional"
+        allowed_tools.extend([
+            "find-related-files",
+            "local_repo_map",
+            "local_summarize_file",
+            "local_generate_test_plan",
+            "local_review_diff",
+            "draft-commit-message",
+        ])
+        if debate_required:
+            allowed_tools.append("local_debate_review_diff")
+        local_steps.extend([
+            {
+                "step_id": "discover",
+                "tool": "find-related-files",
+                "reason": "identify all affected files and subsystems",
+            },
+            {
+                "step_id": "understand",
+                "tool": "local_summarize_file",
+                "reason": "summarize key files > 200 lines before editing",
+            },
+            {
+                "step_id": "test_plan",
+                "tool": "local_generate_test_plan",
+                "reason": "generate test plan for high-risk change",
+            },
+            {
+                "step_id": "review",
+                "tool": "local_review_diff",
+                "reason": "commit gate review after edits",
+            },
+        ])
+        if debate_required:
+            local_steps.append({
+                "step_id": "debate",
+                "tool": "local_debate_review_diff",
+                "reason": f"multi-model debate review — {debate_reason}",
+            })
+    elif workflow_type == "release-local-checkpoint":
+        review_level = "debate_fast"
+        debate_policy = "optional"
+        allowed_tools.extend([
+            "find-related-files",
+            "local_repo_map",
+            "local_review_diff",
+            "draft-commit-message",
+            "draft-pr-summary",
+            "draft-changelog-entry",
+        ])
+        local_steps.extend([
+            {
+                "step_id": "discover",
+                "tool": "find-related-files",
+                "reason": "identify all changes since baseline",
+            },
+            {
+                "step_id": "review",
+                "tool": "local_review_diff",
+                "reason": "commit gate review after edits",
+            },
+            {
+                "step_id": "batch",
+                "tool": "draft-changelog-entry",
+                "reason": "generate changelog entry from diff range",
+            },
+        ])
+        if any(_is_high_risk_path(f) for f in files):
+            allowed_tools.append("local_debate_review_diff")
+            debate_policy = "required"
+            local_steps.append({
+                "step_id": "debate",
+                "tool": "local_debate_review_diff",
+                "reason": "high-risk paths detected in release — debate required",
+            })
+    else:  # unknown
+        review_level = "commit_gate"
+        debate_policy = "optional"
+        allowed_tools.extend([
+            "find-related-files",
+            "local_repo_map",
+            "local_summarize_file",
+            "local_review_diff",
+            "draft-commit-message",
+        ])
+        local_steps.extend([
+            {
+                "step_id": "discover",
+                "tool": "find-related-files",
+                "reason": "identify affected files — workflow type unknown",
+            },
+            {
+                "step_id": "review",
+                "tool": "local_review_diff",
+                "reason": "commit gate review after edits",
+            },
+        ])
+
+    return {
+        "schema_version": 1,
+        "task_description": task_desc,
+        "controller_objective": (
+            "Big model plans and delegates read-only heavy work to local models. "
+            "Local models execute bounded read-only tasks. "
+            "Big model audits, integrates, edits, and finalizes."
+        ),
+        "risk_level": risk_level,
+        "workflow_type": workflow_type,
+        "local_steps_requested": local_steps,
+        "target_files": list(files),
+        "search_scope": ".",
+        "allowed_tools": allowed_tools,
+        "forbidden_actions": ["edit", "stage", "commit", "push", "tag", "release"],
+        "budget_limits": {
+            "max_files_to_summarize": 5,
+            "max_runtime_seconds": 300,
+            "max_model_calls": 10,
+        },
+        "expected_outputs": [
+            "related_files",
+            "summaries",
+            "test_recommendations",
+            "risk_notes",
+            "suggested_next_calls",
+        ],
+        "review_level": review_level,
+        "debate_policy": debate_policy,
+        "debate_reason": debate_reason,
+        "stop_conditions": stop_conditions,
+        "controller_notes": (
+            "Big model remains controller — local model output is advisory only. "
+            "Controller must verify, decide which files to edit, apply edits, "
+            "run tests, inspect git diff, and finalize the commit message. "
+            "Local models never edit, stage, commit, or push."
+        ),
+        "advisory_only": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Workflow planner
 # ---------------------------------------------------------------------------
 
@@ -192,6 +401,10 @@ def build_plan(
         "debate_required": debate_required,
         "debate_reason": debate_reason,
         "phases": {},
+        "work_order_template": _build_work_order_template(
+            workflow_type, risk, debate_required, debate_reason,
+            files, task_desc,
+        ),
         "estimated_cost_seconds": 0,
         "advisory_only": True,
         "controller_must_decide": [

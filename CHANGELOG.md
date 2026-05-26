@@ -12,7 +12,7 @@
   schema, responsibility split, and budget controls.  Recommended U-1 =
   docs-only delegation contract first.  No code/test/VERSION/tag changes.
 
-- **U-1** (this commit): Docs-only Controller Delegation Contract.
+- **U-1** (`7fd3423`): Docs-only Controller Delegation Contract.
   Added "Controller Delegation Contract (U-1)" to AGENTS.md and CLAUDE.md:
   delegation decision tree, MUST/SHOULD/SKIP triggers with commit-gate
   semantics, work order schema, result packet schema, responsibility split
@@ -25,6 +25,34 @@
   budget control defaults.  Updated PROJECT_STATUS.md with U-chain status
   table.  Docs-only — no runtime/test/VERSION/tag changes.  MCP tool count
   remains 12.  No push.
+
+- **U-1.1** (`7fd3423`, amend): Fix accidental leading `@` in U-1 commit
+  subject.  Message-only amend — file content unchanged.
+
+- **U-1.5** (audit, no commit): Delegation contract consistency audit.
+  Found 3 issues: F1 (CLAUDE.md stale tool count 10 → 12), F2 (AGENTS.md +
+  .codex tool enumeration missing local_workflow_plan), F3 ("Every development
+  task" → "Every non-trivial development task" to align with MAY skip).
+  Verdict: PASS (PARTIAL).  Recommended U-1.6 docs-only cleanup before U-2.
+
+- **U-1.6** (`7b918e0`): Docs-only consistency fix for F1/F2/F3/F4.
+  Tool count unified to 12 across CLAUDE.md, AGENTS.md and .codex/
+  local-llm-worker.md; tool enumeration now includes local_workflow_plan;
+  old core rule narrowed from "Every development task" to "Every non-trivial
+  development task" with U-1 cross-reference; task_bootstrap annotated as
+  "bundled alternative".  4 files, +10/-9.  Docs-only — no runtime/test/
+  VERSION changes.
+
+- **U-2** (this commit): Add work_order_template to local_workflow_plan JSON
+  output.  New `_build_work_order_template()` helper maps each workflow type
+  to a U-1 Controller Delegation Contract-aligned work order: allowed_tools,
+  local_steps_requested, review_level, debate_policy, stop_conditions, budget
+  limits, forbidden_actions, and controller_notes.  Docs-only workflow →
+  debate_policy=skip, high-risk → debate_policy=required with debate steps,
+  small-code → review_level=commit_gate, release → includes changelog/PR
+  drafting.  MCP handler surfaces `work_order_template` in response.
+  24 new tests (19 planner + 5 MCP server).  1995 passed.  MCP tool count
+  remains 12.  No VERSION change.  No push.
 
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 

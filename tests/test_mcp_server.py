@@ -877,3 +877,49 @@ class TestWorkflowPlanMCP:
         name = "local_workflow_plan"
         for kw in FORBIDDEN_TOOL_KEYWORDS:
             assert kw not in name.lower()
+
+    # --- U-2: work_order_template in MCP response ---
+
+    def test_work_order_template_present_in_mcp_response(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix bug",
+            "files": ["src/main.py"],
+        })
+        assert "work_order_template" in result
+        tmpl = result["work_order_template"]
+        assert tmpl["schema_version"] == 1
+        assert tmpl["advisory_only"] is True
+
+    def test_work_order_template_forbidden_actions(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix bug",
+            "files": ["src/main.py"],
+        })
+        forbidden = result["work_order_template"]["forbidden_actions"]
+        assert "edit" in forbidden
+        assert "commit" in forbidden
+        assert "push" in forbidden
+
+    def test_work_order_template_budget_defaults(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix bug",
+            "files": ["src/main.py"],
+        })
+        budget = result["work_order_template"]["budget_limits"]
+        assert budget["max_files_to_summarize"] == 5
+        assert budget["max_runtime_seconds"] == 300
+        assert budget["max_model_calls"] == 10
+
+    def test_work_order_template_docs_debate_skip(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Update docs",
+            "files": ["docs/guide.md"],
+        })
+        assert result["work_order_template"]["debate_policy"] == "skip"
+
+    def test_work_order_template_high_risk_debate_required(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Change router logic",
+            "files": ["tools/local_llm_router.py"],
+        })
+        assert result["work_order_template"]["debate_policy"] == "required"

@@ -82,9 +82,15 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | U-0 | Done (audit, no commit) | Controller delegation policy planning audit. Read-only inspection of AGENTS.md, CLAUDE.md, `.codex/local-llm-worker.md`, `tools/local_workflow_plan.py`, `docs/mcp-task-policy.md`. Verdict: infrastructure sufficient (12 MCP tools + workflow_plan + task_bootstrap). Gap is not a 13th tool — it's a delegation contract that makes the big model default to "plan → delegate read-only heavy work → audit → integrate → finalize." Designed delegation decision tree, MUST/SHOULD/SKIP triggers, work order schema, result packet schema, responsibility split, and budget controls. Recommended U-1 = docs-only delegation contract first. No code/test/VERSION/tag changes. |
-| U-1 | Done (this commit) | Docs-only Controller Delegation Contract. Added "Controller Delegation Contract (U-1)" section to AGENTS.md and CLAUDE.md with delegation decision tree, MUST/SHOULD/SKIP triggers, work order schema, result packet schema, responsibility split, budget controls, and prohibition rules. Added delegation quick reference to `.codex/local-llm-worker.md`. Added "Controller Delegation Protocol (U-1)" section to `docs/mcp-task-policy.md` as MCP 2.2, with full delegation level definitions and budget control defaults. Updated PROJECT_STATUS.md and CHANGELOG.md. Docs-only — no runtime/test/VERSION/tag changes. MCP tool count remains 12. No push. |
+| U-1 | Done (`7fd3423`) | Docs-only Controller Delegation Contract. Added "Controller Delegation Contract (U-1)" section to AGENTS.md and CLAUDE.md with delegation decision tree, MUST/SHOULD/SKIP triggers, work order schema, result packet schema, responsibility split, budget controls, and prohibition rules. Added delegation quick reference to `.codex/local-llm-worker.md`. Added "Controller Delegation Protocol (U-1)" section to `docs/mcp-task-policy.md` as MCP 2.2, with full delegation level definitions and budget control defaults. Updated PROJECT_STATUS.md and CHANGELOG.md. Docs-only — no runtime/test/VERSION/tag changes. MCP tool count remains 12. No push. |
+| U-1.1 | Done (amend, no file change) | Fix accidental leading `@` in U-1 commit subject. Message-only amend. |
+| U-1.5 | Done (audit, no commit) | Delegation contract consistency audit. Found 3 issues: F1 (CLAUDE.md stale 10→12 tool count), F2 (tool enumeration missing local_workflow_plan), F3 ("Every development task" conflict with MAY skip). Verdict: PASS (PARTIAL). |
+| U-1.6 | Done (`7b918e0`) | Docs-only consistency fix for F1/F2/F3/F4. 4 files, +10/-9. |
+| U-2 | Done (this commit) | **Add work_order_template to local_workflow_plan.** New `_build_work_order_template()` helper maps each of 5 workflow types to a U-1-aligned work order with allowed_tools, local_steps_requested, review_level, debate_policy, stop_conditions, budget limits, forbidden_actions, and controller_notes. MCP handler surfaces `work_order_template` in response. 24 new tests. 1995 passed. MCP tool count remains 12. |
 
 ## MCP Cost Discipline
+
+| Phase | Status | Notes |
 
 | Phase | Status | Notes |
 |-------|--------|-------|
