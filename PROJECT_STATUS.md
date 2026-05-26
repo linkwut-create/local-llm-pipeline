@@ -48,7 +48,7 @@
 |-------|--------|-------|
 | J-L1 | Done (audit, no commit) | Call-efficiency audit. Found qwen3.6_35b_moe_mtp 99.2% failure rate, debate 46% failure, repo_map accounting artifact. Recommended by-task report + debate chain fix. |
 | J-L2 | Done (`e1f2b8d`) | **Add by-task call ledger efficiency report.** `group_by_task_efficiency()` + richer CLI with profile/backend/failure_type. 5 focused tests. |
-| J-L3 | In progress | **Remove unavailable MTP profile from default debate chain.** Replace qwen3.6_35b_moe_mtp with deep_reviewer. |
+| J-L3 | Done (`53d8218`) | **Remove unavailable MTP profile from default debate chain.** Replace qwen3.6_35b_moe_mtp with deep_reviewer. 3 focused tests. |
 
 ## MCP Cost Discipline
 
