@@ -2,8 +2,164 @@
 
 MCP 2.0 — enforceable task-level discipline for local model participation.
 MCP 2.1 — auto-invocation via hooks for common participation points.
+MCP 2.2 (U-1) — controller delegation contract: big model plans, local models execute.
 
 Refer to [model-routing-policy.md](model-routing-policy.md) for model selection rationale and benchmark data.
+
+## Controller Delegation Protocol (U-1)
+
+### Core Principle
+
+```
+Big model plans ──→ Local models execute bounded read-only heavy work
+                         ──→ Big model audits, integrates, edits, finalizes
+```
+
+Local models are **workers**, not decision-makers. They collect context, find
+files, summarize, review, and recommend — but they never edit, stage, commit,
+or push. The controller (Claude Code / Codex) owns all final decisions.
+
+### Delegation Decision Tree
+
+```
+Task received
+  ├─ Trivial? → Answer directly. No MCP delegation.
+  ├─ Tiny low-risk edit? → May skip summarize; MUST commit_gate review.
+  └─ Non-trivial →
+      STEP 0 [MUST]: local_workflow_plan (classify, no LLM cost)
+      STEP 1 [MUST]: repo_map + find-related-files (orient)
+      STEP 2 [MUST]: summarize-file for each key file > 200 lines
+      STEP 3 [COND]: generate-test-plan if new API/schema/parser/CLI/DB
+      STEP 4 [MUST]: review-diff (commit_gate=true) after edits
+      STEP 5 [COND]: debate-review-diff for high-risk paths
+      STEP 6 [MUST]: draft-commit-message → controller finalizes
+```
+
+### Delegation Level Definitions
+
+| Level | Meaning | Commit Gate |
+|-------|---------|-------------|
+| **MUST delegate** | Required before commit. Skipping without documented reason is a process deviation. | **BLOCKED** if skipped |
+| **SHOULD delegate** | Strong recommendation. Controller may skip with documented reason. | **WARNING** if skipped |
+| **MAY skip** | Optional. Controller decides based on task context. | Not checked |
+
+### MUST Delegate Triggers
+
+| Trigger | Tool(s) | Profile |
+|---------|---------|---------|
+| Any non-trivial task, first step | `local_workflow_plan` | heuristic (no LLM) |
+| Key file > 200 lines, first edit | `local_summarize_file` | `fast_summary` |
+| New API / schema / parser / CLI / DB / import-export | `local_generate_test_plan` | `code_worker` |
+| Any code change, pre-commit | `local_review_diff` | `commit_reviewer` (commit_gate=true) |
+| MCP server / router / hooks / gate logic | `local_debate_review_diff` | fast mode (2 rounds) |
+| Safety policy / blocked paths / security boundary | `local_debate_review_diff` | fast mode |
+| DB schema changes (SQLite DDL) | `local_debate_review_diff` | full 3-round |
+| Release / freeze boundary | `local_parallel_review` | parallel multi-family |
+
+### SHOULD Delegate Triggers
+
+| Trigger | Tool(s) |
+|---------|---------|
+| Cross-file / cross-module task | `find-related-files` |
+| Unfamiliar directory | `local_summarize_tree` |
+| After edits, non-gate advisory review | `local_review_diff` (commit_gate=false) |
+| Multi-commit batch | `draft-pr-summary` + `draft-changelog-entry` |
+| Cost/efficiency question | `call_ledger_cli.py by-task` |
+
+### MAY Skip Delegation
+
+| Situation | Condition |
+|-----------|-----------|
+| Explanation-only answer | No code changes |
+| Tiny docs typo | Single-line, not safety/security doc |
+| One-line fully specified edit | Not a high-risk path |
+| User explicitly says "no MCP" or "no tools" | User override — record in phase report |
+| Emergency stop / rollback | Safety first |
+
+### Work Order Schema
+
+When the controller prepares a delegation, it defines a work order:
+
+```json
+{
+  "schema_version": 1,
+  "task_description": "<what the user asked>",
+  "controller_objective": "<what the controller is trying to achieve>",
+  "risk_level": "low | medium | high",
+  "local_steps_requested": [
+    {"step": "summarize", "tool": "local_summarize_file", "target": "<path>", "reason": "<why>"}
+  ],
+  "target_files": ["<path>"],
+  "search_scope": "<project root or subdirectory>",
+  "allowed_tools": ["<MCP tool names>"],
+  "forbidden_actions": ["edit", "stage", "commit", "push"],
+  "budget_limits": {
+    "max_files_to_summarize": 5,
+    "max_runtime_seconds": 300,
+    "max_model_calls": 10
+  },
+  "expected_outputs": ["summaries", "related_files", "risk_notes"],
+  "review_level": "commit_gate | debate_fast | debate_full",
+  "debate_policy": "required | optional | skip",
+  "stop_conditions": ["ok=false", "timeout", "high_uncertainty", "safety_boundary"],
+  "controller_notes": "<free-form>"
+}
+```
+
+### Result Packet Schema
+
+Local models return results in a consistent advisory-only packet:
+
+```json
+{
+  "schema_version": 1,
+  "files_examined": ["<path>"],
+  "related_files": ["<test_path>", "<config_path>"],
+  "summaries": [
+    {"file": "<path>", "summary": "<markdown>", "confidence": "high|medium|low"}
+  ],
+  "test_recommendations": ["<rec>"],
+  "risk_notes": ["<note>"],
+  "uncertainty": "low | medium | high",
+  "uncertain_points": ["<point>"],
+  "skipped_steps": [{"step": "debate", "reason": "docs-only"}],
+  "budget_used": {"files_summarized": 3, "runtime_seconds": 85, "model_calls": 5},
+  "suggested_next_calls": ["local_review_diff", "draft-commit-message"],
+  "controller_must_verify": true,
+  "advisory_only": true
+}
+```
+
+### Responsibility Split
+
+| Responsibility | Controller | Local Models |
+|---------------|------------|--------------|
+| Task classification & risk grading | Decides | Advisory via workflow_plan |
+| File discovery & scoping | Decides scope | Executes |
+| Code understanding | Verifies summaries directly | Drafts summaries |
+| Implementation plan | **Owns** | — |
+| Writing code | **Owns** | Draft only (→ .local_llm_out/) |
+| Reading secrets | **Owns** (directly) | **Forbidden** |
+| Diff review | Final judgment | Advisory review |
+| Debate review | Decides whether needed | Executes rounds |
+| Running tests | **Owns** | Classify failures only |
+| Commit message | **Owns** | Draft only |
+| Final user-facing answer | **Owns** | — |
+| Deciding to ask the user | **Owns** | — |
+
+### Budget Controls
+
+Controller-enforced limits per task:
+
+| Limit | Default | Purpose |
+|-------|---------|---------|
+| `max_files_to_summarize` | 5 | Prevents unbounded summarize-file calls |
+| `max_runtime_seconds` | 300 | Prevents runaway local model time |
+| `max_model_calls` | 10 | Caps total LLM invocations per task |
+| Stop on `ok=false` | Always | MCP failure is a hard stop |
+| Stop on timeout | Always | Timeout is a hard stop |
+| Stop on safety boundary | Always | Secrets, auth, crypto paths are off-limits |
+| Deep/reasoning models | Never default | Only when explicitly required |
 
 ## Core Rule
 

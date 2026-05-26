@@ -3,6 +3,34 @@
 Codex may call `tools/local_llm_router.py` for read-only auxiliary work.
 For broad cross-file tasks, start with task_bootstrap (see AGENTS.md).
 
+## Controller Delegation Quick Reference (U-1)
+
+**Core rule**: For non-trivial tasks, delegate read-only heavy work to local
+models before editing. Use this checklist:
+
+```
+[ ] STEP 0: local_workflow_plan          — classify task type + risk (no LLM cost)
+[ ] STEP 1: repo_map + find-related-files — orient in unfamiliar territory
+[ ] STEP 2: summarize-file               — each key file > 200 lines before editing
+[ ] STEP 3: generate-test-plan           — if new API/schema/parser/CLI/DB
+[ ] STEP 4: review-diff (commit_gate)    — after edits, before commit (MUST)
+[ ] STEP 5: debate-review-diff           — high-risk paths only (MUST for those)
+[ ] STEP 6: draft-commit-message         — advisory, controller finalizes
+```
+
+**MUST delegate blocks commit. MAY skip: explanation-only, tiny typo, user says
+no MCP, emergency.**
+
+**Budget**: max 5 summarizes, 300s runtime, 10 model calls per task.
+Stop on `ok=false`, timeout, or safety boundary.
+
+**Responsibility**: Codex owns implementation plan, edits, test running, commit
+message, and final answers. Local models own only read-only context collection,
+summaries, test recommendations, and advisory review. Local models NEVER edit,
+stage, commit, or push.
+
+Full delegation contract: see AGENTS.md "Controller Delegation Contract (U-1)".
+
 ## Task Bootstrap (v0.11.0)
 
 Before cross-file, cross-module, or unfamiliar-repo work:

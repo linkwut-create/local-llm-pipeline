@@ -3,6 +3,148 @@
 Codex users: see AGENTS.md for Codex-facing instructions (CLAUDE.md contains
 Claude-specific slash commands, auto-invocation hooks, and subagent references).
 
+## Controller Delegation Contract (U-1)
+
+**Core principle**: Big model (Claude Code) plans. Local models execute bounded
+read-only heavy work. Big model audits, integrates, edits, and finalizes. Local
+models never edit, stage, commit, or push.
+
+This section is the top-level delegation policy. The "Task-Level MCP Usage Policy
+(MCP 2.1 — Hardened)" section below provides the detailed tool mapping, escalation
+rules, prohibition rules, and model selection rules that implement this contract.
+
+### Delegation Decision Tree
+
+When Claude Code receives a non-trivial task, follow this decision tree:
+
+```
+Task received
+  │
+  ├─ Trivial? (explanation-only, no code change)
+  │   └─ YES → Answer directly. No MCP delegation needed.
+  │
+  ├─ Tiny low-risk edit? (single-line typo, ≤5 line fix, not a high-risk path)
+  │   └─ YES → May skip local_summarize_file. MUST still run review_diff
+  │            (commit_gate=true) before commit.
+  │
+  └─ Non-trivial (cross-file, new feature, API change, unfamiliar module...)
+      │
+      ├─ [MUST] STEP 0: local_workflow_plan
+      │     Classify task type and risk level first. Use the MCP tool:
+      │     mcp__local-llm__local_workflow_plan or CLI:
+      │     `git diff --name-only | py -3 tools/local_workflow_plan.py --stdin --task "<desc>"`
+      │
+      ├─ [MUST] STEP 1: Orient
+      │     local_repo_map + find-related-files → understand project structure
+      │
+      ├─ [MUST] STEP 2: Understand
+      │     local_summarize_file for each key file > 200 lines before editing
+      │     (auto-invocation hooks cover >300 lines in background, but controller
+      │      should explicitly invoke for files it plans to edit)
+      │
+      ├─ [CONDITIONAL] STEP 3: Test Plan
+      │     local_generate_test_plan if new API/schema/parser/CLI/DB/import-export
+      │
+      ├─ [MUST] STEP 4: Review
+      │     local_review_diff (commit_gate=true) after edits, before commit
+      │
+      ├─ [CONDITIONAL] STEP 5: Debate
+      │     local_debate_review_diff for high-risk paths only
+      │     (MCP server, router, hooks, gate, security boundaries, DB schema,
+      │      release/freeze boundaries)
+      │
+      └─ [MUST] STEP 6: Commit
+          draft-commit-message → controller reviews → finalizes → commits
+```
+
+### MUST / SHOULD / MAY Delegate
+
+| Level | Trigger | Tool |
+|-------|---------|------|
+| **MUST** | Any non-trivial task, first step | `local_workflow_plan` |
+| **MUST** | Key file > 200 lines, first edit | `local_summarize_file` |
+| **MUST** | New API / schema / parser / CLI / DB / import-export | `local_generate_test_plan` |
+| **MUST** | Any code change, pre-commit | `local_review_diff` (commit_gate=true) |
+| **MUST** | MCP server / router / hooks / gate / security / DB schema | `local_debate_review_diff` |
+| **MUST** | Release / freeze boundary | `local_parallel_review` |
+| **SHOULD** | Cross-file / unfamiliar module | `find-related-files` + `local_repo_map` |
+| **SHOULD** | Unfamiliar directory | `local_summarize_tree` |
+| **SHOULD** | Multi-commit batch | `draft-pr-summary` + `draft-changelog-entry` |
+| **MAY skip** | Explanation-only, tiny typo, user says no MCP, emergency | — |
+
+### Budget Controls
+
+Before delegating heavy work, set limits:
+
+- `max_files_to_summarize` — cap summarize-file calls per task (default: 5)
+- `max_runtime_seconds` — cap total local model time (default: 300)
+- `max_model_calls` — cap total LLM calls (default: 10)
+- Stop on `ok=false`, timeout, high uncertainty, or safety boundary
+- Deep/reasoning models are never default — only when explicitly required
+
+### Work Order Schema
+
+```json
+{
+  "task_description": "<what the user asked>",
+  "controller_objective": "<what Claude Code is trying to achieve>",
+  "risk_level": "low | medium | high",
+  "local_steps_requested": [
+    {"step": "summarize", "tool": "local_summarize_file", "target": "<path>", "reason": "<why>"}
+  ],
+  "target_files": ["<path>"],
+  "search_scope": "<project root or subdirectory>",
+  "allowed_tools": ["<MCP tool names>"],
+  "forbidden_actions": ["edit", "stage", "commit", "push"],
+  "budget_limits": {
+    "max_files_to_summarize": 5,
+    "max_runtime_seconds": 300,
+    "max_model_calls": 10
+  },
+  "expected_outputs": ["summaries", "related_files", "risk_notes"],
+  "review_level": "commit_gate | debate_fast | debate_full",
+  "debate_policy": "required | optional | skip",
+  "stop_conditions": ["ok=false", "timeout", "high_uncertainty", "safety_boundary"],
+  "controller_notes": "<free-form>"
+}
+```
+
+### Result Packet Schema
+
+```json
+{
+  "files_examined": ["<path>"],
+  "related_files": ["<test_path>", "<config_path>"],
+  "summaries": [{"file": "<path>", "summary": "<markdown>", "confidence": "high|medium|low"}],
+  "test_recommendations": ["<rec>"],
+  "risk_notes": ["<note>"],
+  "uncertainty": "low | medium | high",
+  "uncertain_points": ["<point>"],
+  "skipped_steps": [{"step": "debate", "reason": "docs-only"}],
+  "budget_used": {"files_summarized": 3, "runtime_seconds": 85, "model_calls": 5},
+  "suggested_next_calls": ["local_review_diff", "draft-commit-message"],
+  "controller_must_verify": true,
+  "advisory_only": true
+}
+```
+
+### Responsibility Split
+
+| Responsibility | Controller (Claude Code) | Local Models |
+|---------------|-------------------------|--------------|
+| Task classification & risk grading | Decides (uses workflow_plan as advisory) | Advisory input via workflow_plan |
+| File discovery & scoping | Decides scope | Executes find-related-files, repo_map |
+| Code understanding | Verifies summaries directly | Drafts summaries |
+| Implementation plan | **Owns** | — |
+| Writing code | **Owns** | Draft only (→ .local_llm_out/) |
+| Reading secrets | **Owns** (reads directly) | **Forbidden** |
+| Diff review | Final judgment | Advisory review |
+| Debate review | Decides whether needed | Executes rounds |
+| Running tests | **Owns** | Classify failures only |
+| Commit message | **Owns** (advisors draft) | Draft only |
+| Final user-facing answer | **Owns** | — |
+| Deciding to ask the user | **Owns** | — |
+
 ## Local Multi-Model Worker Policy
 
 This project uses a local multi-model LLM worker for low-risk, read-only assistance.

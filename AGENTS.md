@@ -18,6 +18,169 @@ collection.  It provides:
 Codex, Claude Code, and local LLMs are executors — the pipeline provides the
 control layer that gates commits and releases.
 
+## Controller Delegation Contract (U-1)
+
+**Core principle**: Big model plans. Local models execute bounded read-only heavy
+work. Big model audits, integrates, edits, and finalizes. Local models never
+edit, stage, commit, or push.
+
+### Delegation Decision Tree
+
+When Codex receives a non-trivial task, it MUST follow this decision tree:
+
+```
+Task received
+  │
+  ├─ Trivial? (explanation-only, no code change)
+  │   └─ YES → Answer directly. No MCP delegation needed.
+  │
+  ├─ Tiny low-risk edit? (single-line typo, ≤5 line fix, not a high-risk path)
+  │   └─ YES → May skip local_summarize_file. MUST still run review_diff
+  │            (commit_gate=true) before commit.
+  │
+  └─ Non-trivial (cross-file, new feature, API change, unfamiliar module...)
+      │
+      ├─ [MUST] STEP 0: local_workflow_plan
+      │     Classify task type and risk level first. Pure-heuristic, no LLM cost.
+      │
+      ├─ [MUST] STEP 1: Orient
+      │     repo_map + find-related-files → understand project structure
+      │
+      ├─ [MUST] STEP 2: Understand
+      │     local_summarize_file for each key file > 200 lines before editing
+      │
+      ├─ [CONDITIONAL] STEP 3: Test Plan
+      │     local_generate_test_plan if new API/schema/parser/CLI/DB/import-export
+      │
+      ├─ [MUST] STEP 4: Review
+      │     local_review_diff (commit_gate=true) after edits, before commit
+      │
+      ├─ [CONDITIONAL] STEP 5: Debate
+      │     local_debate_review_diff for high-risk paths only
+      │     (MCP server, router, hooks, gate, security boundaries, DB schema,
+      │      release/freeze boundaries)
+      │
+      └─ [MUST] STEP 6: Commit
+          draft-commit-message → controller reviews → finalizes → commits
+```
+
+### MUST Delegate (block commit if skipped without documented reason)
+
+| Trigger | Tool | Notes |
+|---------|------|-------|
+| Any non-trivial task, first step | `local_workflow_plan` | Pure heuristic, no LLM cost |
+| Key file > 200 lines, first edit | `local_summarize_file` | Before editing |
+| New API / schema / parser / CLI / DB / import-export | `local_generate_test_plan` | Before implementing |
+| Any code change, pre-commit | `local_review_diff` (commit_gate=true) | Required gate |
+| MCP server / router / hooks / gate / security / DB schema | `local_debate_review_diff` | Fast mode minimum |
+| Release / freeze boundary | `local_parallel_review` | Parallel multi-family review |
+
+### SHOULD Delegate (strong recommendation, not a hard gate)
+
+| Trigger | Tool |
+|---------|------|
+| Cross-file / cross-module task | `find-related-files` |
+| Unfamiliar directory | `local_summarize_tree` |
+| After edits, non-gate review | `local_review_diff` (commit_gate=false) |
+| Multi-commit batch | `draft-pr-summary` + `draft-changelog-entry` |
+| Cost/efficiency question | `call_ledger_cli.py by-task` |
+
+### MAY Skip Delegation
+
+| Situation | Condition |
+|-----------|-----------|
+| Explanation-only answer | No code changes |
+| Tiny docs typo | Single-line, not safety/security doc |
+| One-line fully specified edit | Not a high-risk path |
+| User explicitly says "no MCP" or "no tools" | User override |
+| Emergency stop / rollback | Safety first |
+
+### Budget Controls
+
+Before delegating heavy work, the controller sets limits:
+
+- `max_files_to_summarize` — cap on summarize-file calls per task
+- `max_runtime_seconds` — cap on total local model time
+- `max_model_calls` — cap on total LLM calls
+- Stop on `ok=false`, timeout, or high uncertainty
+- Stop on safety boundary (secrets, auth, crypto paths)
+- Deep/reasoning models are never default — only when explicitly required
+
+### Work Order Schema
+
+When the controller delegates work to local models, it specifies:
+
+```json
+{
+  "task_description": "<what the user asked>",
+  "controller_objective": "<what the controller is trying to achieve>",
+  "risk_level": "low | medium | high",
+  "local_steps_requested": [
+    {"step": "summarize", "tool": "local_summarize_file", "target": "<path>", "reason": "<why>"}
+  ],
+  "target_files": ["<path>"],
+  "search_scope": "<project root or subdirectory>",
+  "allowed_tools": ["local_summarize_file", "local_review_diff", ...],
+  "forbidden_actions": ["edit", "stage", "commit", "push"],
+  "budget_limits": {
+    "max_files_to_summarize": 5,
+    "max_runtime_seconds": 300,
+    "max_model_calls": 10
+  },
+  "expected_outputs": ["summaries", "related_files", "risk_notes"],
+  "review_level": "commit_gate | debate_fast | debate_full",
+  "debate_policy": "required | optional | skip",
+  "stop_conditions": ["ok=false", "timeout", "high_uncertainty", "safety_boundary"],
+  "controller_notes": "<free-form context>"
+}
+```
+
+### Result Packet Schema
+
+Local models return results in a consistent advisory-only packet:
+
+```json
+{
+  "files_examined": ["<path>"],
+  "related_files": ["<test_path>", "<config_path>"],
+  "summaries": [{"file": "<path>", "summary": "<markdown>", "confidence": "high|medium|low"}],
+  "test_recommendations": ["<rec>"],
+  "risk_notes": ["<note>"],
+  "uncertainty": "low | medium | high",
+  "uncertain_points": ["<point>"],
+  "skipped_steps": [{"step": "debate", "reason": "docs-only"}],
+  "budget_used": {"files_summarized": 3, "runtime_seconds": 85, "model_calls": 5},
+  "suggested_next_calls": ["local_review_diff", "draft-commit-message"],
+  "controller_must_verify": true,
+  "advisory_only": true
+}
+```
+
+### Responsibility Split
+
+| Responsibility | Controller (Codex) | Local Models |
+|---------------|-------------------|--------------|
+| Task classification & risk grading | Decides (uses workflow_plan as advisory) | Input via workflow_plan |
+| File discovery & scoping | Decides scope | Executes find-related-files, repo_map |
+| Code understanding | Verifies summaries directly | Drafts summaries |
+| Implementation plan | **Owns** | - |
+| Writing code | **Owns** | Draft only (→ .local_llm_out/) |
+| Reading secrets (.env, tokens, keys) | **Owns** (reads directly) | **Forbidden** |
+| Diff review | Final judgment | Advisory review |
+| Debate review | Decides whether needed | Executes rounds |
+| Running tests | **Owns** | Classify failures only |
+| Commit message | **Owns** (advisors draft) | Draft only |
+| Final user-facing answer | **Owns** | - |
+| Deciding to ask the user | **Owns** | - |
+
+### Prohibition Rules (Hard Stops)
+
+- Local models MUST NOT edit, stage, commit, push, tag, or release.
+- Controller MUST NOT say "I reviewed it manually" as substitute for failed MCP review.
+- Draft code MUST NOT be treated as applied code — controller must inspect and manually apply.
+- `local_debate_review_diff` MUST NOT be skipped for hook/gate/DB/schema/security/release changes.
+- MCP `ok=false`, timeout, or error → **STOP. Do not commit.**
+
 ## Required Workflow for Broad Tasks
 
 For cross-file, cross-module, unfamiliar-repo, or architecture-sensitive tasks,

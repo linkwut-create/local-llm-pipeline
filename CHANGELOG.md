@@ -1,5 +1,31 @@
 # Changelog
 
+## Post-v0.12.0 (U-chain, 2026-05-26)
+
+- **U-0** (audit, no commit): Controller delegation policy planning audit.
+  Read-only inspection of all instruction files, MCP tools, task_bootstrap,
+  and local_workflow_plan.  Verdict: infrastructure sufficient (12 MCP tools
+  + workflow_plan + task_bootstrap).  Gap is not a 13th tool — it's a
+  delegation contract that makes the big model default to "plan, delegate
+  read-only heavy work, audit, integrate, finalize."  Designed delegation
+  decision tree, MUST/SHOULD/SKIP triggers, work order schema, result packet
+  schema, responsibility split, and budget controls.  Recommended U-1 =
+  docs-only delegation contract first.  No code/test/VERSION/tag changes.
+
+- **U-1** (this commit): Docs-only Controller Delegation Contract.
+  Added "Controller Delegation Contract (U-1)" to AGENTS.md and CLAUDE.md:
+  delegation decision tree, MUST/SHOULD/SKIP triggers with commit-gate
+  semantics, work order schema, result packet schema, responsibility split
+  (controller owns implementation/edit/test/finalize; local models own
+  read-only context collection/summaries/advisory review), budget controls
+  (max 5 summarizes, 300s runtime, 10 model calls per task), and prohibition
+  rules.  Added delegation quick reference to `.codex/local-llm-worker.md`.
+  Added "Controller Delegation Protocol (U-1)" to `docs/mcp-task-policy.md`
+  as MCP 2.2 with full delegation level definitions (MUST/SHOULD/SKIP) and
+  budget control defaults.  Updated PROJECT_STATUS.md with U-chain status
+  table.  Docs-only — no runtime/test/VERSION/tag changes.  MCP tool count
+  remains 12.  No push.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,
