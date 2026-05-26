@@ -105,6 +105,17 @@
   (no source editing, commit, stage, push).  `max_output_chars` 3000 → 4000.
   5 focused tests.  Updated CLAUDE.md, CHANGELOG, and PROJECT_STATUS.
 
+- **J-L2** (`e1f2b8d`): Add by-task call ledger efficiency report.
+  New `group_by_task_efficiency()` in call_ledger.py with per-task
+  primary_profile, primary_backend, and top_failure_type.  Upgraded
+  `by-task` CLI command with richer columns: fail%, avg_ms, dur_ms,
+  profile, backend, top_fail.  5 focused tests.
+
+- **J-L3** (this commit): Remove unavailable MTP profile from default debate
+  chain.  Replaces `qwen3.6_35b_moe_mtp` (99.2% failure rate, MTP pending)
+  with `deep_reviewer` as the default third-round debate profile.  Profile
+  remains available for explicit/manual use.  3 focused tests.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

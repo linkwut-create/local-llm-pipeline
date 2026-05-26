@@ -42,6 +42,14 @@
 | J-I.5 | Done (this commit) | Docs-only roadmap wording adjustment. Replace GitHub release references with local-only development language. |
 | J-K2 | Done (`3074eaf`) | **Enhance `find-related-files` to v2.** 5-line→6-section prompt, NO_RETRY_TASKS, advisory-only boundaries. 5 focused tests. Dogfood confirmed 6-section output. |
 
+## Call Efficiency (Post-v0.12.0, J-L chain, 2026-05-26)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| J-L1 | Done (audit, no commit) | Call-efficiency audit. Found qwen3.6_35b_moe_mtp 99.2% failure rate, debate 46% failure, repo_map accounting artifact. Recommended by-task report + debate chain fix. |
+| J-L2 | Done (`e1f2b8d`) | **Add by-task call ledger efficiency report.** `group_by_task_efficiency()` + richer CLI with profile/backend/failure_type. 5 focused tests. |
+| J-L3 | In progress | **Remove unavailable MTP profile from default debate chain.** Replace qwen3.6_35b_moe_mtp with deep_reviewer. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |

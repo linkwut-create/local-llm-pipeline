@@ -26,8 +26,28 @@ def test_fast_mode_uses_two_profiles():
 
 def test_default_profiles_order():
     assert debate.DEFAULT_ROUND_PROFILES == [
-        "qwen3.6_27b_mtp", "reasoning_checker", "qwen3.6_35b_moe_mtp"
+        "qwen3.6_27b_mtp", "reasoning_checker", "deep_reviewer"
     ]
+
+
+def test_debate_round_profiles_exist():
+    """J-L3: every profile in DEFAULT_ROUND_PROFILES must be defined."""
+    import json
+    from pathlib import Path
+    profiles_path = Path(__file__).parent.parent / "tools" / "local_llm_profiles.json"
+    profiles = json.loads(profiles_path.read_text(encoding="utf-8"))
+    for p in debate.DEFAULT_ROUND_PROFILES:
+        assert p in profiles["profiles"], f"profile '{p}' missing from profiles.json"
+
+
+def test_unavailable_mtp_not_in_default_rounds():
+    """J-L3: qwen3.6_35b_moe_mtp must NOT be in default debate chain."""
+    assert "qwen3.6_35b_moe_mtp" not in debate.DEFAULT_ROUND_PROFILES
+
+
+def test_deep_reviewer_is_round_3():
+    """J-L3: deep_reviewer is the default third-round debate profile."""
+    assert debate.DEFAULT_ROUND_PROFILES[2] == "deep_reviewer"
 
 
 def test_debate_tasks_defined():
