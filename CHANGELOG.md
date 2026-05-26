@@ -150,6 +150,13 @@
   decision, 7-phase command sequence.  36 focused tests.  Updated CLAUDE.md,
   CHANGELOG, and PROJECT_STATUS.
 
+- **P-2** (audit, no commit): Dogfood validation for `local_workflow_plan`.
+  4 scenarios tested.  A (docs), B (router), D (checkpoint) all PASS.
+  C (add advisor task) PARTIAL — planner over-classifies `local_llm_tasks` /
+  `local_llm_worker` paths as high-risk for a low-risk config-only task.
+  Acceptable: advisory-only, controller can override.  No P-2.5 tuning
+  needed.  P-chain closed.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

@@ -60,6 +60,7 @@
 |-------|--------|-------|
 | P-0 | Done (audit, no commit) | Workflow orchestration planning audit. 4 workflow types designed from 12 existing tools. Decision tree for debate triggers. Recommended P-1. |
 | P-1 | Done (`9bd0759`) | **Add `local_workflow_plan` heuristic planner.** Pure heuristic (no LLM). Classifies change type, outputs 7-phase command sequence. 36 focused tests. |
+| P-2 | Done (audit, no commit) | Dogfood validation: 4 scenarios, A/B/D PASS, C PARTIAL (over-conservative high-risk/debate for advisor task). Acceptable — advisory-only, not a gate. No P-2.5 tuning needed. P-chain closed. |
 
 ## MCP Cost Discipline
 
