@@ -1,3 +1,105 @@
+# v0.12.0 Release Notes (DRAFT — candidate)
+
+**Release**: v0.12.0 (from v0.11.0 baseline)
+**Date**: not yet released
+**Status**: local candidate, 11 commits ahead of origin/master, not pushed
+
+## Summary
+
+v0.12.0 is a **productivity + backend governance** release. It adds three
+advisory-only draft text generation advisors (commit messages, PR summaries,
+changelog entries) and closes the backend governance chain by classifying
+profiles, recording backend/failure data in the call ledger, and enforcing
+profile eligibility in the router.
+
+## Highlights
+
+### Productivity Advisor Triple
+
+Three new CLI tasks generate advisory draft text from git diff:
+
+| Task | Usage | Output |
+|------|-------|--------|
+| `draft-commit-message` | `git diff --cached \| py -3 tools/local_llm_router.py draft-commit-message --stdin` | Conventional commit title, body bullets, risk notes |
+| `draft-pr-summary` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-pr-summary --stdin` | PR title, summary, changes by area, test notes, risks, reviewer focus |
+| `draft-changelog-entry` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-changelog-entry --stdin` | Section heading, grouped bullets, user-visible/internal/test/risk notes |
+
+All three tasks are advisory-only: risk=low, profile=code_worker, may_modify_code=false,
+controller_must_verify=true. They write only to `.local_llm_out/` and never modify
+source files, commit, push, or create PRs.
+
+### Backend Governance Chain (Closed)
+
+- **J-C3** (`3b2b660`): 23 profiles now carry `_backend_class` (ollama,
+  ollama_heavy_manual, ollama_mtp_pending, llamacpp_unconfigured, unavailable,
+  placeholder).
+- **J-C4** (`a052ed5`): Call ledger records `backend` and `failure_type`
+  with structured classification.  New `by-backend` CLI command.
+- **J-C5** (`558804c`): Router enforces `_backend_class` eligibility.
+  Unavailable/placeholder/llamacpp_unconfigured profiles are not auto-selected.
+  Ollama default path unchanged.  Explicit `--profile` override preserved.
+
+### Quality
+
+| Gate | Result |
+|------|--------|
+| `validate_configs.py` | PASS |
+| `pytest tests/ -q` | 1908 passed, 0 failures |
+| Dogfood (three advisors) | 3/3 usable output verified (J-E.5) |
+| Prompt format audit | 3/3 clean — no truncation or garbling |
+
+### Advisory-Only Boundaries
+
+The three new draft tasks are governed by:
+- Prompt-level NEVER directives (no PR creation, push, commit, stage, or source editing)
+- Task config: `may_modify_code=false`, `controller_must_verify=true`
+- Router: `code_worker` profile, no auto-escalation chain
+- Worker: `NO_RETRY_TASKS` — no retry for generative text tasks
+
+## Commit Chain (11, v0.11.0..HEAD)
+
+```
+28b96c2 fix: correct debate error capture and ledger accounting
+3b2b660 chore: classify profile backend types
+1ad1571 fix: register draft-commit-message prompt
+aad90ba feat: add draft-commit-message advisor
+a052ed5 feat: record backend and failure type in call ledger
+e505b8a docs: clarify J-chain backend ledger status
+558804c feat: enforce backend class in router selection
+cc35358 docs: close out backend-class routing phase
+117b4f4 feat: add draft-pr-summary advisor
+be933e9 test: fix post-J-chain regression expectations
+4d518a4 feat: add draft-changelog-entry advisor
+```
+
+## Known Caveats
+
+- `draft-commit-message` and `draft-pr-summary` escalation chains are minimal
+  (`["code_worker"]` only) — these tasks do not benefit from model escalation.
+- Prompt adherence varies with `qwen3-coder:30b` behavior; models tend to
+  produce more detailed output than the prompt's strict section format.
+- Post-v0.11.0 tag, one commit (`429ed29`) has a cosmetic `@` in its subject
+  (PowerShell here-string artifact).  Purely cosmetic, not amended.
+- Release zip will require `.mcp.json` audit and forbidden artifact scan
+  before publication (standard release gate, deferred to J-I/J-J).
+
+## Upgrade / Release Status
+
+```text
+VERSION              0.11.0 (bump to 0.12.0 pending J-H)
+tag                  v0.11.0 at 6f146e7 (unchanged)
+local commits        11 ahead of origin/master
+push                 not done
+release zip          not created
+```
+
+Next phases:
+- **J-H**: VERSION bump to 0.12.0
+- **J-I**: Pre-release audit / debate review on router commit
+- **J-J**: Push / tag / GitHub release
+
+---
+
 # v0.11.0 Release Notes
 
 **Release**: v0.11.0 (from v0.10.0 baseline)

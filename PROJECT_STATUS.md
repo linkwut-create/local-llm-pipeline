@@ -33,7 +33,10 @@
 | J-C5.6 | Done (`cc35358`) | Amend accidental leading `@` in docs commit subject. Message-only. |
 | J-D | Done (`117b4f4`) | **Add `draft-pr-summary` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries. 5 focused tests. |
 | J-D.5 | Done (`be933e9`) | Fix two regression debts: `_ESCALATION_CHAIN` entries + P5 `known_keys`. Full suite 1903 passed, 0 failures. |
-| J-E | Done (this commit) | **Add `draft-changelog-entry` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries: no CHANGELOG.md editing, push, commit, or source modification. 5 focused tests. Full suite 1908 passed. |
+| J-E | Done (`4d518a4`) | **Add `draft-changelog-entry` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries. 5 focused tests. |
+| J-E.5 | Done (no commit) | Productivity advisor bundle dogfood + prompt sanity verification. All three prompts 3/3 clean. Dogfood output 3/3 usable. |
+| J-F | Done (audit, no commit) | v0.12.0 local bundle release-slice audit. 11 commits, 20 files, +955/-34. Two chains complete. Full suite 1908 passed. Verdict: **PASS — ready for release-prep.** |
+| J-G | Done (this commit) | Docs/status closeout for v0.12.0 release candidate. Records E.5/F results. Drafts v0.12.0 RELEASE_NOTES. VERSION still 0.11.0 until J-H. |
 
 ## MCP Cost Discipline
 

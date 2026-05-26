@@ -62,11 +62,28 @@
   Add `backend` and `failure_type` to P5 ledger `known_keys` (J-C4 fields).
   Full suite: 1903 passed, 0 failures.
 
-- **J-E** (this commit): Add `draft-changelog-entry` productivity advisor.  New
+- **J-E** (`4d518a4`): Add `draft-changelog-entry` productivity advisor.  New
   task (risk=low, profile=code_worker, advisory-only).  Prompt enforces boundary
   (no CHANGELOG.md editing, push, commit, or source modification).  Prompt
   registry entry with validated hash.  5 focused tests.  CLI usage:
   `git diff main..HEAD | py -3 tools/local_llm_router.py draft-changelog-entry --stdin`.
+
+- **J-E.5** (no commit): Productivity advisor bundle dogfood and prompt sanity
+  verification.  All three advisor prompts inspected (3/3 clean, no truncation).
+  Dogfood on `7b8dd40..HEAD` produced usable output for commit-message,
+  PR-summary, and changelog-entry.  Advisors verified: J-B + J-D + J-E.
+
+- **J-F** (audit, no commit): v0.12.0 local bundle release-slice audit.
+  11 local commits since `origin/master` (`7b8dd40`).  20 files changed,
+  +955/-34 lines.  Two chains complete: backend governance (profile
+  classification → ledger fields → router enforcement) and productivity
+  advisor triple (commit-message / PR-summary / changelog-entry).  Full
+  suite 1908 passed, 0 failures.  Verdict: **PASS** — ready for release-prep.
+
+- **J-G** (this commit): Docs/status closeout for v0.12.0 release candidate.
+  Records J-E.5 dogfood and J-F audit results.  Drafts v0.12.0 RELEASE_NOTES
+  section.  No runtime/test/VERSION/tag changes.  VERSION still 0.11.0; next
+  step is J-H VERSION bump to 0.12.0.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
