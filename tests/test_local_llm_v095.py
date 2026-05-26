@@ -33,7 +33,7 @@ def test_version_file_is_095():
     vf = PROJECT_ROOT / "VERSION"
     assert vf.exists(), "VERSION file is missing"
     content = vf.read_text(encoding="utf-8").strip()
-    assert content == "0.11.0", f"VERSION should be 0.11.0, got: {content}"
+    assert content == "0.12.0", f"VERSION should be 0.12.0, got: {content}"
 
 
 def test_mcp_server_version_matches_version_file():
@@ -138,7 +138,7 @@ def test_read_version_falls_back_to_project_root(monkeypatch):
 
     version = mcp._read_version()
     assert version != "unknown", "Fallback to PROJECT_ROOT should find VERSION"
-    assert version == "0.11.0"
+    assert version == "0.12.0"
 
 
 def test_read_version_unknown_when_no_version_anywhere(tmp_path, monkeypatch):

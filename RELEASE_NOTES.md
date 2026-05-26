@@ -86,15 +86,14 @@ be933e9 test: fix post-J-chain regression expectations
 ## Upgrade / Release Status
 
 ```text
-VERSION              0.11.0 (bump to 0.12.0 pending J-H)
-tag                  v0.11.0 at 6f146e7 (unchanged)
-local commits        11 ahead of origin/master
+VERSION              0.12.0 (bumped in J-H)
+tag                  v0.11.0 at 6f146e7 (unchanged, v0.12.0 tag pending J-J)
+local commits        13 ahead of origin/master
 push                 not done
 release zip          not created
 ```
 
 Next phases:
-- **J-H**: VERSION bump to 0.12.0
 - **J-I**: Pre-release audit / debate review on router commit
 - **J-J**: Push / tag / GitHub release
 

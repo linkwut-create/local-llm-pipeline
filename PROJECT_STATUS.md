@@ -36,7 +36,8 @@
 | J-E | Done (`4d518a4`) | **Add `draft-changelog-entry` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries. 5 focused tests. |
 | J-E.5 | Done (no commit) | Productivity advisor bundle dogfood + prompt sanity verification. All three prompts 3/3 clean. Dogfood output 3/3 usable. |
 | J-F | Done (audit, no commit) | v0.12.0 local bundle release-slice audit. 11 commits, 20 files, +955/-34. Two chains complete. Full suite 1908 passed. Verdict: **PASS — ready for release-prep.** |
-| J-G | Done (this commit) | Docs/status closeout for v0.12.0 release candidate. Records E.5/F results. Drafts v0.12.0 RELEASE_NOTES. VERSION still 0.11.0 until J-H. |
+| J-G | Done (`f636bff`) | Docs/status closeout for v0.12.0 release candidate. Records E.5/F results. Drafts v0.12.0 RELEASE_NOTES. |
+| J-H | Done (this commit) | **Bump VERSION 0.11.0 → 0.12.0.** 4 test version guards updated. No tag, no push, no release archive. Next: J-I pre-release audit. |
 
 ## MCP Cost Discipline
 

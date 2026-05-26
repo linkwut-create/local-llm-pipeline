@@ -80,10 +80,13 @@
   advisor triple (commit-message / PR-summary / changelog-entry).  Full
   suite 1908 passed, 0 failures.  Verdict: **PASS** — ready for release-prep.
 
-- **J-G** (this commit): Docs/status closeout for v0.12.0 release candidate.
+- **J-G** (`f636bff`): Docs/status closeout for v0.12.0 release candidate.
   Records J-E.5 dogfood and J-F audit results.  Drafts v0.12.0 RELEASE_NOTES
-  section.  No runtime/test/VERSION/tag changes.  VERSION still 0.11.0; next
-  step is J-H VERSION bump to 0.12.0.
+  section.  No runtime/VERSION/tag changes.
+
+- **J-H** (this commit): Bump VERSION from 0.11.0 to 0.12.0.  4 test version
+  guards updated.  No tag, no push, no release archive yet.  Next: J-I
+  pre-release audit / debate review.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
