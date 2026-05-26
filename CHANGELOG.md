@@ -35,6 +35,19 @@
   generation_timeout, api_error, placeholder, unknown).  New `by-backend` CLI
   command.  16 targeted tests + 254 regression passed.  Backward-compatible.
 
+- **J-C5** (`558804c`): Enforce `_backend_class` in router selection.
+  `local_llm_router.py` now reads `_backend_class` for eligibility checks.
+  `ollama` and `ollama_mtp_pending` remain auto-eligible.  `ollama_heavy_manual`
+  requires explicit `--profile` or task risk ≥ medium-high.  `llamacpp_unconfigured`,
+  `unavailable`, and `placeholder` are not auto-eligible.  Explicit `--profile`
+  override remains allowed.  Also fixes J-B `draft-commit-message` missing from
+  `code_worker.use_for`.  `validate_configs.py` PASS, 296 tests passed.  Backend
+  governance main chain (J-C3 → J-C4 → J-C5) now closed.
+
+- **J-C5.5** (this commit): Docs/status closeout.  Records J-C5 backend-class
+  router enforcement in CHANGELOG and PROJECT_STATUS.  No runtime/test/VERSION/
+  tag changes.  Next: J-D draft-pr-summary productivity advisor.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

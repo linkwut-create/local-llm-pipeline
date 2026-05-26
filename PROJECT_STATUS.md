@@ -18,6 +18,19 @@
 | I-C | Done | Smoke test passed: AGENTS.md instruction coverage 6/6, task_bootstrap exit 0 with 3/3 summaries, 82/82 tests passed, git diff --check clean, working tree clean. |
 | I-D | Done (`9d91c7b`) | Docs/status closeout. Codex adaptation functionally closed. Remaining gaps require real Codex environment: MCP invocation, PowerShell quoting, `.codex/config.toml` `python`→`py -3`. |
 
+## Backend Governance (Post-v0.11.0, J-chain, 2026-05-26)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| J-C1a | Done (`28b96c2`) | Fix debate error capture (`_format_call_error()`) and ledger accounting (success True/False/unknown, UNKN column). |
+| J-C1 | Done (audit, no code) | llama.cpp backend manager planning audit. All 4 endpoints offline. Ollama-first strategy confirmed. |
+| J-C2 | Done (audit, no code) | Hybrid backend planning audit. 23/24 profiles have models in Ollama. Recommended profile backend classification before ledger/router changes. |
+| J-C3 | Done (`3b2b660`) | Add explicit `_backend_class` to 23 profiles (12 ollama, 5 ollama_heavy_manual, 2 ollama_mtp_pending, 2 unavailable, 1 llamacpp_unconfigured, 1 placeholder). Metadata-only. Tests validate class presence, allowed values, and safety invariants. |
+| J-C3.5 | Done (`1ad1571`) | Register draft-commit-message in prompt registry. Fixes `validate_configs.py` failure from J-B. |
+| J-C4 | Done (`a052ed5`) | Add `backend` and `failure_type` fields to call ledger. `resolve_backend()` + `classify_failure_type()`. New `by-backend` CLI command. 16 targeted + 254 regression tests passed. |
+| J-C5 | Done (`558804c`) | **Router enforces `_backend_class` for eligibility.** `ollama` and `ollama_mtp_pending` remain auto-eligible. `ollama_heavy_manual` requires explicit `--profile` or task risk ≥ medium-high. `llamacpp_unconfigured`, `unavailable`, and `placeholder` are not auto-eligible. Explicit `--profile` override remains allowed. Also fixes J-B `draft-commit-message` missing from `code_worker.use_for`. `validate_configs.py` PASS, 296 tests passed. **Backend governance main chain J-C3 → J-C4 → J-C5 now closed.** |
+| J-C5.5 | Done (this commit) | Docs/status closeout. No runtime/test/VERSION/tag changes. Next: J-D draft-pr-summary productivity advisor. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |
