@@ -170,6 +170,18 @@
   "Do not claim tests passed".  Dogfood confirms clean output with
   no duplicated sections.  1957 passed.  Q-chain closed.
 
+- **S-0** (audit, no commit): MCP exposure planning audit for
+  `local_workflow_plan`.  Recommended: expose as 12th MCP tool via direct
+  module import (pure-heuristic, no LLM).  Same pattern as `local_repo_map`.
+  High-risk path (MCP server).
+
+- **S-1** (`7544264`): Expose `local_workflow_plan` as 12th MCP tool.
+  Direct module import via `call_workflow_plan()` handler.  Schema with
+  task_description/files/format params.  Tool count 11→12 across 8 test
+  locations + 3 doc files.  14 focused MCP tests.  1971 passed.
+  review-diff ok=true, debate-review-diff (fast mode) ok=true.
+  S-chain closed.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser
