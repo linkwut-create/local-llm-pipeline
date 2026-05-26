@@ -20,16 +20,20 @@
   in Ollama.  0 ledger records have `backend` field.  Recommended profile backend
   classification before ledger/router changes.
 
-- **J-C4** (this commit): Add `backend` and `failure_type` fields to call ledger.
-  `resolve_backend()` maps provider→backend (ollama/llamacpp/openai_compatible/unknown).
-  `classify_failure_type()` classifies failures as missing_model, backend_offline,
-  model_load_failed, generation_timeout, api_error, placeholder, or unknown.
-  Both fields are optional for backward compat.  New `by-backend` CLI command.
-  16 targeted tests + 254 regression passed.  No router/worker behavior change.
-  23 profiles classified: 12 ollama, 5 ollama_heavy_manual, 2 ollama_mtp_pending,
-  2 unavailable, 1 llamacpp_unconfigured, 1 placeholder.  Tests validate
-  class presence, allowed values, unavailable profiles not used as task defaults.
-  Metadata-only — no runtime behavior change.  No VERSION/tag changes.
+- **J-C3** (`3b2b660`): Add explicit `_backend_class` to 23 profiles.
+  12 ollama, 5 ollama_heavy_manual, 2 ollama_mtp_pending, 2 unavailable,
+  1 llamacpp_unconfigured, 1 placeholder.  Tests validate class presence,
+  allowed values, and safety invariants.  Metadata-only.
+
+- **J-C3.5** (`1ad1571`): Register draft-commit-message in prompt registry.
+  New `draft-commit-message.v1.md` prompt file.  Fixes `validate_configs.py`
+  failure from J-B (`aad90ba`).
+
+- **J-C4** (`a052ed5`): Add `backend` and `failure_type` fields to call ledger.
+  `resolve_backend()` maps provider→backend.  `classify_failure_type()` returns
+  structured types (missing_model, backend_offline, model_load_failed,
+  generation_timeout, api_error, placeholder, unknown).  New `by-backend` CLI
+  command.  16 targeted tests + 254 regression passed.  Backward-compatible.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
