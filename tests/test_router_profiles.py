@@ -360,6 +360,10 @@ class TestExistingTaskResolutionStillWorks:
         p, m, r = resolve_profile("draft-commit-message", None, None)
         assert p == "code_worker"
 
+    def test_draft_pr_summary_resolves(self):
+        p, m, r = resolve_profile("draft-pr-summary", None, None)
+        assert p == "code_worker"
+
     def test_summarize_file_resolves(self):
         p, m, r = resolve_profile("summarize-file", None, None)
         assert p == "fast_summary"

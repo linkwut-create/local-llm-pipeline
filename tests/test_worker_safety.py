@@ -252,6 +252,59 @@ def test_draft_commit_message_prompt_exists():
     assert "empty" in prompt.lower() or "meaningless" in prompt.lower()
 
 
+def test_draft_pr_summary_task_config():
+    """J-D: draft-pr-summary must be advisory-only."""
+    import json
+    from pathlib import Path
+    tasks_path = Path(__file__).parent.parent / "tools" / "local_llm_tasks.json"
+    tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+    t = tasks["tasks"].get("draft-pr-summary")
+    assert t is not None, "draft-pr-summary missing from tasks.json"
+    assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
+    assert t["may_modify_code"] is False, "may_modify_code must be false"
+    assert t["controller_must_verify"] is True, "controller_must_verify must be true"
+    assert t["default_profile"] == "code_worker"
+
+
+def test_draft_pr_summary_prompt_exists():
+    """J-D: prompt must exist and contain advisory-only boundaries."""
+    from local_llm_worker import TASK_PROMPTS
+    prompt = TASK_PROMPTS.get("draft-pr-summary")
+    assert prompt is not None, "draft-pr-summary prompt missing from TASK_PROMPTS"
+    assert "NEVER create a PR" in prompt
+    assert "NEVER push" in prompt
+    assert "NEVER run git commit" in prompt
+    assert "NEVER stage files" in prompt
+    assert "Do NOT modify source files" in prompt
+    assert "ADVISORY ONLY" in prompt or "advisory" in prompt.lower()
+    assert "DRAFT" in prompt
+    assert "empty" in prompt.lower() or "too small" in prompt.lower()
+
+
+def test_draft_pr_summary_in_no_retry():
+    """J-D: draft-pr-summary should not retry (generative, non-trivial)."""
+    from local_llm_worker import NO_RETRY_TASKS
+    assert "draft-pr-summary" in NO_RETRY_TASKS
+
+
+def test_draft_pr_summary_prompt_registry():
+    """J-D: prompt registry entry must exist and have valid hash."""
+    import json
+    from pathlib import Path
+    import hashlib
+    registry_path = Path(__file__).parent.parent / "tools" / "prompts" / "registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = registry["prompts"].get("draft-pr-summary")
+    assert entry is not None, "draft-pr-summary missing from registry.json"
+    assert entry["prompt_id"] == "draft-pr-summary"
+    assert entry["version"] == "v1"
+    assert entry["file"] == "draft-pr-summary.v1.md"
+    prompt_path = Path(__file__).parent.parent / "tools" / "prompts" / entry["file"]
+    text = prompt_path.read_text(encoding="utf-8")
+    actual_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+    assert entry["hash"] == actual_hash, f"hash mismatch: stored={entry['hash'][:8]}, actual={actual_hash[:8]}"
+
+
 def test_short_tasks_can_retry():
     from local_llm_worker import NO_RETRY_TASKS
     assert "summarize-file" not in NO_RETRY_TASKS

@@ -44,9 +44,18 @@
   `code_worker.use_for`.  `validate_configs.py` PASS, 296 tests passed.  Backend
   governance main chain (J-C3 → J-C4 → J-C5) now closed.
 
-- **J-C5.5** (this commit): Docs/status closeout.  Records J-C5 backend-class
+- **J-C5.5** (`cc35358`): Docs/status closeout.  Records J-C5 backend-class
   router enforcement in CHANGELOG and PROJECT_STATUS.  No runtime/test/VERSION/
-  tag changes.  Next: J-D draft-pr-summary productivity advisor.
+  tag changes.
+
+- **J-C5.6** (`cc35358`): Amend accidental leading `@` in docs commit subject.
+  Message-only — no file changes.
+
+- **J-D** (this commit): Add `draft-pr-summary` productivity advisor.  New task
+  (risk=low, profile=code_worker, advisory-only).  Worker prompt enforces
+  advisory-only boundary (no PR creation, push, commit, or file editing).
+  Prompt registry entry with validated hash.  5 focused tests.  CLI usage:
+  `git diff main..HEAD | py -3 tools/local_llm_router.py draft-pr-summary --stdin`.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 

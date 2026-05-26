@@ -56,6 +56,10 @@ Claude Code is the controller. The local worker is advisory only.
   `git diff --cached | py -3 tools/local_llm_router.py draft-commit-message --stdin`
   (advisory-only, output to `.local_llm_out/`, controller decides final message)
 
+- `draft-pr-summary` — draft a PR summary from git diff or commit range:
+  `git diff main..HEAD | py -3 tools/local_llm_router.py draft-pr-summary --stdin`
+  (advisory-only, output to `.local_llm_out/`, controller decides final PR text)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.

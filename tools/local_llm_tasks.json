@@ -169,6 +169,15 @@
       "allowed_use": "Draft a commit message from a git diff. Advisory only. Output is a suggestion — controller reviews, edits, and decides whether to use.",
       "forbidden_use": "Must not run git commit. Must not stage files. Must not edit source files. Must not claim the message is final. If diff is empty or meaningless, say so instead of fabricating."
     },
+    "draft-pr-summary": {
+      "risk": "low",
+      "default_profile": "code_worker",
+      "may_modify_code": false,
+      "controller_must_verify": true,
+      "max_output_chars": 4000,
+      "allowed_use": "Draft a PR summary from a git diff or commit range. Advisory only. Output is a suggestion — controller reviews, edits, and decides the final PR text.",
+      "forbidden_use": "Must not create a PR. Must not push. Must not run git commit. Must not stage files. Must not edit source files. Must not claim the summary is final. If diff is empty or too small, say so instead of fabricating."
+    },
     "draft-refactor": {
       "risk": "medium-high",
       "default_profile": "code_worker",

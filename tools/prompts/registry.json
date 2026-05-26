@@ -109,6 +109,12 @@
       "file": "draft-commit-message.v1.md",
       "hash": "6117a4477b85b779"
     },
+    "draft-pr-summary": {
+      "prompt_id": "draft-pr-summary",
+      "version": "v1",
+      "file": "draft-pr-summary.v1.md",
+      "hash": "67b62375957cb823"
+    },
     "suggest-improvements": {
       "prompt_id": "suggest-improvements",
       "version": "v1",

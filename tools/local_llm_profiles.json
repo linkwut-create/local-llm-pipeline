@@ -65,7 +65,8 @@
         "draft-fix",
         "draft-feature",
         "draft-refactor",
-        "draft-commit-message"
+        "draft-commit-message",
+        "draft-pr-summary"
       ],
       "candidates": [
         "qwen3-coder-next-q8:latest",
