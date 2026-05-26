@@ -157,6 +157,19 @@
   Acceptable: advisory-only, controller can override.  No P-2.5 tuning
   needed.  P-chain closed.
 
+- **Q-0** (audit, no commit): Advisor output quality audit.  4/5 advisors
+  pass (draft-pr-summary, draft-changelog-entry, find-related-files,
+  local_workflow_plan).  `draft-commit-message` was the only weak link —
+  unclear sections, duplicated content, low parseability.  Recommended
+  prompt-only fix, no JSON schema, no global format unification.
+
+- **Q-1** (`b5f71ad`): Align `draft-commit-message` prompt structure.
+  Replaced thin v1 prompt with 5-section Markdown format: Commit title,
+  Commit body, Tests/validation, Risk notes, Controller checklist.
+  Added empty-input guard, "No obvious risk" fallback, NEVER push,
+  "Do not claim tests passed".  Dogfood confirms clean output with
+  no duplicated sections.  1957 passed.  Q-chain closed.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser
