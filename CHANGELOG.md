@@ -185,6 +185,23 @@
   dimensions produce real buckets.  3 new alias regression tests.
   28 savings-focused, 215 call_ledger, 2084 full suite passed.
 
+- **Z-4** (`8a6ff00`): CLI-only cross-project feedback ledger.  Added
+  `tools/feedback_ledger.py` (390 lines) — manual CLI-only append-only
+  JSONL feedback ledger with subcommands `record`, `summary`, `by-target`.
+  Record schema: 15 fields (id, timestamp, source_project, target_project,
+  source_commit, target_commit, suggestion_type, suggestion_summary,
+  disposition, evidence, feedback_impact, controller_notes, created_by,
+  pipeline_tool, related_request_id).  Disposition enum: `accepted`,
+  `rejected`, `false_positive`, `converted_to_fix`, `deferred`.
+  Suggestion types: `review_flag`, `test_gap`, `docs_gap`, `risk_note`,
+  `refactor_suggestion`, `baseline_audit`, `cost_finding`, `quality_finding`.
+  Privacy: FORBIDDEN_KEYS + pattern redaction (API keys, GitHub tokens,
+  private keys), field length truncation.  Storage under
+  `.local_llm_out/feedback/`.  Added `tests/test_feedback_ledger.py`
+  (402 lines, 35 tests) — all mocked with temp synthetic JSONL files.
+  No MCP tool registration, no hooks/gates/CI, no auto-write.  Full
+  suite 2119 passed.  **Z-1 through Z-4 complete — Z-chain closed.**
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,
