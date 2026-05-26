@@ -68,6 +68,24 @@
   changes, no push.  U-chain core objective validated: work_order_template
   useful for reducing ambiguity in delegation.  U-line can pause here.
 
+## Post-v0.12.0 (W-chain, 2026-05-27)
+
+- **V-0** (audit, no commit): Post-U local baseline audit.  Full suite 1995
+  passed.  U-chain docs consistent across CLAUDE.md, AGENTS.md, .codex/
+  local-llm-worker.md, docs/mcp-task-policy.md.  12 MCP tools confirmed.
+  VERSION 0.12.0 at HEAD `97efa5f`.  Working tree clean.  Verdict: PASS
+  — `97efa5f` accepted as stable local baseline.  No code/test/VERSION/tag
+  changes.
+
+- **W-0** (smoke, no commit): Real MCP restart smoke.  After Claude Code /
+  MCP server restart, `local_workflow_plan` MCP response now includes
+  `work_order_template` with all U-2 contract fields: `advisory_only=true`,
+  `debate_policy=skip`, forbidden_actions includes edit/stage/commit/push.
+  F6 closed — root cause was stale MCP server process, not code defect.
+  Working tree clean throughout.  No code changes, no push.  F7 remains
+  the only known limitation (`.codex/` paths not recognized by
+  `_is_docs_path()`).
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,

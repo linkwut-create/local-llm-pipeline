@@ -90,6 +90,13 @@
 | U-2.1 | Done (`b603842`) | Fix PROJECT_STATUS.md duplicate table header. 1 file, -2 lines. |
 | U-3 | Done (dogfood, no commit) | **PASS (PARTIAL).** Real delegation flow dogfood on docs review task. Verified: CLI delivers work_order_template; controller inspected template and followed local_steps_requested; summarize-file executed for AGENTS.md and docs/mcp-task-policy.md via MCP. F6: MCP server process must be restarted after handler changes to expose new response fields (stale process at time of dogfood). F7: `.codex/local-llm-worker.md` not recognized by `_is_docs_path()` — known heuristic limitation, recorded. No code changes, no push. U-chain core objective validated: work_order_template useful for reducing ambiguity in delegation. |
 
+## MCP Restart Smoke / Post-U Baseline (W-chain, 2026-05-27)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| V-0 | Done (audit, no commit) | Post-U local baseline audit. 1995 tests passed, U-chain docs consistent, 12 MCP tools, VERSION 0.12.0, HEAD `97efa5f`. Verdict: PASS — `97efa5f` accepted as stable local baseline. |
+| W-0 | Done (smoke, no commit) | Real MCP restart smoke. `local_workflow_plan` MCP response now includes `work_order_template` after MCP server restart. All expected fields verified: `ok=true`, `workflow_type=docs-only-change`, `advisory_only=true`, `debate_policy=skip`, `forbidden_actions` includes edit/stage/commit/push. git clean throughout. F6 closed — root cause was stale MCP server process, not code defect. No code changes. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |
