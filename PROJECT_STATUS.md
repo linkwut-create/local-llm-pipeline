@@ -40,6 +40,7 @@
 | J-H | Done (`b8ce07f`) | **Bump VERSION 0.11.0 → 0.12.0.** 4 test version guards updated. No tag, no push, no release archive. |
 | J-I | Done (audit, no commit) | Local-only v0.12.0 stabilization audit. Quality gates green. Backend governance + advisor bundles intact. Verdict: **PASS — stable local baseline.** |
 | J-I.5 | Done (this commit) | Docs-only roadmap wording adjustment. Replace GitHub release references with local-only development language. |
+| J-K2 | In progress | **Enhance `find-related-files` to v2.** 5-line→6-section prompt, NO_RETRY_TASKS, advisory-only boundaries. |
 
 ## MCP Cost Discipline
 

@@ -97,6 +97,14 @@
   GitHub release / push / tag references with local-only checkpoint / continued
   local development language.  No runtime/test/VERSION/tag changes.
 
+- **J-K2** (this commit): Enhance `find-related-files` advisor to v2.
+  Upgrades the existing thin prompt (5 lines, 3-section: direct/possible/skip)
+  to a rich 6-section advisory output: primary candidates, support files,
+  related tests, affected subsystems, suggested inspection order, and suggested
+  next tool calls.  Added to `NO_RETRY_TASKS`.  Strong advisory-only boundaries
+  (no source editing, commit, stage, push).  `max_output_chars` 3000 → 4000.
+  5 focused tests.  Updated CLAUDE.md, CHANGELOG, and PROJECT_STATUS.
+
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 
 - **GH-D**: Repository visibility changed to **Public**.  Anonymous browser

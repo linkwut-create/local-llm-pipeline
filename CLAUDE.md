@@ -64,6 +64,11 @@ Claude Code is the controller. The local worker is advisory only.
   `git diff main..HEAD | py -3 tools/local_llm_router.py draft-changelog-entry --stdin`
   (advisory-only, output to `.local_llm_out/`, controller decides final entry)
 
+- `find-related-files` — identify related files for a task (primary, support, tests,
+  affected subsystems, inspection order, next tool calls):
+  `git ls-files | py -3 tools/local_llm_router.py find-related-files --stdin`
+  (advisory-only, output to `.local_llm_out/`, controller decides what to read/edit)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.

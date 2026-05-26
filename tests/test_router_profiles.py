@@ -379,3 +379,8 @@ class TestExistingTaskResolutionStillWorks:
     def test_suggest_improvements_resolves(self):
         p, m, r = resolve_profile("suggest-improvements", None, None)
         assert p == "qwen3.6_27b_mtp"
+
+    def test_find_related_files_resolves(self):
+        """J-K2: find-related-files must resolve to code_worker."""
+        p, m, r = resolve_profile("find-related-files", None, None)
+        assert p == "code_worker"

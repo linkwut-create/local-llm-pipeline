@@ -222,6 +222,7 @@ def test_no_retry_tasks_exclude_draft():
     assert "draft-fix" in NO_RETRY_TASKS
     assert "draft-feature" in NO_RETRY_TASKS
     assert "draft-refactor" in NO_RETRY_TASKS
+    assert "find-related-files" in NO_RETRY_TASKS
     assert "benchmark" in NO_RETRY_TASKS
 
 
@@ -352,6 +353,63 @@ def test_draft_changelog_entry_prompt_registry():
     assert entry["prompt_id"] == "draft-changelog-entry"
     assert entry["version"] == "v1"
     assert entry["file"] == "draft-changelog-entry.v1.md"
+    prompt_path = Path(__file__).parent.parent / "tools" / "prompts" / entry["file"]
+    text = prompt_path.read_text(encoding="utf-8")
+    actual_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+    assert entry["hash"] == actual_hash, f"hash mismatch: stored={entry['hash'][:8]}, actual={actual_hash[:8]}"
+
+
+# --- J-K2: find-related-files advisor v2 ---
+
+def test_find_related_files_task_config():
+    """J-K2: find-related-files must be advisory-only."""
+    import json
+    from pathlib import Path
+    tasks_path = Path(__file__).parent.parent / "tools" / "local_llm_tasks.json"
+    tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+    t = tasks["tasks"].get("find-related-files")
+    assert t is not None, "find-related-files missing from tasks.json"
+    assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
+    assert t["may_modify_code"] is False, "may_modify_code must be false"
+    assert t["controller_must_verify"] is True, "controller_must_verify must be true"
+    assert t["default_profile"] == "code_worker"
+
+
+def test_find_related_files_prompt_exists():
+    """J-K2: prompt must exist and contain advisory-only boundaries."""
+    from local_llm_worker import TASK_PROMPTS
+    prompt = TASK_PROMPTS.get("find-related-files")
+    assert prompt is not None, "find-related-files prompt missing from TASK_PROMPTS"
+    assert "Primary candidates" in prompt
+    assert "Related tests" in prompt
+    assert "Suggested inspection order" in prompt
+    assert "Suggested next tool calls" in prompt
+    assert "Do NOT modify source files" in prompt
+    assert "NEVER run git commit" in prompt
+    assert "NEVER stage files" in prompt
+    assert "NEVER push" in prompt
+    assert "Do NOT fabricate file paths" in prompt
+    assert "ADVISORY ONLY" in prompt
+
+
+def test_find_related_files_in_no_retry():
+    """J-K2: find-related-files should not retry (advisory, generative)."""
+    from local_llm_worker import NO_RETRY_TASKS
+    assert "find-related-files" in NO_RETRY_TASKS
+
+
+def test_find_related_files_prompt_registry():
+    """J-K2: prompt registry entry must exist and have valid hash."""
+    import json
+    from pathlib import Path
+    import hashlib
+    registry_path = Path(__file__).parent.parent / "tools" / "prompts" / "registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = registry["prompts"].get("find-related-files")
+    assert entry is not None, "find-related-files missing from registry.json"
+    assert entry["prompt_id"] == "find-related-files"
+    assert entry["version"] == "v1"
+    assert entry["file"] == "find-related-files.v1.md"
     prompt_path = Path(__file__).parent.parent / "tools" / "prompts" / entry["file"]
     text = prompt_path.read_text(encoding="utf-8")
     actual_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
