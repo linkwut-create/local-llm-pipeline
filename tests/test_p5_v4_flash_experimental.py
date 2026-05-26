@@ -205,6 +205,7 @@ def test_ledger_can_record_experimental_profile():
         "files_referenced", "request_id",
         "total_tokens", "tokens_estimated", "estimated_cost_cny",
         "execution_location", "cost_confidence",
+        "backend", "failure_type",
         "git_commit_before", "git_commit_after",
         "git_dirty_before", "git_dirty_after",
     }
