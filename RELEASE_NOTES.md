@@ -2,7 +2,7 @@
 
 **Release**: v0.12.0 (from v0.11.0 baseline)
 **Date**: not yet released
-**Status**: local candidate, 11 commits ahead of origin/master, not pushed
+**Status**: local candidate, 26 commits ahead of origin/master, not pushed
 
 ## Summary
 
@@ -94,7 +94,7 @@ be933e9 test: fix post-J-chain regression expectations
 ```text
 VERSION              0.12.0 (bumped in J-H)
 tag                  v0.11.0 at 6f146e7 (unchanged, v0.12.0 tag deferred)
-local commits        20 ahead of origin/master
+local commits        26 ahead of origin/master
 push                 not done
 release zip          not created
 ```
