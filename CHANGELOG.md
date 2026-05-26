@@ -84,9 +84,18 @@
   Records J-E.5 dogfood and J-F audit results.  Drafts v0.12.0 RELEASE_NOTES
   section.  No runtime/VERSION/tag changes.
 
-- **J-H** (this commit): Bump VERSION from 0.11.0 to 0.12.0.  4 test version
-  guards updated.  No tag, no push, no release archive yet.  Next: J-I
-  pre-release audit / debate review.
+- **J-H** (`b8ce07f`): Bump VERSION from 0.11.0 to 0.12.0.  4 test version
+  guards updated.  No tag, no push, no release archive.  Next: local-only
+  stabilization audit (J-I).
+
+- **J-I** (audit, no commit): Local-only v0.12.0 stabilization audit.  All
+  quality gates green (1908 passed, validate_configs PASS).  Backend governance
+  chain intact.  Productivity advisor triple fully registered across 7 points.
+  Verdict: **PASS — stable local baseline.**  No push, no tag, no GitHub release.
+
+- **J-I.5** (this commit): Docs-only wording adjustment.  Replace near-term
+  GitHub release / push / tag references with local-only checkpoint / continued
+  local development language.  No runtime/test/VERSION/tag changes.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 

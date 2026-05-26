@@ -37,7 +37,9 @@
 | J-E.5 | Done (no commit) | Productivity advisor bundle dogfood + prompt sanity verification. All three prompts 3/3 clean. Dogfood output 3/3 usable. |
 | J-F | Done (audit, no commit) | v0.12.0 local bundle release-slice audit. 11 commits, 20 files, +955/-34. Two chains complete. Full suite 1908 passed. Verdict: **PASS — ready for release-prep.** |
 | J-G | Done (`f636bff`) | Docs/status closeout for v0.12.0 release candidate. Records E.5/F results. Drafts v0.12.0 RELEASE_NOTES. |
-| J-H | Done (this commit) | **Bump VERSION 0.11.0 → 0.12.0.** 4 test version guards updated. No tag, no push, no release archive. Next: J-I pre-release audit. |
+| J-H | Done (`b8ce07f`) | **Bump VERSION 0.11.0 → 0.12.0.** 4 test version guards updated. No tag, no push, no release archive. |
+| J-I | Done (audit, no commit) | Local-only v0.12.0 stabilization audit. Quality gates green. Backend governance + advisor bundles intact. Verdict: **PASS — stable local baseline.** |
+| J-I.5 | Done (this commit) | Docs-only roadmap wording adjustment. Replace GitHub release references with local-only development language. |
 
 ## MCP Cost Discipline
 

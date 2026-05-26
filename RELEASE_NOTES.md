@@ -94,8 +94,9 @@ release zip          not created
 ```
 
 Next phases:
-- **J-I**: Pre-release audit / debate review on router commit
-- **J-J**: Push / tag / GitHub release
+- **J-I**: Local-only stabilization audit (completed — PASS)
+- **J-I.5**: Docs wording adjustment for local-only roadmap
+- **J-K+**: Continued local development — no GitHub upload planned
 
 ---
 
