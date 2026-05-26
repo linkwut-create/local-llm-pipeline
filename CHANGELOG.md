@@ -165,6 +165,26 @@
   Full suite 2052 passed.  VERSION `0.12.0` unchanged.  MCP tool count
   remains 12.
 
+- **Z-3** (`3a84077`): CLI-only cost savings report.  Added
+  `tools/cloud_cost_reference.json` (5 tiers — tiny/small/medium/large/
+  xlarge — with CNY/1K rates, 22 profile-to-tier mappings).  Savings
+  helpers in `tools/call_ledger.py`: `load_cloud_rates()`,
+  `resolve_savings_tier()`, `compute_savings()`, `savings_for_group()`,
+  `build_savings_report()`.  New `savings` subcommand in
+  `tools/call_ledger_cli.py` with `--by total/task/profile/model/backend/
+  mcp-tool/project/location`.  Formula: `cloud_equivalent - actual_cost`
+  (never negative).  All output: `advisory_only=true`,
+  `not_for_billing=true`.  Real ledger sample: 3,124 calls, 14.3M tokens,
+  26.30 CNY cloud equivalent, 0.00 CNY actual, 26.30 CNY estimated
+  savings.  25 new tests.  No ledger mutation, no write schema change.
+
+- **Z-3.0** (`37759c9`): Fix savings CLI grouping aliases.  Added
+  `_SAVINGS_BY_ALIASES` mapping `task→task_type`, `location→
+  execution_location`, `mcp-tool→extra.mcp_tool_name/tool_name`.
+  Previously all three collapsed to `<none>`.  Now all 7 `--by`
+  dimensions produce real buckets.  3 new alias regression tests.
+  28 savings-focused, 215 call_ledger, 2084 full suite passed.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,

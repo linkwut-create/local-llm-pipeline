@@ -3,20 +3,20 @@
 **Purpose**: Canonical baseline for the Z-chain quality/value verification line.
 All Z-2 through Z-4 slices reference this document as their single source of truth.
 
-**Status**: Z-1 committed. Z-2 committed (`ac3d5c3`). Z-3/Z-4 not yet started.
+**Status**: Z-1 committed. Z-2 committed (`ac3d5c3`). Z-3 committed (`3a84077`, `37759c9`). Z-4 not yet started.
 
 ---
 
 ## 1. local-llm-pipeline Current Baseline
 
-Captured at Z-2 (2026-05-27):
+Captured at Z-3 (2026-05-27):
 
 | Item | Value |
 |------|-------|
-| HEAD | `ac3d5c3` |
+| HEAD | `37759c9` |
 | VERSION | `0.12.0` |
 | Working tree | clean |
-| Tests | 2052 passed (`py -3 -m pytest tests/ -q`) |
+| Tests | 2084 passed (`py -3 -m pytest tests/ -q`) |
 | MCP tools | 12 (`local_check`, `local_summarize_file`, `local_summarize_tree`, `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`, `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`, `local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`) |
 | Call ledger records | 2,980 |
 | Success rate | 91.0% (2,713 success / 267 failure) |
@@ -86,8 +86,8 @@ Projects that the pipeline has dogfooded against or is designed to support:
 Z-0: quality/value verification planning audit       ← DONE (audit, no commit)
 Z-1: project brief/current baseline doc               ← DONE (`6941d78`)
 Z-2: local model output quality smoke                 ← DONE (`ac3d5c3`)
-Z-3: cost/token savings report                        ← next, code (not started)
-Z-4: cross-project feedback ledger                    ← code (not started)
+Z-3: cost/token savings report                        ← DONE (`3a84077`, `37759c9`)
+Z-4: cross-project feedback ledger                    ← next, code (not started)
 ```
 
 | Phase | Type | Description | Status |
@@ -95,7 +95,7 @@ Z-4: cross-project feedback ledger                    ← code (not started)
 | Z-0 | Audit (no code) | Design quality smoke, cost savings, feedback loop. Pick first slice. | Done |
 | Z-1 | Docs-only | This baseline document. | Done (`6941d78`) |
 | Z-2 | Code | `tools/quality_smoke.py` — CLI battery of fixed-input model calls with heuristic quality checks. | Done (`ac3d5c3`) |
-| Z-3 | Code | `tools/call_ledger_cli.py savings` — read-only aggregation over call ledger with cloud-equivalent cost table. | Not started |
+| Z-3 | Code | `tools/call_ledger_cli.py savings` — read-only aggregation over call ledger with cloud-equivalent cost table. | Done (`3a84077`) |
 | Z-4 | Code | `tools/feedback_ledger.py` — append-only manual cross-project feedback tracking. | Not started |
 
 ### Hard constraints (all Z-chain phases)
