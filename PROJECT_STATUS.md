@@ -31,7 +31,9 @@
 | J-C5 | Done (`558804c`) | **Router enforces `_backend_class` for eligibility.** `ollama` and `ollama_mtp_pending` remain auto-eligible. `ollama_heavy_manual` requires explicit `--profile` or task risk ≥ medium-high. `llamacpp_unconfigured`, `unavailable`, and `placeholder` are not auto-eligible. Explicit `--profile` override remains allowed. Also fixes J-B `draft-commit-message` missing from `code_worker.use_for`. `validate_configs.py` PASS, 296 tests passed. **Backend governance main chain J-C3 → J-C4 → J-C5 now closed.** |
 | J-C5.5 | Done (`cc35358`) | Docs/status closeout. No runtime/test/VERSION/tag changes. |
 | J-C5.6 | Done (`cc35358`) | Amend accidental leading `@` in docs commit subject. Message-only. |
-| J-D | Done (this commit) | **Add `draft-pr-summary` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries: no PR creation, push, commit, or file editing. 5 focused tests. CLI: `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-pr-summary --stdin`. Backend governance chain closed — productivity line resumed. |
+| J-D | Done (`117b4f4`) | **Add `draft-pr-summary` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries. 5 focused tests. |
+| J-D.5 | Done (`be933e9`) | Fix two regression debts: `_ESCALATION_CHAIN` entries + P5 `known_keys`. Full suite 1903 passed, 0 failures. |
+| J-E | Done (this commit) | **Add `draft-changelog-entry` productivity advisor.** New task (risk=low, profile=code_worker, advisory-only). Prompt enforces boundaries: no CHANGELOG.md editing, push, commit, or source modification. 5 focused tests. Full suite 1908 passed. |
 
 ## MCP Cost Discipline
 

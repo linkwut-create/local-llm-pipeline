@@ -364,6 +364,10 @@ class TestExistingTaskResolutionStillWorks:
         p, m, r = resolve_profile("draft-pr-summary", None, None)
         assert p == "code_worker"
 
+    def test_draft_changelog_entry_resolves(self):
+        p, m, r = resolve_profile("draft-changelog-entry", None, None)
+        assert p == "code_worker"
+
     def test_summarize_file_resolves(self):
         p, m, r = resolve_profile("summarize-file", None, None)
         assert p == "fast_summary"

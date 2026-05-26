@@ -66,6 +66,7 @@ _ESCALATION_CHAIN = {
     # Advisory draft text generation: code_worker is sufficient, no escalation needed
     "draft-commit-message": ["code_worker"],
     "draft-pr-summary": ["code_worker"],
+    "draft-changelog-entry": ["code_worker"],
     # Suggestions: fast llama.cpp → 27b → coder → 35b
     "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
                              "code_worker", "deep_reviewer"],

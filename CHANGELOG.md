@@ -51,11 +51,22 @@
 - **J-C5.6** (`cc35358`): Amend accidental leading `@` in docs commit subject.
   Message-only — no file changes.
 
-- **J-D** (this commit): Add `draft-pr-summary` productivity advisor.  New task
+- **J-D** (`117b4f4`): Add `draft-pr-summary` productivity advisor.  New task
   (risk=low, profile=code_worker, advisory-only).  Worker prompt enforces
   advisory-only boundary (no PR creation, push, commit, or file editing).
   Prompt registry entry with validated hash.  5 focused tests.  CLI usage:
   `git diff main..HEAD | py -3 tools/local_llm_router.py draft-pr-summary --stdin`.
+
+- **J-D.5** (`be933e9`): Fix two regression debts.  Add `draft-commit-message`
+  and `draft-pr-summary` to `_ESCALATION_CHAIN` (both `["code_worker"]`).
+  Add `backend` and `failure_type` to P5 ledger `known_keys` (J-C4 fields).
+  Full suite: 1903 passed, 0 failures.
+
+- **J-E** (this commit): Add `draft-changelog-entry` productivity advisor.  New
+  task (risk=low, profile=code_worker, advisory-only).  Prompt enforces boundary
+  (no CHANGELOG.md editing, push, commit, or source modification).  Prompt
+  registry entry with validated hash.  5 focused tests.  CLI usage:
+  `git diff main..HEAD | py -3 tools/local_llm_router.py draft-changelog-entry --stdin`.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 

@@ -115,6 +115,12 @@
       "file": "draft-pr-summary.v1.md",
       "hash": "67b62375957cb823"
     },
+    "draft-changelog-entry": {
+      "prompt_id": "draft-changelog-entry",
+      "version": "v1",
+      "file": "draft-changelog-entry.v1.md",
+      "hash": "3396bb381f890ba4"
+    },
     "suggest-improvements": {
       "prompt_id": "suggest-improvements",
       "version": "v1",
