@@ -90,8 +90,8 @@ Z-3: cost/token savings report                        ← next, code (not starte
 Z-4: cross-project feedback ledger                    ← code (not started)
 ```
 
-| Phase | Type | Description |
-|-------|------|-------------|
+| Phase | Type | Description | Status |
+|-------|------|-------------|--------|
 | Z-0 | Audit (no code) | Design quality smoke, cost savings, feedback loop. Pick first slice. | Done |
 | Z-1 | Docs-only | This baseline document. | Done (`6941d78`) |
 | Z-2 | Code | `tools/quality_smoke.py` — CLI battery of fixed-input model calls with heuristic quality checks. | Done (`ac3d5c3`) |
