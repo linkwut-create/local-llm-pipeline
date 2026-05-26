@@ -2194,3 +2194,74 @@ class TestSavingsCLI:
                 assert len(data["buckets"]) >= 2
             finally:
                 _shm.rmtree(tmp, ignore_errors=True)
+
+    def test_savings_by_task_uses_task_type_field(self):
+        """--by task must alias to task_type ledger field."""
+        from unittest.mock import patch
+        with patch.object(call_ledger_cli, "_resolve_path") as mock_path:
+            import tempfile as _tmpm, shutil as _shm
+            tmp = _tmpm.mkdtemp()
+            p = Path(tmp) / "ledger.jsonl"
+            p.write_text(
+                json.dumps(_make_record(task_type="summarize-file")) + "\n" +
+                json.dumps(_make_record(task_type="review-diff")) + "\n"
+            )
+            mock_path.return_value = p
+            try:
+                import io as _io
+                save_io = _io.StringIO()
+                with patch("sys.stdout", save_io):
+                    rc = call_ledger_cli.main(["--format", "json", "savings", "--by", "task"])
+                assert rc == 0
+                data = json.loads(save_io.getvalue())
+                assert data["by"] == "task_type"
+                assert "summarize-file" in data["buckets"]
+                assert "review-diff" in data["buckets"]
+            finally:
+                _shm.rmtree(tmp, ignore_errors=True)
+
+    def test_savings_by_location_uses_execution_location_field(self):
+        """--by location must alias to execution_location ledger field."""
+        from unittest.mock import patch
+        with patch.object(call_ledger_cli, "_resolve_path") as mock_path:
+            import tempfile as _tmpm, shutil as _shm
+            tmp = _tmpm.mkdtemp()
+            p = Path(tmp) / "ledger.jsonl"
+            p.write_text(
+                json.dumps(_make_record(execution_location="lan")) + "\n" +
+                json.dumps(_make_record(execution_location="local")) + "\n"
+            )
+            mock_path.return_value = p
+            try:
+                import io as _io
+                save_io = _io.StringIO()
+                with patch("sys.stdout", save_io):
+                    rc = call_ledger_cli.main(["--format", "json", "savings", "--by", "location"])
+                assert rc == 0
+                data = json.loads(save_io.getvalue())
+                assert data["by"] == "execution_location"
+                assert "lan" in data["buckets"] or "local" in data["buckets"]
+            finally:
+                _shm.rmtree(tmp, ignore_errors=True)
+
+    def test_savings_by_mcp_tool_reads_extra_field(self):
+        """--by mcp-tool must read extra.mcp_tool_name from records."""
+        from unittest.mock import patch
+        with patch.object(call_ledger_cli, "_resolve_path") as mock_path:
+            import tempfile as _tmpm, shutil as _shm
+            tmp = _tmpm.mkdtemp()
+            p = Path(tmp) / "ledger.jsonl"
+            r1 = _make_record(extra={"mcp_tool_name": "local_summarize_file"})
+            r2 = _make_record(extra={"mcp_tool_name": "local_review_diff"})
+            p.write_text(json.dumps(r1) + "\n" + json.dumps(r2) + "\n")
+            mock_path.return_value = p
+            try:
+                import io as _io
+                save_io = _io.StringIO()
+                with patch("sys.stdout", save_io):
+                    rc = call_ledger_cli.main(["--format", "json", "savings", "--by", "mcp-tool"])
+                assert rc == 0
+                data = json.loads(save_io.getvalue())
+                assert "local_summarize_file" in data["buckets"]
+            finally:
+                _shm.rmtree(tmp, ignore_errors=True)

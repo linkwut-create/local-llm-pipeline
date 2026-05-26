@@ -503,12 +503,30 @@ def _print_savings(report: dict, fmt: str) -> None:
                   f"{s['estimated_savings_cny']:>10.4f} {s['savings_confidence']:>8}")
 
 
+# CLI dimension aliases → ledger field names
+_SAVINGS_BY_ALIASES = {
+    "task": "task_type",
+    "location": "execution_location",
+    "mcp-tool": "_mcp_tool",
+}
+
+
 def cmd_savings(args: argparse.Namespace) -> int:
     records = read_records(_resolve_path(args.path))
     rates = load_cloud_rates(getattr(args, "rates", None))
     by = getattr(args, "by", None)
     if by == "total":
         by = None
+
+    if by is not None:
+        by = _SAVINGS_BY_ALIASES.get(by, by)
+
+    # mcp-tool: data lives in extra dict, not top-level — copy it up
+    if by == "_mcp_tool":
+        for r in records:
+            extra = r.get("extra") if isinstance(r.get("extra"), dict) else {}
+            r["_mcp_tool"] = extra.get("mcp_tool_name") or r.get("tool_name") or ""
+
     report = build_savings_report(records, rates, group_by_key=by,
                                   baseline_commit=_get_baseline_commit())
     _print_savings(report, args.format)
