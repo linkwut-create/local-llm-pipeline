@@ -59,7 +59,7 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | P-0 | Done (audit, no commit) | Workflow orchestration planning audit. 4 workflow types designed from 12 existing tools. Decision tree for debate triggers. Recommended P-1. |
-| P-1 | In progress | **Add `local_workflow_plan` heuristic planner.** Pure heuristic (no LLM). Classifies change type, outputs 7-phase command sequence. |
+| P-1 | Done (`9bd0759`) | **Add `local_workflow_plan` heuristic planner.** Pure heuristic (no LLM). Classifies change type, outputs 7-phase command sequence. 36 focused tests. |
 
 ## MCP Cost Discipline
 
