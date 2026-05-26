@@ -1,108 +1,99 @@
-# v0.12.0 Release Notes (DRAFT — candidate)
+# v0.12.0 Release Notes
 
 **Release**: v0.12.0 (from v0.11.0 baseline)
-**Date**: not yet released
-**Status**: local candidate, 26 commits ahead of origin/master, not pushed
+**Date**: 2026-05-27
+**Status**: local release candidate, 50 commits ahead of origin/master, not pushed, not tagged
 
 ## Summary
 
-v0.12.0 is a **productivity + backend governance** release. It adds three
-advisory-only draft text generation advisors (commit messages, PR summaries,
-changelog entries) and closes the backend governance chain by classifying
-profiles, recording backend/failure data in the call ledger, and enforcing
-profile eligibility in the router.
+v0.12.0 is a **productivity + governance + quality verification** release.
+It adds advisory draft-text advisors, closes the backend governance chain,
+introduces a controller delegation contract, exposes a heuristic workflow
+planner as the 12th MCP tool, and delivers the Z-chain quality/value
+verification toolkit (quality smoke, cost savings, feedback ledger).
 
 ## Highlights
 
-### Productivity Advisor Triple
+### Productivity Advisors (J-chain)
 
 Three new CLI tasks generate advisory draft text from git diff:
 
-| Task | Usage | Output |
-|------|-------|--------|
-| `draft-commit-message` | `git diff --cached \| py -3 tools/local_llm_router.py draft-commit-message --stdin` | Conventional commit title, body bullets, risk notes |
-| `draft-pr-summary` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-pr-summary --stdin` | PR title, summary, changes by area, test notes, risks, reviewer focus |
-| `draft-changelog-entry` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-changelog-entry --stdin` | Section heading, grouped bullets, user-visible/internal/test/risk notes |
+| Task | Usage |
+|------|-------|
+| `draft-commit-message` | `git diff --cached \| py -3 tools/local_llm_router.py draft-commit-message --stdin` |
+| `draft-pr-summary` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-pr-summary --stdin` |
+| `draft-changelog-entry` | `git diff main..HEAD \| py -3 tools/local_llm_router.py draft-changelog-entry --stdin` |
 
-All three tasks are advisory-only: risk=low, profile=code_worker, may_modify_code=false,
-controller_must_verify=true. They write only to `.local_llm_out/` and never modify
-source files, commit, push, or create PRs.
+All advisory-only: risk=low, profile=code_worker, output to `.local_llm_out/` only.
 
-### Backend Governance Chain (Closed)
+### Backend Governance Chain (J-chain, closed)
 
-- **J-C3** (`3b2b660`): 23 profiles now carry `_backend_class` (ollama,
-  ollama_heavy_manual, ollama_mtp_pending, llamacpp_unconfigured, unavailable,
-  placeholder).
-- **J-C4** (`a052ed5`): Call ledger records `backend` and `failure_type`
-  with structured classification.  New `by-backend` CLI command.
-- **J-C5** (`558804c`): Router enforces `_backend_class` eligibility.
-  Unavailable/placeholder/llamacpp_unconfigured profiles are not auto-selected.
-  Ollama default path unchanged.  Explicit `--profile` override preserved.
+- Profiles carry `_backend_class` (ollama/ollama_heavy_manual/ollama_mtp_pending/llamacpp_unconfigured/unavailable/placeholder)
+- Call ledger records `backend` and `failure_type` with structured classification
+- Router enforces `_backend_class` eligibility (explicit `--profile` override preserved)
 
-### Quality
+### Controller Delegation (U-chain)
+
+- CLAUDE.md and AGENTS.md now carry a formal Controller Delegation Contract
+- Delegation decision tree, MUST/SHOULD/SKIP triggers, work order schema, result packet schema
+- Budget controls: max 5 summarizes, 300s runtime, 10 model calls per task
+
+### Workflow Orchestration (P-chain)
+
+- `local_workflow_plan` — heuristic workflow planner, 12th MCP tool
+- Classifies tasks into 4 workflow types (small-code-change/docs-only-change/high-risk-runtime-change/release-local-checkpoint)
+- Outputs 7-phase command sequence with work_order_template aligned to U-1 delegation contract
+
+### Quality/Value Verification (Z-chain, closed)
+
+| Phase | Deliverable | Description |
+|-------|------------|-------------|
+| Z-2 | `tools/quality_smoke.py` | CLI battery of fixed-input model calls with 6 heuristic checks (empty output, off-target, malformed JSON, abnormal confidence, hallucination, latency) |
+| Z-3 | `call_ledger_cli.py savings` | Cloud-equivalent cost savings estimation over 3,124 call ledger records (14.3M tokens, 26.30 CNY cloud equivalent) |
+| Z-4 | `tools/feedback_ledger.py` | Manual CLI-only cross-project feedback ledger (record/summary/by-target, 8 suggestion types, 5 dispositions) |
+
+All Z-chain tools are CLI-only, advisory-only, and write only to `.local_llm_out/`. No MCP tool was added for Z-2 through Z-4.
+
+### Call Ledger Growth
+
+| Metric | Value |
+|--------|-------|
+| Records | 3,124 |
+| Total tokens | 14.3M |
+| Execution locations | local/lan/remote |
+| Cost confidence | high/medium/low/none |
+
+### MCP Tools (12)
+
+`local_check`, `local_summarize_file`, `local_summarize_tree`, `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`, `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`, `local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`
+
+## Quality
 
 | Gate | Result |
 |------|--------|
 | `validate_configs.py` | PASS |
-| `pytest tests/ -q` | 1908 passed, 0 failures |
-| Dogfood (three advisors) | 3/3 usable output verified (J-E.5) |
-| Prompt format audit | 3/3 clean — no truncation or garbling |
-
-### Advisory-Only Boundaries
-
-The three new draft tasks are governed by:
-- Prompt-level NEVER directives (no PR creation, push, commit, stage, or source editing)
-- Task config: `may_modify_code=false`, `controller_must_verify=true`
-- Router: `code_worker` profile, no auto-escalation chain
-- Worker: `NO_RETRY_TASKS` — no retry for generative text tasks
-
-## Commit Chain (11, v0.11.0..HEAD)
-
-```
-28b96c2 fix: correct debate error capture and ledger accounting
-3b2b660 chore: classify profile backend types
-1ad1571 fix: register draft-commit-message prompt
-aad90ba feat: add draft-commit-message advisor
-a052ed5 feat: record backend and failure type in call ledger
-e505b8a docs: clarify J-chain backend ledger status
-558804c feat: enforce backend class in router selection
-cc35358 docs: close out backend-class routing phase
-117b4f4 feat: add draft-pr-summary advisor
-be933e9 test: fix post-J-chain regression expectations
-4d518a4 feat: add draft-changelog-entry advisor
-```
+| `pytest tests/ -q` | 2119 passed, 0 failures |
+| Commit gate review | active, enforced per-commit |
+| Auto-invocation (Phase 2.0) | SessionStart local_check, PostToolUse summarize/review |
 
 ## Known Caveats
 
-- `draft-commit-message` and `draft-pr-summary` escalation chains are minimal
-  (`["code_worker"]` only) — these tasks do not benefit from model escalation.
-- Prompt adherence varies with `qwen3-coder:30b` behavior; models tend to
-  produce more detailed output than the prompt's strict section format.
-- Post-v0.11.0 tag, one commit (`429ed29`) has a cosmetic `@` in its subject
-  (PowerShell here-string artifact).  Purely cosmetic, not amended.
-- Release zip will require `.mcp.json` audit and forbidden artifact scan
-  before publication (standard release gate, deferred).
-- **MTP backend**: `qwen3.6_35b_moe_mtp` profile requires llama.cpp MTP which
-  is blocked on an upstream Qwen3.6 tensor fix.  It is excluded from the
-  default debate chain (J-L3).  The underlying model `qwen3.6:35b-q8-ud`
-  works through Ollama via `deep_reviewer` (validated J-M1, 13265ms).
-- **`nonexistent` model in ledger**: historical test artifact from `test_profile`
-  (removed).  No production code references exist.
+- Prompt adherence varies with `qwen3-coder:30b` behavior
+- MTP backend (`qwen3.6_35b_moe_mtp`) requires llama.cpp MTP blocked on upstream Qwen3.6 tensor fix; excluded from default debate chain (J-L3)
+- Model `qwen3.6:35b-q8-ud` works through Ollama via `deep_reviewer`
+- `nonexistent` model references in ledger are historical test artifacts only
+- `.local_llm_out/` directory is not tracked in git; ledger records are local-only
 
-## Upgrade / Release Status
+## Current Status
 
 ```text
-VERSION              0.12.0 (bumped in J-H)
-tag                  v0.11.0 at 6f146e7 (unchanged, v0.12.0 tag deferred)
-local commits        26 ahead of origin/master
+HEAD                 9a52d24
+VERSION              0.12.0
+tag                  none (v0.12.0 tag deferred)
+local commits        50 ahead of origin/master
 push                 not done
 release zip          not created
 ```
-
-Next phases (local-only development):
-- **J-K**: Related-files advisor — closed (v2 usable, path constraints fixed)
-- **J-L**: Call efficiency — closed (by-task report available, MTP removed from default debate)
-- **J-M1**: Model availability validated — closed (Ollama path works, MTP deferred)
 
 ---
 

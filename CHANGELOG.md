@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.12.0 - 2026-05-27 (local, not pushed, not tagged)
+
+Productivity + governance + quality verification release.  50 commits since
+v0.11.0.  12 MCP tools.  2119 tests passed.  Key deliverables:
+
+- **Productivity advisors** (J-chain): `draft-commit-message`, `draft-pr-summary`,
+  `draft-changelog-entry` — CLI-only advisory draft text generation from git diff.
+- **Backend governance** (J-chain): profile `_backend_class`, call ledger
+  `backend`/`failure_type` fields, router backend eligibility enforcement.
+- **Call ledger expansion**: 3,124 records, 14.3M tokens, execution-location
+  classification, cost confidence, by-task/by-profile/by-backend/by-mcp-tool
+  reporting, diagnostics, rotation.
+- **Controller delegation contract** (U-chain): formal delegation decision tree,
+  MUST/SHOULD/SKIP triggers, work order schema, budget controls.
+- **Workflow planner** (P/S-chain): `local_workflow_plan` as 12th MCP tool —
+  heuristic task classification with 7-phase work order template.
+- **Z-chain quality verification** (closed):
+  - Z-2: `tools/quality_smoke.py` — 6-checks CLI battery
+  - Z-3: `call_ledger_cli.py savings` — cloud-equivalent cost estimation
+  - Z-4: `tools/feedback_ledger.py` — cross-project feedback ledger
+- **Runtime reliability** (P6/P7-chain): timeout observability, hook silent-failure
+  diagnostics, call ledger read diagnostics, `ollama list` timeout guard.
+- **Test failure classifier** (D/E-chain): `local_classify_test_failure` as 11th
+  MCP tool + `tools/classify_failure_helper.py` CLI helper.
+- **Repo/codebase map** (C-chain): `local_repo_map` as 10th MCP tool — heuristic
+  file classification, test mapping, subsystem grouping.
+- **Task bootstrap** (F-chain): `tools/task_bootstrap.py` — cross-project
+  orientation in a single command.
+- **Cost discipline** (P2/P3/P4/P5-chain): call ledger extra field allowlist,
+  per-tool ledger stamps, escalation context tracking, auto-escalation env knobs
+  (default OFF), worker-pool dry-run probe, V4-Flash experimental profile.
+
 ## Post-v0.12.0 (U-chain, 2026-05-26)
 
 - **U-0** (audit, no commit): Controller delegation policy planning audit.
