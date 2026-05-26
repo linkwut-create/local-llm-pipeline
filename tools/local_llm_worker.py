@@ -109,6 +109,9 @@ Boundaries (must follow):
 - Do NOT fabricate file paths.  Only reference files that appear in the
   provided file listing.  If you are uncertain whether a file exists, say
   so rather than guessing.
+- Test file names must appear verbatim in the provided file listing.
+  Do not guess or synthesize test file paths (tests/test_*.py).
+  Only reference test files that are present in the listing.
 - If the input is empty, too short, or unclear, state that explicitly
   instead of producing a low-confidence report.
 - If the task touches security-sensitive paths (eval, exec, subprocess,

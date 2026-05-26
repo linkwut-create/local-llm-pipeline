@@ -389,6 +389,9 @@ def test_find_related_files_prompt_exists():
     assert "NEVER stage files" in prompt
     assert "NEVER push" in prompt
     assert "Do NOT fabricate file paths" in prompt
+    assert "verbatim" in prompt
+    assert "Do not guess" in prompt
+    assert "synthesize test file" in prompt
     assert "ADVISORY ONLY" in prompt
 
 

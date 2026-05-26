@@ -23,7 +23,7 @@
       "prompt_id": "find-related-files",
       "version": "v1",
       "file": "find-related-files.v1.md",
-      "hash": "d1dea18d0bd36fc2"
+      "hash": "cfaf8dc4ef752bcd"
     },
     "generate-test-plan": {
       "prompt_id": "generate-test-plan",
