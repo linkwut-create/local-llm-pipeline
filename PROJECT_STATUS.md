@@ -97,6 +97,12 @@
 | V-0 | Done (audit, no commit) | Post-U local baseline audit. 1995 tests passed, U-chain docs consistent, 12 MCP tools, VERSION 0.12.0, HEAD `97efa5f`. Verdict: PASS — `97efa5f` accepted as stable local baseline. |
 | W-0 | Done (smoke, no commit) | Real MCP restart smoke. `local_workflow_plan` MCP response now includes `work_order_template` after MCP server restart. All expected fields verified: `ok=true`, `workflow_type=docs-only-change`, `advisory_only=true`, `debate_policy=skip`, `forbidden_actions` includes edit/stage/commit/push. git clean throughout. F6 closed — root cause was stale MCP server process, not code defect. No code changes. |
 
+## Cross-Project Delegation Dogfood (Post-v0.12.0, X-chain, 2026-05-27)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| X-0.5 | Done (dogfood, no commit) | **PARTIAL.** Cross-project delegation dogfood on local-translator-agent. Task: memory_context / retrieve_terminology_for_prompt workflow audit. Delegation worked enough to be useful: local_workflow_plan / work_order_template effective, local_summarize_file produced useful summaries of prompts.py and tm_service.py, discovered real structural risks (inline import duplicated at 17+ call sites, naming drift in memory_context/terminology_block, dispatch logic scattered across job_id/profile_id/none). Findings: local_summarize_tree output was off-target, local_summarize_file returned confidence=medium but auto-upgrade policy did not fire — this is a process gap (not a tool availability problem). No files modified in target project, no commit, no push. Recommended next step: X-1 auto-upgrade policy practicality audit, NOT immediate new tooling. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |

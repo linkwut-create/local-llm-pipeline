@@ -86,6 +86,22 @@
   the only known limitation (`.codex/` paths not recognized by
   `_is_docs_path()`).
 
+- **X-0.5** (dogfood, no commit): Cross-project delegation dogfood.
+  Verdict: **PARTIAL.** Dogfood target: local-translator-agent (separate
+  repo, no files modified in target). Task: memory_context /
+  retrieve_terminology_for_prompt workflow audit. What worked:
+  local_workflow_plan / work_order_template effective across project
+  boundary; local_summarize_file produced useful summaries of prompts.py
+  and tm_service.py; discovered real structural risks in the target
+  project (inline import duplicated at 17+ call sites, naming drift in
+  memory_context/terminology_block, dispatch logic scattered across
+  job_id/profile_id/none). What didn't work: local_summarize_tree output
+  was off-target; local_summarize_file returned confidence=medium but
+  P3 auto-upgrade policy did not fire — this is a process gap, not a tool
+  availability problem. Recommended next step: X-1 auto-upgrade policy
+  practicality audit, NOT immediate new tooling. No code changes, no
+  push. Working tree clean in both projects.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,
