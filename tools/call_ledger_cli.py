@@ -5,7 +5,10 @@ Subcommands:
     summary               aggregate totals across all records
     model-summary         token/call usage grouped by model
     by-project            per-project totals
-    by-task               per-task_type totals
+    by-task               per-task efficiency with profile/backend/failure_type
+    by-profile            per-profile totals
+    by-backend            per-backend totals
+    by-mcp-tool           per-MCP-tool totals
     failures              list failing records
     recent [--limit N]    list the most recent N records (default 20)
 
@@ -29,6 +32,7 @@ from call_ledger import (
     filter_failures,
     group_by,
     group_by_extra,
+    group_by_task_efficiency,
     read_records,
     read_records_with_diagnostics,
     recent,
@@ -80,6 +84,41 @@ def _print_groups(groups: dict[str, dict], fmt: str) -> None:
             f"{s.get('unknown', 0):>5} "
             f"{s['total_input_tokens']:>10} {s['total_output_tokens']:>10} "
             f"{s['total_cost_cny']:>10}"
+        )
+
+
+def _print_task_efficiency(groups: dict[str, dict], fmt: str) -> None:
+    """Print per-task efficiency report with profile/backend/failure columns."""
+    if fmt == "json":
+        print(json.dumps(groups, ensure_ascii=False, indent=2))
+        return
+    if not groups:
+        print("(no records)")
+        return
+    header = (
+        f"{'task':<26} {'calls':>7} {'ok':>5} {'fail':>5} {'fail%':>6} "
+        f"{'avg_ms':>7} {'dur_ms':>9} "
+        f"{'in_tok':>9} {'out_tok':>9} {'tot_tok':>9} "
+        f"{'profile':<22} {'backend':<10} {'top_fail':<18}"
+    )
+    print(header)
+    print("-" * len(header))
+    items = sorted(groups.items(), key=lambda kv: kv[1]['total_tokens'], reverse=True)
+    for k, s in items:
+        key_display = k if len(k) <= 26 else k[:23] + "..."
+        calls = s["calls"]
+        fail = s["failures"]
+        fail_pct = f"{fail / calls * 100:.0f}%" if calls > 0 else "0%"
+        avg_ms = s["total_duration_ms"] // calls if calls > 0 else 0
+        profile = (s.get("primary_profile") or "-")[:21]
+        backend = (s.get("primary_backend") or "-")[:9]
+        top_fail = (s.get("top_failure_type") or "-")[:17]
+        print(
+            f"{key_display:<26} {calls:>7} {s['successes']:>5} {fail:>5} {fail_pct:>6} "
+            f"{avg_ms:>7} {s['total_duration_ms']:>9} "
+            f"{s['total_input_tokens']:>9} {s['total_output_tokens']:>9} "
+            f"{s['total_tokens']:>9} "
+            f"{profile:<22} {backend:<10} {top_fail:<18}"
         )
 
 
@@ -294,7 +333,7 @@ def cmd_by_project(args: argparse.Namespace) -> int:
 
 def cmd_by_task(args: argparse.Namespace) -> int:
     records = read_records(_resolve_path(args.path))
-    _print_groups(group_by(records, "task_type"), args.format)
+    _print_task_efficiency(group_by_task_efficiency(records), args.format)
     return 0
 
 

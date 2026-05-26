@@ -713,6 +713,45 @@ def group_by(records: Iterable[Mapping[str, Any]], key: str) -> dict[str, dict[s
     return {k: summarize(v) for k, v in buckets.items()}
 
 
+def _top_value(records: list[Mapping[str, Any]], key: str) -> str:
+    """Most common value of *key* in *records*. Ties → first seen. Missing → '-'."""
+    counts: dict[str, int] = {}
+    for r in records:
+        v = r.get(key)
+        s = str(v) if v is not None and v != "" else "-"
+        counts[s] = counts.get(s, 0) + 1
+    if not counts:
+        return "-"
+    return max(counts, key=lambda k: counts[k])
+
+
+def group_by_task_efficiency(
+    records: Iterable[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Group records by task_type with richer per-task stats.
+
+    Returns per-task dicts with all :func:`summarize` fields plus:
+      - primary_profile: most common profile
+      - primary_backend: most common backend
+      - top_failure_type: most common failure_type in failures
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        raw = r.get("task_type")
+        bucket_key = str(raw) if raw is not None and raw != "" else "<none>"
+        buckets.setdefault(bucket_key, []).append(dict(r))
+
+    result: dict[str, dict[str, Any]] = {}
+    for task, recs in buckets.items():
+        entry = summarize(recs)
+        entry["primary_profile"] = _top_value(recs, "profile")
+        entry["primary_backend"] = _top_value(recs, "backend")
+        failures = [r for r in recs if r.get("success") is False]
+        entry["top_failure_type"] = _top_value(failures, "failure_type") if failures else "-"
+        result[task] = entry
+    return result
+
+
 def breakdown_counts(records: Iterable[Mapping[str, Any]], key: str,
                      default: str = "unknown") -> dict[str, int]:
     """Count records by *key*. Missing/empty key → *default*.

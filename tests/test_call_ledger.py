@@ -876,6 +876,103 @@ def test_cli_by_task_json(clean_env, ledger_path, capsys):
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     assert set(data.keys()) == {"review", "summarize"}
+    # J-L2: efficiency fields present
+    for task_key in data:
+        assert "primary_profile" in data[task_key]
+        assert "primary_backend" in data[task_key]
+        assert "top_failure_type" in data[task_key]
+
+
+# --- J-L2: group_by_task_efficiency ---
+
+
+def test_group_by_task_efficiency_basic():
+    """Groups records by task_type with per-task efficiency stats."""
+    records = [
+        {"task_type": "review-diff", "success": True, "profile": "commit_reviewer",
+         "backend": "ollama", "failure_type": None, "input_tokens": 100,
+         "output_tokens": 50, "total_tokens": 150, "duration_ms": 1000,
+         "estimated_cost_cny": 0.0},
+        {"task_type": "review-diff", "success": True, "profile": "commit_reviewer",
+         "backend": "ollama", "failure_type": None, "input_tokens": 200,
+         "output_tokens": 80, "total_tokens": 280, "duration_ms": 2000,
+         "estimated_cost_cny": 0.0},
+        {"task_type": "summarize-file", "success": False, "profile": "fast_summary",
+         "backend": "ollama", "failure_type": "timeout", "input_tokens": 50,
+         "output_tokens": 0, "total_tokens": 50, "duration_ms": 30000,
+         "estimated_cost_cny": None},
+    ]
+    groups = call_ledger.group_by_task_efficiency(records)
+    assert set(groups.keys()) == {"review-diff", "summarize-file"}
+
+    rd = groups["review-diff"]
+    assert rd["calls"] == 2
+    assert rd["successes"] == 2
+    assert rd["failures"] == 0
+    assert rd["total_tokens"] == 430
+    assert rd["primary_profile"] == "commit_reviewer"
+    assert rd["primary_backend"] == "ollama"
+    assert rd["top_failure_type"] == "-"
+
+    sf = groups["summarize-file"]
+    assert sf["calls"] == 1
+    assert sf["failures"] == 1
+    assert sf["primary_profile"] == "fast_summary"
+    assert sf["top_failure_type"] == "timeout"
+
+
+def test_group_by_task_efficiency_unknown_task():
+    """Records with missing task_type go to <none>."""
+    records = [
+        {"success": True, "profile": "fast_summary", "backend": "unknown",
+         "input_tokens": 10, "output_tokens": 5, "total_tokens": 15,
+         "duration_ms": 100, "estimated_cost_cny": 0.0},
+    ]
+    groups = call_ledger.group_by_task_efficiency(records)
+    assert "<none>" in groups
+    assert groups["<none>"]["calls"] == 1
+
+
+def test_group_by_task_efficiency_top_failure_type():
+    """top_failure_type is the most common failure_type in failures."""
+    records = [
+        {"task_type": "t", "success": False, "failure_type": "timeout",
+         "profile": "p", "backend": "b", "input_tokens": 10,
+         "output_tokens": 5, "total_tokens": 15, "duration_ms": 100,
+         "estimated_cost_cny": 0.0},
+        {"task_type": "t", "success": False, "failure_type": "timeout",
+         "profile": "p", "backend": "b", "input_tokens": 10,
+         "output_tokens": 5, "total_tokens": 15, "duration_ms": 100,
+         "estimated_cost_cny": 0.0},
+        {"task_type": "t", "success": False, "failure_type": "missing_model",
+         "profile": "p", "backend": "b", "input_tokens": 10,
+         "output_tokens": 5, "total_tokens": 15, "duration_ms": 100,
+         "estimated_cost_cny": 0.0},
+        {"task_type": "t", "success": True, "failure_type": None,
+         "profile": "p", "backend": "b", "input_tokens": 10,
+         "output_tokens": 5, "total_tokens": 15, "duration_ms": 100,
+         "estimated_cost_cny": 0.0},
+    ]
+    groups = call_ledger.group_by_task_efficiency(records)
+    # Most common failure: timeout (2x) vs missing_model (1x)
+    assert groups["t"]["top_failure_type"] == "timeout"
+
+
+def test_group_by_task_efficiency_empty():
+    assert call_ledger.group_by_task_efficiency([]) == {}
+
+
+def test_cli_by_task_table_contains_efficiency_columns(clean_env, ledger_path, capsys):
+    """Table output should include the richer column headers."""
+    _seed_ledger(ledger_path)
+    rc = call_ledger_cli.main(["--path", str(ledger_path), "by-task"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "profile" in captured
+    assert "backend" in captured
+    assert "top_fail" in captured
+    assert "fail%" in captured
+    assert "avg_ms" in captured
 
 
 def test_cli_failures(clean_env, ledger_path, capsys):
