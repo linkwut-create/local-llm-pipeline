@@ -245,12 +245,20 @@ def test_draft_commit_message_prompt_exists():
     from local_llm_worker import TASK_PROMPTS
     prompt = TASK_PROMPTS.get("draft-commit-message")
     assert prompt is not None, "draft-commit-message prompt missing from TASK_PROMPTS"
+    assert "Commit title" in prompt
+    assert "Commit body" in prompt
+    assert "Tests / validation" in prompt
+    assert "Risk notes" in prompt
+    assert "Controller checklist" in prompt
     assert "NEVER run git commit" in prompt
     assert "NEVER stage files" in prompt
-    assert "NEVER edit source files" in prompt
-    assert "ADVISORY ONLY" in prompt or "advisory" in prompt.lower()
+    assert "NEVER push" in prompt
+    assert "Do NOT modify source files" in prompt
+    assert "ADVISORY ONLY" in prompt
     assert "DRAFT" in prompt
-    assert "empty" in prompt.lower() or "meaningless" in prompt.lower()
+    assert "empty" in prompt.lower() or "too short" in prompt.lower()
+    assert "No obvious risk" in prompt
+    assert "Do not claim tests passed" in prompt
 
 
 def test_draft_pr_summary_task_config():

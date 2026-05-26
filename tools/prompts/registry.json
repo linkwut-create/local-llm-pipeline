@@ -107,7 +107,7 @@
       "prompt_id": "draft-commit-message",
       "version": "v1",
       "file": "draft-commit-message.v1.md",
-      "hash": "6117a4477b85b779"
+      "hash": "24970d78cb5a0aa4"
     },
     "draft-pr-summary": {
       "prompt_id": "draft-pr-summary",
