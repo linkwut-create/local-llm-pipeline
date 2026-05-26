@@ -125,6 +125,34 @@
   AGENTS.md Controller Requirements section, and docs/mcp-task-policy.md
   Escalation Rules table. No runtime/test/VERSION/tool changes.
 
+## Post-v0.12.0 (Z-chain, 2026-05-27)
+
+- **Z-0** (audit, no commit): Quality/value verification planning audit at
+  `b351aa9`.  Read-only.  Designed four Z-chain slices: (A) quality smoke —
+  fixed-input local model battery with 6 heuristic checks (empty output,
+  off-target, malformed JSON, abnormal confidence, hallucination, latency);
+  (B) cost savings report — read-only `call_ledger_cli.py savings` with
+  static `cloud_cost_reference.json`; (C) cross-project feedback ledger —
+  manual CLI-only append-only JSONL with disposition taxonomy; (D) project
+  brief doc as prerequisite.  Call ledger baseline recorded: 2,980 records,
+  91.0% success, 13.5M tokens, 0 CNY.  Verdict: **PASS.**  Recommended
+  Z-1 (docs-only baseline) as first slice — needed by Z-2/Z-3/Z-4.
+  No code/test/VERSION/tag changes.
+
+- **Z-1** (this commit): Docs-only project brief / current baseline doc.
+  Created `docs/Z_BASELINE.md` with: pipeline baseline metrics (HEAD
+  `b351aa9`, VERSION `0.12.0`, 1995 tests, 12 MCP tools, 2,980 ledger
+  records, 91.0% success, 13.5M tokens, 0 CNY), target project inventory
+  (pipeline + translator-agent + durable-agent), dogfood baselines, Z-chain
+  roadmap (Z-2 quality smoke → Z-3 cost savings → Z-4 feedback ledger),
+  quality threshold definitions (6 checks, all advisory, none blocking),
+  cost-savings assumptions (static cloud rates, read-only, no mutation of
+  `estimated_cost_cny`), feedback-loop assumptions (manual CLI-only,
+  append-only JSONL, same privacy rules), risk register (6 risks), and hard
+  boundaries (no 13th MCP tool, no VERSION bump, no runtime changes
+  throughout Z-chain).  No code/test/VERSION/tag changes.  MCP tool count
+  remains 12.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,

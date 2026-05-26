@@ -105,6 +105,23 @@
 | X-1 | Done (audit, no commit) | **PASS.** Auto-upgrade policy practicality audit. Confirmed: `_check_quality_escalation()` has only 3 branches — `timeout` (downgrade), `confidence=="low"` (default OFF since P3-C1), `uncertain_points > 3` (default OFF since P3-C2). `confidence=="medium"` was never an escalation trigger — X-0 finding was a doc misunderstanding, not a code bug. Runtime behavior correct. Gap is docs: no guidance for controllers about what medium confidence means. Recommended X-2 docs-only policy refinement. No code/test/VERSION changes. |
 | X-2 | Done (`668ae18`) | Docs-only medium confidence policy refinement. Added controller guidance for `confidence=medium` to CLAUDE.md, AGENTS.md, and docs/mcp-task-policy.md. No runtime/test/VERSION/tool changes. |
 
+## Quality/Value Verification (Post-v0.12.0, Z-chain, 2026-05-27)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Z-0 | Done (audit, no commit) | **PASS.** Read-only quality/value verification planning audit at `b351aa9`. Designed: (A) quality smoke — fixed-input battery with heuristic checks (empty output, off-target, malformed JSON, confidence, hallucination, latency); (B) cost savings report — read-only `call_ledger_cli.py savings` with static `cloud_cost_reference.json`; (C) cross-project feedback ledger — manual CLI-only append-only JSONL; (D) project brief doc as first slice. Call ledger baseline: 2,980 records, 91.0% success, 13.5M tokens, 0 CNY cost. Recommended sequence: Z-1 (baseline doc) → Z-2 (quality smoke) → Z-3 (cost savings) → Z-4 (feedback ledger). Hard constraints: MCP tool count stays 12, no VERSION bump, no push/tag/release, no local-translator-agent changes throughout Z-chain. |
+| Z-1 | Done (this commit) | Docs-only project brief / current baseline doc. Created `docs/Z_BASELINE.md` recording: pipeline baseline (HEAD/VERSION/tests/ledger), target projects (pipeline + translator-agent + durable-agent), dogfood baselines, Z-chain roadmap, quality threshold definitions (empty/off-target/malformed JSON/confidence/hallucination/latency), cost-savings assumptions (read-only over existing ledger, static cloud rates, no mutation of `estimated_cost_cny`), feedback-loop assumptions (manual CLI-only, append-only JSONL, same privacy rules as call ledger), risk register (6 risks, all mitigated), and hard boundaries (no 13th MCP tool, no VERSION bump, no runtime changes). No code/test/VERSION/tag changes. MCP tool count remains 12. |
+
+### Z-chain roadmap
+
+```
+Z-0: quality/value verification planning audit       ← DONE (audit, no commit)
+Z-1: project brief/current baseline doc               ← DONE (this commit)
+Z-2: local model output quality smoke                 ← next, code (not started)
+Z-3: cost/token savings report                        ← code (not started)
+Z-4: cross-project feedback ledger                    ← code (not started)
+```
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |
