@@ -68,7 +68,7 @@ py -3 tools/local_llm_debate.py architecture-review <path>
 
 ## MCP Integration (v0.11.0)
 
-The pipeline exposes **11** source-non-mutating MCP tools via
+The pipeline exposes **12** source-non-mutating MCP tools via
 `tools/local_llm_mcp_server.py`:
 
 `local_check`, `local_summarize_file`, `local_summarize_tree`,

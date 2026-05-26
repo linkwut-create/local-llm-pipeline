@@ -177,20 +177,20 @@ def test_build_prompt_no_mcp_required():
 # ── G. D-C MCP integration ────────────────────────────────────────────
 
 def test_mcp_tool_exists_in_source():
-    """D-C: local_classify_test_failure IS in MCP TOOLS (tool count now 11)."""
+    """D-C: local_classify_test_failure IS in MCP TOOLS (tool count now 12)."""
     mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
     text = mcp_path.read_text(encoding="utf-8")
     assert 'local_classify_test_failure' in text, \
         "D-C must add local_classify_test_failure to MCP server"
 
 
-def test_mcp_tool_count_11():
-    """D-C: MCP TOOLS count is now 11."""
+def test_mcp_tool_count_12():
+    """D-C: MCP TOOLS count is now 12."""
     mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
     text = mcp_path.read_text(encoding="utf-8")
     import re
     tool_names = re.findall(r'"local_\w+":\s*\{', text)
-    assert len(tool_names) == 11, f"expected 11 MCP tools, found {len(tool_names)}: {tool_names}"
+    assert len(tool_names) == 12, f"expected 12 MCP tools, found {len(tool_names)}: {tool_names}"
 
 
 def test_call_ledger_has_test_failure_keys():

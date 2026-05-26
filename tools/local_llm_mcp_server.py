@@ -31,6 +31,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from local_llm_worker import is_blocked_path
 from health_store import load_profile_health, record_invocation
 
+# S-1: workflow planner — heuristic-only, no model calls
+try:
+    import local_workflow_plan as _workflow_plan
+except Exception:
+    _workflow_plan = None
+
 # B1-C: preclassifier advisory integration (safe fallback)
 try:
     from local_llm_preclassifier import classify_diff_risk_heuristic as _preclassify
@@ -1094,6 +1100,40 @@ TOOLS = {
                 "model": {"type": "string", "description": "Optional model override."},
             },
             "required": ["stderr"],
+        },
+    },
+
+    "local_workflow_plan": {
+        "description": (
+            "Heuristic local workflow planner — no LLM calls, advisory-only. "
+            "Classifies a task by description + file listing into one of four "
+            "workflow types (small-code-change, docs-only-change, "
+            "high-risk-runtime-change, release-local-checkpoint) and returns a "
+            "7-phase recommended command sequence."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_description": {
+                    "type": "string",
+                    "description": "Task description for context-aware classification.",
+                },
+                "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "File paths to evaluate (e.g. from git ls-files or "
+                        "git diff --name-only)."
+                    ),
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["json", "text"],
+                    "default": "json",
+                    "description": "Output format. Defaults to 'json' for MCP consumption.",
+                },
+            },
+            "required": [],
         },
     },
 }
@@ -3153,6 +3193,77 @@ def call_repo_map(params: dict) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# S-1: local_workflow_plan — heuristic-only, no model calls
+# ---------------------------------------------------------------------------
+
+def call_workflow_plan(params: dict) -> dict:
+    """Heuristic workflow planner — no LLM, advisory-only."""
+    request_id = _make_request_id()
+
+    if _workflow_plan is None:
+        return {
+            "tool": "local_workflow_plan",
+            "ok": False,
+            "error": "local_workflow_plan module not available",
+            "error_type": "import_error",
+            "request_id": request_id,
+            "advisory_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    task_desc = str(params.get("task_description", "") or "")
+    files = params.get("files", []) or []
+    if not isinstance(files, list):
+        files = []
+    files = [str(f) for f in files]
+    fmt = params.get("format", "json") or "json"
+
+    start = time.time()
+    plan = _workflow_plan.build_plan(files, task_desc)
+    elapsed = round(time.time() - start, 2)
+
+    result: dict = {
+        "tool": "local_workflow_plan",
+        "ok": True,
+        "workflow_type": plan["workflow_type"],
+        "risk_level": plan["risk_level"],
+        "debate_required": plan["debate_required"],
+        "debate_reason": plan["debate_reason"],
+        "estimated_cost_seconds": plan["estimated_cost_seconds"],
+        "phases": {},
+        "controller_must_decide": plan["controller_must_decide"],
+        "advisory_only": True,
+        "request_id": request_id,
+        "elapsed_seconds": elapsed,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Include phase commands in structured output
+    for phase_key, phase in plan["phases"].items():
+        cmds = phase.get("commands", [])
+        desc = phase.get("description", "")
+        result["phases"][phase_key] = {
+            "description": desc,
+            "commands": cmds,
+        }
+
+    if fmt == "text":
+        result["text_output"] = _workflow_plan_text(plan, files, task_desc)
+
+    return result
+
+
+def _workflow_plan_text(plan: dict, files: list[str], task_desc: str) -> str:
+    """Capture text output from the planner."""
+    import io
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _workflow_plan._print_plan_text(plan, files, task_desc)
+    return buf.getvalue()
+
+
 def _try_write_repo_map_ledger(*, request_id: str, ok: bool,
                                  total_files: int, test_mappings: int,
                                  schema_version: int, elapsed_seconds: float,
@@ -3375,6 +3486,7 @@ TOOL_HANDLERS = {
     "local_draft_code": call_draft_code,
     "local_repo_map": call_repo_map,
     "local_classify_test_failure": call_classify_test_failure,
+    "local_workflow_plan": call_workflow_plan,
 }
 
 

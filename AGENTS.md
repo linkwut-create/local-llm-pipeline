@@ -12,7 +12,7 @@ collection.  It provides:
 - **Task bootstrap**: structured project context before broad work.
 - **Review gates**: pre-commit and pre-release safety checks via local models.
 - **Call ledger**: token/cost observability across models and tasks.
-- **MCP server**: 11 source-non-mutating tools for summarization, review, test
+- **MCP server**: 12 source-non-mutating tools for summarization, review, test, workflow planning
   planning, and repo mapping.
 
 Codex, Claude Code, and local LLMs are executors — the pipeline provides the
@@ -151,7 +151,7 @@ Codex or Claude Code.
 
 ## MCP Integration (v0.11.0)
 
-The pipeline exposes **11** source-non-mutating MCP tools via
+The pipeline exposes **12** source-non-mutating MCP tools via
 `tools/local_llm_mcp_server.py`:
 
 `local_check`, `local_summarize_file`, `local_summarize_tree`,

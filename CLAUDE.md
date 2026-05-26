@@ -115,7 +115,7 @@ The pipeline exposes 10 source-non-mutating MCP tools via `tools/local_llm_mcp_s
 `local_repo_map`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
-Verify with `/mcp` — should show `local-llm connected 10 tools`.
+Verify with `/mcp` — should show `local-llm connected 12 tools`.
 
 ### Auto-Invocation (Phase 2.0)
 

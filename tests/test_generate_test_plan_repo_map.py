@@ -58,7 +58,7 @@ def _write_repo_map(path: Path):
 
 class TestSchemaAndToolCount:
     def test_tool_count_unchanged(self):
-        assert len(mcp.TOOLS) == 11
+        assert len(mcp.TOOLS) == 12
 
     def test_local_generate_test_plan_registered(self):
         assert "local_generate_test_plan" in mcp.TOOLS

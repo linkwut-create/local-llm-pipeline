@@ -69,6 +69,13 @@
 | Q-0 | Done (audit, no commit) | Advisor output quality audit. 4/5 advisors pass (draft-pr-summary, draft-changelog-entry, find-related-files, local_workflow_plan). draft-commit-message was weak link — unclear sections, duplicated content, low parseability. No JSON schema needed. |
 | Q-1 | Done (`b5f71ad`) | **Align draft-commit-message prompt.** 5-section Markdown structure (Commit title, Commit body, Tests/validation, Risk notes, Controller checklist). Added empty-input guard, "No obvious risk" fallback, NEVER push, "Do not claim tests passed". Dogfood confirms clean output. |
 
+## MCP Tool Expansion (Post-v0.12.0, S-chain, 2026-05-26)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| S-0 | Done (audit, no commit) | MCP exposure planning for local_workflow_plan. Recommended: expose as 12th tool via direct module import (pure-heuristic, no LLM). High-risk path (MCP server). |
+| S-1 | In progress | **Expose local_workflow_plan as MCP tool.** Direct module import pattern (like local_repo_map). 12th tool. 14 focused tests. Tool count 11→12 across 8 locations. |
+
 ## MCP Cost Discipline
 
 | Phase | Status | Notes |

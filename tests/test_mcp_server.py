@@ -17,7 +17,7 @@ FORBIDDEN_TOOL_KEYWORDS = [
 
 
 def test_tools_count():
-    assert len(mcp.TOOLS) == 11
+    assert len(mcp.TOOLS) == 12
 
 
 def test_tool_names():
@@ -25,7 +25,7 @@ def test_tool_names():
         "local_check", "local_summarize_file", "local_summarize_tree",
         "local_generate_test_plan", "local_review_diff", "local_debate_review_diff",
         "local_parallel_review", "local_draft_code", "local_contextual_analyze",
-        "local_repo_map", "local_classify_test_failure",
+        "local_repo_map", "local_classify_test_failure", "local_workflow_plan",
     }
     assert set(mcp.TOOLS.keys()) == expected
 
@@ -112,7 +112,7 @@ def test_handle_tools_list():
     assert response["jsonrpc"] == "2.0"
     assert response["id"] == 2
     tools = response["result"]["tools"]
-    assert len(tools) == 11
+    assert len(tools) == 12
     tool_names = {t["name"] for t in tools}
     assert "local_check" in tool_names
 
@@ -770,3 +770,110 @@ def test_review_diff_non_gate_uses_wrap_worker_call(monkeypatch):
     assert result["ok"] is True
     assert captured["tool"] == "local_review_diff"
     assert "review-diff" in captured["cmd"]
+
+
+# ---------------------------------------------------------------------------
+# S-1: local_workflow_plan MCP tool
+# ---------------------------------------------------------------------------
+
+class TestWorkflowPlanMCP:
+    def test_tool_exposed(self):
+        assert "local_workflow_plan" in mcp.TOOLS
+
+    def test_tool_has_handler(self):
+        assert "local_workflow_plan" in mcp.TOOL_HANDLERS
+
+    def test_tool_schema(self):
+        schema = mcp.TOOLS["local_workflow_plan"]
+        assert "inputSchema" in schema
+        props = schema["inputSchema"]["properties"]
+        assert "task_description" in props
+        assert "files" in props
+        assert "format" in props
+
+    def test_returns_ok(self):
+        result = mcp.call_workflow_plan({})
+        assert result["tool"] == "local_workflow_plan"
+        assert result["ok"] is True
+        assert result["advisory_only"] is True
+
+    def test_small_code_change(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix login timeout bug",
+            "files": ["src/main.py", "tests/test_main.py"],
+        })
+        assert result["workflow_type"] == "small-code-change"
+        assert result["risk_level"] == "medium"
+        assert result["debate_required"] is False
+
+    def test_docs_only_change(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Update docs",
+            "files": ["docs/guide.md", "CHANGELOG.md"],
+        })
+        assert result["workflow_type"] == "docs-only-change"
+        assert result["risk_level"] == "low"
+        assert result["debate_required"] is False
+
+    def test_high_risk_router(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Change router eligibility logic",
+            "files": ["tools/local_llm_router.py"],
+        })
+        assert result["workflow_type"] == "high-risk-runtime-change"
+        assert result["risk_level"] == "high"
+        assert result["debate_required"] is True
+
+    def test_high_risk_mcp_server(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Add new MCP tool",
+            "files": ["tools/local_llm_mcp_server.py"],
+        })
+        assert result["workflow_type"] == "high-risk-runtime-change"
+        assert result["debate_required"] is True
+
+    def test_release_checkpoint(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Release v0.14.0 checkpoint",
+            "files": ["CHANGELOG.md", "PROJECT_STATUS.md"],
+        })
+        assert result["workflow_type"] == "release-local-checkpoint"
+
+    def test_empty_input_unknown(self):
+        result = mcp.call_workflow_plan({})
+        assert result["ok"] is True
+        assert result["workflow_type"] == "unknown"
+
+    def test_invalid_files_handled(self):
+        result = mcp.call_workflow_plan({
+            "files": "not_a_list",
+        })
+        assert result["ok"] is True  # should not crash
+
+    def test_json_format_default(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix bug",
+            "files": ["src/main.py"],
+        })
+        assert "workflow_type" in result
+        assert "phases" in result
+        assert "controller_must_decide" in result
+
+    def test_phases_structured(self):
+        result = mcp.call_workflow_plan({
+            "task_description": "Fix bug",
+            "files": ["src/main.py"],
+        })
+        phases = result["phases"]
+        assert "orient" in phases
+        assert "review" in phases
+        assert "commit" in phases
+        # Each phase has description and commands
+        for key in phases:
+            assert "description" in phases[key]
+            assert "commands" in phases[key]
+
+    def test_no_dangerous_keywords_in_tool_name(self):
+        name = "local_workflow_plan"
+        for kw in FORBIDDEN_TOOL_KEYWORDS:
+            assert kw not in name.lower()
