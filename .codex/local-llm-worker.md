@@ -73,7 +73,7 @@ See AGENTS.md for full workflow.
 
 ## Preferred Workflow
 
-1. Run task_bootstrap for unfamiliar or broad tasks.
+1. Run task_bootstrap for unfamiliar or broad tasks (bundled alternative covering orientation and understanding steps).
 2. Use local worker to compress broad context.
 3. Read the worker JSON output.
 4. Read only the key files directly.
@@ -102,7 +102,7 @@ The pipeline exposes **12** source-non-mutating MCP tools via
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
 `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
-`local_repo_map`, `local_classify_test_failure`.
+`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`.
 
 MCP tools are source-non-mutating — output only to `.local_llm_out/`.
 

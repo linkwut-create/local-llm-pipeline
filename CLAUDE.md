@@ -250,11 +250,11 @@ Validated on local-translator-agent and local-durable-agent.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 10 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 12 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
 `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
-`local_repo_map`.
+`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
 Verify with `/mcp` — should show `local-llm connected 12 tools`.
@@ -284,9 +284,10 @@ The existing manual MCP invocation path still works and is required for:
 
 ### Task-Level MCP Usage Policy (MCP 2.1 — Hardened)
 
-**Every development task must have a local model participation point.**
-Not every keystroke — every task. Missing MCP participation points block commit.
-This is enforced by process discipline, with audit trail.
+**Every non-trivial development task must have a local model participation point.**
+Not every keystroke — every non-trivial task. Missing MCP participation points block commit.
+This is enforced by process discipline, with audit trail. See Controller Delegation
+Contract (U-1) for MAY skip cases (explanation-only, tiny typo, user override, emergency).
 
 Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
 Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)

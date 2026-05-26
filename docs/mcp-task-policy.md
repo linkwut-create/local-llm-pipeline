@@ -163,7 +163,7 @@ Controller-enforced limits per task:
 
 ## Core Rule
 
-**Every development task must have a local model participation point.** Not every keystroke — every task.
+**Every non-trivial development task must have a local model participation point.** Not every keystroke — every non-trivial task. See Controller Delegation Protocol (U-1) above for MAY skip cases (explanation-only, tiny typo, user override, emergency).
 
 ## Auto-Invocation (MCP 2.1)
 
