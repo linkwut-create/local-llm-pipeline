@@ -81,22 +81,28 @@ be933e9 test: fix post-J-chain regression expectations
 - Post-v0.11.0 tag, one commit (`429ed29`) has a cosmetic `@` in its subject
   (PowerShell here-string artifact).  Purely cosmetic, not amended.
 - Release zip will require `.mcp.json` audit and forbidden artifact scan
-  before publication (standard release gate, deferred to J-I/J-J).
+  before publication (standard release gate, deferred).
+- **MTP backend**: `qwen3.6_35b_moe_mtp` profile requires llama.cpp MTP which
+  is blocked on an upstream Qwen3.6 tensor fix.  It is excluded from the
+  default debate chain (J-L3).  The underlying model `qwen3.6:35b-q8-ud`
+  works through Ollama via `deep_reviewer` (validated J-M1, 13265ms).
+- **`nonexistent` model in ledger**: historical test artifact from `test_profile`
+  (removed).  No production code references exist.
 
 ## Upgrade / Release Status
 
 ```text
 VERSION              0.12.0 (bumped in J-H)
-tag                  v0.11.0 at 6f146e7 (unchanged, v0.12.0 tag pending J-J)
-local commits        13 ahead of origin/master
+tag                  v0.11.0 at 6f146e7 (unchanged, v0.12.0 tag deferred)
+local commits        20 ahead of origin/master
 push                 not done
 release zip          not created
 ```
 
-Next phases:
-- **J-I**: Local-only stabilization audit (completed — PASS)
-- **J-I.5**: Docs wording adjustment for local-only roadmap
-- **J-K+**: Continued local development — no GitHub upload planned
+Next phases (local-only development):
+- **J-K**: Related-files advisor — closed (v2 usable, path constraints fixed)
+- **J-L**: Call efficiency — closed (by-task report available, MTP removed from default debate)
+- **J-M1**: Model availability validated — closed (Ollama path works, MTP deferred)
 
 ---
 

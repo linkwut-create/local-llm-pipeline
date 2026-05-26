@@ -105,16 +105,39 @@
   (no source editing, commit, stage, push).  `max_output_chars` 3000 → 4000.
   5 focused tests.  Updated CLAUDE.md, CHANGELOG, and PROJECT_STATUS.
 
+- **J-K3** (audit, no commit): Dogfood and impact-map validation for
+  `find-related-files` v2.  3 scenarios — B/C near-perfect (0 fabricated
+  paths), A had 1 fabricated test path out of ~30 references (3.3%).
+  Verdict: PASS (PARTIAL), recommended J-K3.5 prompt tuning.
+
+- **J-K3.5** (`9ccfa4c`): Tighten `find-related-files` prompt path
+  constraints.  Added verbatim test-file boundary to prevent fabricated
+  test paths.  Re-run Scenario A confirmed 0 fabricated paths.
+
 - **J-L2** (`e1f2b8d`): Add by-task call ledger efficiency report.
   New `group_by_task_efficiency()` in call_ledger.py with per-task
   primary_profile, primary_backend, and top_failure_type.  Upgraded
   `by-task` CLI command with richer columns: fail%, avg_ms, dur_ms,
   profile, backend, top_fail.  5 focused tests.
 
-- **J-L3** (this commit): Remove unavailable MTP profile from default debate
+- **J-L3** (`53d8218`): Remove unavailable MTP profile from default debate
   chain.  Replaces `qwen3.6_35b_moe_mtp` (99.2% failure rate, MTP pending)
   with `deep_reviewer` as the default third-round debate profile.  Profile
   remains available for explicit/manual use.  3 focused tests.
+
+- **J-L4** (audit, no commit): Post-fix debate smoke and ledger sanity
+  audit.  J-L3 code fix verified effective.  Two residual non-blocker
+  issues noted: `nonexistent` model refs are test artifact (no production
+  path); `qwen3.6:35b-q8-ud` model load via Ollama pending separate hw
+  smoke.
+
+- **J-M1** (audit, no commit): Model availability and debate profile
+  health audit.  Confirmed `qwen3.6:35b-q8-ud` works through Ollama
+  (`deep_reviewer`, 13265ms).  Problem is MTP/llama.cpp path, not model.
+  `nonexistent` model references are test fixtures only — no production
+  code path.  `deep_reviewer` is suitable as default debate round 3.
+  J-L chain closed.  No further efficiency work needed unless MTP
+  backend is explicitly reopened.
 
 ## Post-v0.11.0 (GH-chain, 2026-05-26)
 

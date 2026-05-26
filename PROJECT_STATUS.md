@@ -41,14 +41,18 @@
 | J-I | Done (audit, no commit) | Local-only v0.12.0 stabilization audit. Quality gates green. Backend governance + advisor bundles intact. Verdict: **PASS — stable local baseline.** |
 | J-I.5 | Done (this commit) | Docs-only roadmap wording adjustment. Replace GitHub release references with local-only development language. |
 | J-K2 | Done (`3074eaf`) | **Enhance `find-related-files` to v2.** 5-line→6-section prompt, NO_RETRY_TASKS, advisory-only boundaries. 5 focused tests. Dogfood confirmed 6-section output. |
+| J-K3 | Done (audit, no commit) | Dogfood + impact-map validation. 3 scenarios, B/C near-perfect, A had 1 fabricated test path (1/30 total). Verdict: PASS (PARTIAL). |
+| J-K3.5 | Done (`9ccfa4c`) | **Prompt path tightening.** Add verbatim test file constraint. Re-run Scenario A: 0 fabricated paths. |
 
-## Call Efficiency (Post-v0.12.0, J-L chain, 2026-05-26)
+## Call Efficiency (Post-v0.12.0, J-L chain, 2026-05-26) — Closed
 
 | Phase | Status | Notes |
 |-------|--------|-------|
 | J-L1 | Done (audit, no commit) | Call-efficiency audit. Found qwen3.6_35b_moe_mtp 99.2% failure rate, debate 46% failure, repo_map accounting artifact. Recommended by-task report + debate chain fix. |
 | J-L2 | Done (`e1f2b8d`) | **Add by-task call ledger efficiency report.** `group_by_task_efficiency()` + richer CLI with profile/backend/failure_type. 5 focused tests. |
 | J-L3 | Done (`53d8218`) | **Remove unavailable MTP profile from default debate chain.** Replace qwen3.6_35b_moe_mtp with deep_reviewer. 3 focused tests. |
+| J-L4 | Done (audit, no commit) | Post-fix debate smoke + ledger sanity audit. J-L3 code fix verified effective. 2 residual non-blocker issues noted (nonexistent model refs = test artifact; 35B model load via Ollama pending separate hw smoke). |
+| J-M1 | Done (audit, no commit) | Model availability + debate profile health audit. Confirmed: qwen3.6:35b-q8-ud works through Ollama (deep_reviewer, 13265ms). Problem is MTP/llama.cpp path, not model. nonexistent model refs are test fixtures only. deep_reviewer suitable as default round 3. |
 
 ## MCP Cost Discipline
 
