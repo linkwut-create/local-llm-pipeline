@@ -106,11 +106,14 @@ def _print_records(records: list[dict], fmt: str) -> None:
         cost = r.get("estimated_cost_cny")
         cost_s = f"{cost:.4f}" if isinstance(cost, (int, float)) else "?"
         reason = (r.get("failure_reason") or "")[:40]
+        ftype = (r.get("failure_type") or "")[:18]
         line = (
             f"{ts}  {ok:<4} {project:<20} {task:<24} {model:<24} "
             f"dur={dur:>6}ms cost={cost_s:>8}"
         )
-        if reason:
+        if ftype:
+            line += f"  type={ftype}"
+        if reason and ok == "FAIL":
             line += f"  reason={reason}"
         print(line)
 
@@ -316,6 +319,12 @@ def cmd_by_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_by_backend(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    _print_groups(group_by(records, "backend"), args.format)
+    return 0
+
+
 def cmd_by_mcp_tool(args: argparse.Namespace) -> int:
     records = read_records(_resolve_path(args.path))
     _print_groups(
@@ -465,6 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp_recent.set_defaults(func=cmd_recent)
 
     sub.add_parser("by-profile", help="totals grouped by profile").set_defaults(func=cmd_by_profile)
+
+    sub.add_parser("by-backend", help="totals grouped by backend").set_defaults(func=cmd_by_backend)
 
     sub.add_parser("by-mcp-tool", help="totals grouped by MCP tool name").set_defaults(func=cmd_by_mcp_tool)
 

@@ -1733,3 +1733,101 @@ class TestCliRotate:
         out = capsys.readouterr().out
         assert "OK" in out
         assert "does not exist" in out
+
+
+# --- backend / failure_type classification (J-C4) ---
+
+class TestBackendResolution:
+    def test_ollama_provider(self):
+        from call_ledger import resolve_backend
+        assert resolve_backend("ollama") == "ollama"
+
+    def test_openai_compatible_provider(self):
+        from call_ledger import resolve_backend
+        assert resolve_backend("openai-compatible") == "openai_compatible"
+
+    def test_unknown_provider(self):
+        from call_ledger import resolve_backend
+        assert resolve_backend(None) == "unknown"
+        assert resolve_backend("") == "unknown"
+
+    def test_backend_stored_in_record(self):
+        from call_ledger import build_record
+        r = build_record(task_type="t", tool_name="n", model="m", provider="ollama")
+        assert r["backend"] == "ollama"
+
+    def test_backend_stored_for_openai_compat(self):
+        from call_ledger import build_record
+        r = build_record(task_type="t", tool_name="n", model="m",
+                         provider="openai-compatible")
+        assert r["backend"] == "openai_compatible"
+
+    def test_explicit_backend_overrides_resolve(self):
+        from call_ledger import build_record
+        r = build_record(task_type="t", tool_name="n", model="m",
+                         provider="ollama", backend="lmstudio")
+        assert r["backend"] == "lmstudio"
+
+
+class TestFailureTypeClassification:
+    def test_success_has_none_failure_type(self):
+        from call_ledger import classify_failure_type
+        assert classify_failure_type(success=True) is None
+
+    def test_none_success_is_placeholder(self):
+        from call_ledger import classify_failure_type
+        assert classify_failure_type(success=None) == "placeholder"
+
+    def test_404_is_missing_model(self):
+        from call_ledger import classify_failure_type
+        ft = classify_failure_type(success=False, failure_text="HTTP 404: not found")
+        assert ft == "missing_model"
+
+    def test_instant_fail_is_model_load_failed(self):
+        from call_ledger import classify_failure_type
+        ft = classify_failure_type(success=False, duration_ms=0,
+                                   failure_text="HTTP 500: fail")
+        assert ft == "model_load_failed"
+
+    def test_timeout_is_generation_timeout(self):
+        from call_ledger import classify_failure_type
+        ft = classify_failure_type(success=False, duration_ms=350000,
+                                   failure_text="Read timed out")
+        assert ft == "generation_timeout"
+
+    def test_connection_refused_is_backend_offline(self):
+        from call_ledger import classify_failure_type
+        ft = classify_failure_type(success=False,
+                                   failure_text="Connection refused")
+        assert ft == "backend_offline"
+
+    def test_generic_fail_is_api_error(self):
+        from call_ledger import classify_failure_type
+        ft = classify_failure_type(success=False, failure_text="something broken")
+        assert ft == "api_error"
+
+    def test_failure_type_in_record(self):
+        from call_ledger import build_record
+        r = build_record(task_type="t", tool_name="n", model="m",
+                         provider="ollama", success=False,
+                         failure_reason="HTTP 500: fail")
+        assert r["failure_type"] == "model_load_failed"
+
+    def test_success_record_has_none_failure_type(self):
+        from call_ledger import build_record
+        r = build_record(task_type="t", tool_name="n", model="m",
+                         provider="ollama", success=True)
+        assert r["failure_type"] is None
+
+    def test_old_record_without_fields_still_reads(self):
+        """Legacy records without backend/failure_type must still work."""
+        from call_ledger import _zero_summary, summarize
+        old = dict(_zero_summary())
+        old["calls"] = 1
+        old["successes"] = 1
+        # simulate old record dict without backend/failure_type keys
+        records = [{"success": True, "model": "test", "duration_ms": 100,
+                    "input_tokens": 10, "output_tokens": 5}]
+        s = summarize(records)
+        assert s["calls"] == 1
+        assert s["successes"] == 1

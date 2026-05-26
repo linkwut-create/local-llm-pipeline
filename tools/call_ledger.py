@@ -319,6 +319,78 @@ def _sanitize_extra(extra: Mapping[str, Any] | None) -> dict[str, Any]:
     return clean
 
 
+# --- backend / failure type classification (J-C4) ---
+
+VALID_BACKENDS = {"ollama", "llamacpp", "lmstudio", "openai_compatible", "unknown"}
+
+VALID_FAILURE_TYPES = {
+    "missing_model", "backend_offline", "model_load_failed",
+    "generation_timeout", "api_error", "user_skipped",
+    "placeholder", "unknown",
+}
+
+
+def resolve_backend(provider: str | None) -> str:
+    """Map a provider string to a canonical backend label."""
+    if not provider:
+        return "unknown"
+    p = provider.lower()
+    if p == "ollama":
+        return "ollama"
+    if p in ("openai-compatible", "openai_compatible"):
+        return "openai_compatible"
+    if p in ("llamacpp", "llama.cpp", "llama_cpp"):
+        return "llamacpp"
+    if p in ("lmstudio", "lm-studio", "lm_studio"):
+        return "lmstudio"
+    return "unknown"
+
+
+def classify_failure_type(*, success: bool | None = None,
+                          duration_ms: int = 0,
+                          failure_reason: str | None = None,
+                          failure_text: str | None = None) -> str | None:
+    """Classify a ledger record into a structured failure type.
+
+    Returns None for successful calls.  Uses pattern matching on the
+    failure reason and duration to distinguish load failures from
+    generation timeouts from missing models.
+    """
+    if success is True:
+        return None
+    if success is None:
+        return "placeholder"
+
+    reason = (failure_text or failure_reason or "").lower()
+
+    # Missing / non-existent model
+    if "404" in reason or "not found" in reason:
+        return "missing_model"
+
+    # Backend unreachable
+    if "connection" in reason and ("refused" in reason or "reset" in reason):
+        return "backend_offline"
+    if "offline" in reason:
+        return "backend_offline"
+
+    # Model load failure: instant failure (dur≈0) before any response,
+    # usually HTTP 500 from Ollama when model won't load into VRAM
+    if duration_ms == 0 and not success and ("fail" in reason or "500" in reason):
+        return "model_load_failed"
+
+    # Generation timeout: spent time waiting but timed out
+    if "timeout" in reason or "timed out" in reason or "read timed" in reason:
+        return "generation_timeout"
+
+    # API error fallback
+    if not success:
+        return "api_error"
+
+    return "unknown"
+
+
+# --- record builder ---
+
 def build_record(*,
                  project: str | None = None,
                  phase: str | None = None,
@@ -345,6 +417,8 @@ def build_record(*,
                  git_commit_after: str | None = None,
                  git_dirty_after: bool | None = None,
                  request_id: str | None = None,
+                 backend: str | None = None,
+                 failure_type: str | None = None,
                  extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Assemble a JSON-serializable ledger record. Does not write anything."""
     tokens_estimated = False
@@ -406,6 +480,10 @@ def build_record(*,
         "duration_ms": int(duration_ms or 0),
         "success": bool(success),
         "cache_hit": bool(cache_hit),
+        "backend": backend or resolve_backend(provider),
+        "failure_type": failure_type or classify_failure_type(
+            success=success, duration_ms=duration_ms, failure_reason=failure_reason,
+            failure_text=failure_text),
         "failure_reason": failure_text,
         "result_summary": summary_text,
         "files_referenced": files,

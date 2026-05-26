@@ -20,7 +20,12 @@
   in Ollama.  0 ledger records have `backend` field.  Recommended profile backend
   classification before ledger/router changes.
 
-- **J-C3** (this commit): Add explicit `_backend_class` to every profile.
+- **J-C4** (this commit): Add `backend` and `failure_type` fields to call ledger.
+  `resolve_backend()` maps provider→backend (ollama/llamacpp/openai_compatible/unknown).
+  `classify_failure_type()` classifies failures as missing_model, backend_offline,
+  model_load_failed, generation_timeout, api_error, placeholder, or unknown.
+  Both fields are optional for backward compat.  New `by-backend` CLI command.
+  16 targeted tests + 254 regression passed.  No router/worker behavior change.
   23 profiles classified: 12 ollama, 5 ollama_heavy_manual, 2 ollama_mtp_pending,
   2 unavailable, 1 llamacpp_unconfigured, 1 placeholder.  Tests validate
   class presence, allowed values, unavailable profiles not used as task defaults.
