@@ -116,7 +116,7 @@
   confidence. Recommended X-2 docs-only policy refinement. No code/test/
   VERSION changes.
 
-- **X-2** (this commit): Docs-only medium confidence policy refinement.
+- **X-2** (`668ae18`): Docs-only medium confidence policy refinement.
   Adds controller guidance for `confidence=medium`: informational only,
   never an auto-escalation trigger; controller may continue when output
   is useful and task is read-only/low-risk; controller should manually
