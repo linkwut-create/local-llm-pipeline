@@ -1928,3 +1928,269 @@ class TestFailureTypeClassification:
         s = summarize(records)
         assert s["calls"] == 1
         assert s["successes"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Z-3: Savings estimation
+# ---------------------------------------------------------------------------
+
+def _make_record(**overrides):
+    """Build a minimal synthetic ledger record for savings tests."""
+    r = {
+        "success": True,
+        "model": "test-model",
+        "profile": "commit_reviewer",
+        "provider": "ollama",
+        "task_type": "review-diff",
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "tokens_estimated": False,
+        "estimated_cost_cny": 0.0,
+        "execution_location": "lan",
+        "cost_confidence": "none",
+        "duration_ms": 5000,
+        "cache_hit": False,
+    }
+    r.update(overrides)
+    return r
+
+
+class TestLoadCloudRates:
+    def test_load_default_rates(self):
+        rates = call_ledger.load_cloud_rates()
+        assert "_version" in rates
+        assert rates["_version"] >= 1
+        assert "tiers" in rates
+        assert "profile_to_tier" in rates
+        assert "default_tier" in rates
+
+    def test_load_missing_file_returns_empty(self):
+        rates = call_ledger.load_cloud_rates("/nonexistent/path.json")
+        assert rates == {}
+
+    def test_load_from_tmp_path(self, tmp_path):
+        p = tmp_path / "rates.json"
+        p.write_text(json.dumps({"_version": 2, "tiers": {}, "profile_to_tier": {}, "default_tier": "small"}))
+        rates = call_ledger.load_cloud_rates(str(p))
+        assert rates["_version"] == 2
+
+    def test_load_invalid_json_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.json"
+        p.write_text("not json")
+        rates = call_ledger.load_cloud_rates(str(p))
+        assert rates == {}
+
+
+class TestResolveSavingsTier:
+    def test_known_profile(self):
+        rates = call_ledger.load_cloud_rates()
+        tier_key, tier_rates = call_ledger.resolve_savings_tier("commit_reviewer", rates)
+        assert tier_key == "medium"
+        assert "in_per_1k" in tier_rates
+
+    def test_unknown_profile_uses_default(self):
+        rates = call_ledger.load_cloud_rates()
+        tier_key, _ = call_ledger.resolve_savings_tier("nonexistent_profile", rates)
+        assert tier_key == rates["default_tier"]
+
+    def test_none_profile_uses_default(self):
+        rates = call_ledger.load_cloud_rates()
+        tier_key, _ = call_ledger.resolve_savings_tier(None, rates)
+        assert tier_key == rates["default_tier"]
+
+    def test_empty_profile_uses_default(self):
+        rates = call_ledger.load_cloud_rates()
+        tier_key, _ = call_ledger.resolve_savings_tier("", rates)
+        assert tier_key == rates["default_tier"]
+
+    def test_tiny_tier_for_fast_summary(self):
+        rates = call_ledger.load_cloud_rates()
+        tier_key, _ = call_ledger.resolve_savings_tier("fast_summary", rates)
+        assert tier_key == "tiny"
+
+
+class TestComputeSavings:
+    def test_normal_savings(self):
+        result = call_ledger.compute_savings(1000, 500, {"in_per_1k": 0.004, "out_per_1k": 0.008}, 0.0)
+        assert result["cloud_equivalent_cost_cny"] == 0.008  # 1.0*0.004 + 0.5*0.008
+        assert result["actual_cost_cny"] == 0.0
+        assert result["estimated_savings_cny"] == 0.008
+
+    def test_with_actual_cost(self):
+        result = call_ledger.compute_savings(1000, 500, {"in_per_1k": 0.004, "out_per_1k": 0.008}, 0.003)
+        assert result["cloud_equivalent_cost_cny"] == 0.008
+        assert result["actual_cost_cny"] == 0.003
+        assert result["estimated_savings_cny"] == 0.005
+
+    def test_zero_tokens(self):
+        result = call_ledger.compute_savings(0, 0, {"in_per_1k": 0.004, "out_per_1k": 0.008}, 0.0)
+        assert result["cloud_equivalent_cost_cny"] == 0.0
+        assert result["estimated_savings_cny"] == 0.0
+
+    def test_savings_never_negative(self):
+        result = call_ledger.compute_savings(100, 50, {"in_per_1k": 0.001, "out_per_1k": 0.002}, 5.0)
+        assert result["estimated_savings_cny"] == 0.0
+
+    def test_none_actual_cost_treated_as_zero(self):
+        result = call_ledger.compute_savings(1000, 500, {"in_per_1k": 0.004, "out_per_1k": 0.008}, None)
+        assert result["actual_cost_cny"] == 0.0
+
+    def test_missing_rate_defaults_to_zero(self):
+        result = call_ledger.compute_savings(1000, 500, {}, 0.0)
+        assert result["cloud_equivalent_cost_cny"] == 0.0
+
+
+class TestSavingsForGroup:
+    def test_single_record_group(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="commit_reviewer", input_tokens=1000, output_tokens=500)]
+        result = call_ledger.savings_for_group(records, rates)
+        assert result["calls"] == 1
+        assert result["total_tokens"] == 1500
+        assert result["tier"] == "medium"
+        # commit_reviewer maps to medium tier, non-estimated tokens, lan location → high
+        assert result["savings_confidence"] == "high"
+
+    def test_group_picks_best_profile(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [
+            _make_record(profile="fast_summary", input_tokens=100, output_tokens=50),
+            _make_record(profile="fast_summary", input_tokens=100, output_tokens=50),
+            _make_record(profile="commit_reviewer", input_tokens=100, output_tokens=50),
+        ]
+        result = call_ledger.savings_for_group(records, rates)
+        assert result["tier"] == "tiny"
+
+    def test_high_confidence_group(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="commit_reviewer", tokens_estimated=False,
+                                execution_location="local", cost_confidence="high")]
+        result = call_ledger.savings_for_group(records, rates)
+        # known profile, non-estimated tokens, local execution → high
+        assert result["savings_confidence"] == "high"
+
+    def test_medium_confidence_with_estimated_tokens(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="commit_reviewer", tokens_estimated=True,
+                                execution_location="local")]
+        result = call_ledger.savings_for_group(records, rates)
+        # estimated tokens → medium
+        assert result["savings_confidence"] == "medium"
+
+    def test_low_confidence_unknown_location(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="commit_reviewer", tokens_estimated=False,
+                                execution_location="unknown")]
+        result = call_ledger.savings_for_group(records, rates)
+        assert result["savings_confidence"] == "low"
+
+    def test_medium_confidence_default_tier(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="unknown_profile_xyz", tokens_estimated=False,
+                                execution_location="local")]
+        result = call_ledger.savings_for_group(records, rates)
+        # unknown profile → default tier → medium
+        assert result["savings_confidence"] == "medium"
+
+    def test_none_confidence_on_zero_tokens(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(input_tokens=0, output_tokens=0)]
+        result = call_ledger.savings_for_group(records, rates)
+        assert result["savings_confidence"] == "none"
+
+
+class TestBuildSavingsReport:
+    def test_total_only(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record(profile="commit_reviewer")]
+        report = call_ledger.build_savings_report(records, rates, baseline_commit="abc")
+        assert report["savings_version"] == 1
+        assert report["advisory_only"] is True
+        assert report["not_for_billing"] is True
+        assert report["method"] == "cloud_equivalent_cost - actual_cost"
+        assert "total" in report
+        assert "buckets" not in report
+
+    def test_grouped_by_profile(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [
+            _make_record(profile="commit_reviewer", task_type="review-diff"),
+            _make_record(profile="fast_summary", task_type="summarize-file"),
+        ]
+        report = call_ledger.build_savings_report(records, rates, group_by_key="profile",
+                                                  baseline_commit="abc")
+        assert report["by"] == "profile"
+        assert "buckets" in report
+        assert "commit_reviewer" in report["buckets"]
+        assert "fast_summary" in report["buckets"]
+
+    def test_total_matches_bucket_sum(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [
+            _make_record(profile="commit_reviewer", input_tokens=1000, output_tokens=500),
+            _make_record(profile="fast_summary", input_tokens=500, output_tokens=200),
+        ]
+        report = call_ledger.build_savings_report(records, rates, baseline_commit="abc")
+        total = report["total"]
+        assert total["calls"] == 2
+        assert total["total_input_tokens"] == 1500
+        assert total["total_output_tokens"] == 700
+
+    def test_baseline_commit(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record()]
+        report = call_ledger.build_savings_report(records, rates, baseline_commit="deadbeef")
+        assert report["baseline_commit"] == "deadbeef"
+
+    def test_rate_version_in_report(self):
+        rates = call_ledger.load_cloud_rates()
+        records = [_make_record()]
+        report = call_ledger.build_savings_report(records, rates, baseline_commit="abc")
+        assert report["cloud_rate_version"] == rates["_version"]
+
+
+class TestSavingsCLI:
+    def test_savings_json_output(self):
+        from unittest.mock import patch
+        with patch.object(call_ledger_cli, "_resolve_path") as mock_path:
+            import tempfile as _tmpm
+            import shutil as _shm
+            tmp = _tmpm.mkdtemp()
+            p = Path(tmp) / "ledger.jsonl"
+            p.write_text(json.dumps(_make_record()) + "\n")
+            mock_path.return_value = p
+            try:
+                import io as _io
+                save_io = _io.StringIO()
+                with patch("sys.stdout", save_io):
+                    rc = call_ledger_cli.main(["--format", "json", "savings"])
+                assert rc == 0
+                data = json.loads(save_io.getvalue())
+                assert data["advisory_only"] is True
+                assert data["not_for_billing"] is True
+            finally:
+                _shm.rmtree(tmp, ignore_errors=True)
+
+    def test_savings_by_profile(self):
+        from unittest.mock import patch
+        with patch.object(call_ledger_cli, "_resolve_path") as mock_path:
+            import tempfile as _tmpm
+            import shutil as _shm
+            tmp = _tmpm.mkdtemp()
+            p = Path(tmp) / "ledger.jsonl"
+            p.write_text(
+                json.dumps(_make_record(profile="commit_reviewer")) + "\n" +
+                json.dumps(_make_record(profile="fast_summary")) + "\n"
+            )
+            mock_path.return_value = p
+            try:
+                import io as _io
+                save_io = _io.StringIO()
+                with patch("sys.stdout", save_io):
+                    rc = call_ledger_cli.main(["--format", "json", "savings", "--by", "profile"])
+                assert rc == 0
+                data = json.loads(save_io.getvalue())
+                assert data["by"] == "profile"
+                assert len(data["buckets"]) >= 2
+            finally:
+                _shm.rmtree(tmp, ignore_errors=True)

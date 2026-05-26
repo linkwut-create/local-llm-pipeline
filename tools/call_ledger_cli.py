@@ -26,6 +26,7 @@ from pathlib import Path
 from call_ledger import (
     LEDGER_FILE,
     breakdown_counts,
+    build_savings_report,
     filter_debates,
     filter_debate_skips,
     filter_escalations,
@@ -33,6 +34,7 @@ from call_ledger import (
     group_by,
     group_by_extra,
     group_by_task_efficiency,
+    load_cloud_rates,
     read_records,
     read_records_with_diagnostics,
     recent,
@@ -455,6 +457,64 @@ def cmd_debate_skips(args: argparse.Namespace) -> int:
     return 0
 
 
+def _get_baseline_commit() -> str:
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5)
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _print_savings(report: dict, fmt: str) -> None:
+    t = report["total"]
+    if fmt == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return
+    print(f"Cloud-equivalent savings estimate (advisory only, not for billing)")
+    print(f"  Method: {report['method']}")
+    print(f"  Rate reference v{report['cloud_rate_version']}")
+    print()
+    print(f"Total:")
+    print(f"  calls:               {t['calls']}")
+    print(f"  successful:          {t['successful_calls']}")
+    print(f"  input tokens:        {t['total_input_tokens']}")
+    print(f"  output tokens:       {t['total_output_tokens']}")
+    print(f"  total tokens:        {t['total_tokens']}")
+    print(f"  cloud equivalent:    {t['cloud_equivalent_cost_cny']:.4f} CNY")
+    print(f"  actual cost:         {t['actual_cost_cny']:.4f} CNY")
+    print(f"  estimated savings:   {t['estimated_savings_cny']:.4f} CNY")
+    print(f"  savings confidence:  {t['savings_confidence']}")
+    print(f"  tier:                {t.get('tier', 'unknown')}")
+    buckets = report.get("buckets")
+    if buckets:
+        dim = report.get("by", "")
+        print(f"\nBy {dim}:")
+        header = f"  {'key':<30} {'calls':>6} {'tokens':>12} {'cloud_cny':>10} {'actual':>10} {'savings':>10} {'conf':>8}"
+        print(header)
+        print("  " + "-" * (len(header) - 2))
+        items = sorted(buckets.items(), key=lambda kv: kv[1]["total_tokens"], reverse=True)
+        for k, s in items:
+            key_display = k[:28] + (".." if len(k) > 28 else "")
+            print(f"  {key_display:<30} {s['calls']:>6} {s['total_tokens']:>12} "
+                  f"{s['cloud_equivalent_cost_cny']:>10.4f} {s['actual_cost_cny']:>10.4f} "
+                  f"{s['estimated_savings_cny']:>10.4f} {s['savings_confidence']:>8}")
+
+
+def cmd_savings(args: argparse.Namespace) -> int:
+    records = read_records(_resolve_path(args.path))
+    rates = load_cloud_rates(getattr(args, "rates", None))
+    by = getattr(args, "by", None)
+    if by == "total":
+        by = None
+    report = build_savings_report(records, rates, group_by_key=by,
+                                  baseline_commit=_get_baseline_commit())
+    _print_savings(report, args.format)
+    return 0
+
+
 def cmd_rotate(args: argparse.Namespace) -> int:
     """Archive the active calls.jsonl and start a fresh one."""
     from call_ledger import rotate_ledger
@@ -534,6 +594,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp_ds = sub.add_parser("debate-skips", help="list debates skipped via preclassifier")
     sp_ds.set_defaults(func=cmd_debate_skips)
+
+    sp_save = sub.add_parser("savings", help="cloud-equivalent savings estimation (advisory only)")
+    sp_save.add_argument("--by", choices=["total", "task", "profile", "model", "backend",
+                                           "mcp-tool", "project", "location"],
+                         default=None,
+                         help="group savings by dimension (default: total only)")
+    sp_save.add_argument("--rates", type=str, default=None,
+                         help="path to cloud_cost_reference.json")
+    sp_save.set_defaults(func=cmd_savings)
 
     sp_rot = sub.add_parser("rotate", help="archive calls.jsonl and start fresh")
     sp_rot.add_argument("--archive-name", default=None,

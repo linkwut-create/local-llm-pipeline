@@ -1,0 +1,60 @@
+{
+  "_comment": "Cloud-equivalent cost rates for local model savings estimation. Approximate only — not for billing. Manually maintained.",
+  "_version": 1,
+  "tiers": {
+    "tiny": {
+      "label": "~4B params",
+      "cloud_comparable": "GPT-3.5 / DeepSeek-V3 lite",
+      "in_per_1k": 0.001,
+      "out_per_1k": 0.002
+    },
+    "small": {
+      "label": "~12B params",
+      "cloud_comparable": "DeepSeek-V3 mid / GPT-4o-mini small",
+      "in_per_1k": 0.002,
+      "out_per_1k": 0.004
+    },
+    "medium": {
+      "label": "~27-30B params",
+      "cloud_comparable": "DeepSeek-V3 / GPT-4o-mini",
+      "in_per_1k": 0.004,
+      "out_per_1k": 0.008
+    },
+    "large": {
+      "label": "~35B+ params",
+      "cloud_comparable": "DeepSeek-R1 / GPT-4o",
+      "in_per_1k": 0.010,
+      "out_per_1k": 0.020
+    },
+    "xlarge": {
+      "label": "~70B+ params",
+      "cloud_comparable": "GPT-4.5 / Claude 3.5 Sonnet",
+      "in_per_1k": 0.020,
+      "out_per_1k": 0.040
+    }
+  },
+  "profile_to_tier": {
+    "fast_summary": "tiny",
+    "gemma4_26b": "tiny",
+    "smart_summary": "small",
+    "qwen3.6_12b": "small",
+    "code_worker": "medium",
+    "commit_reviewer": "medium",
+    "diff_reviewer": "medium",
+    "deep_reviewer": "large",
+    "reasoning_checker": "large",
+    "release_auditor": "xlarge",
+    "qwen3.6_35b_moe_mtp": "large",
+    "auto-debate-skip": "medium",
+    "repo_map": "tiny",
+    "router_auto": "medium",
+    "qwen3.6_30b_q8": "medium",
+    "qwen3.6_35b_q8_ud": "large",
+    "nemotron_4b": "tiny",
+    "nemotron_12b": "small",
+    "nemotron_49b": "large",
+    "dsr1_70b": "xlarge",
+    "mistral_119b": "xlarge"
+  },
+  "default_tier": "medium"
+}

@@ -914,3 +914,172 @@ def rotate_ledger(archive_name: str | None = None,
         return False, f"rotation failed: {exc}"
 
     return True, f"archived {target.name} → {archive.name} ({archive.stat().st_size} bytes)"
+
+
+# ── Cloud-equivalent savings estimation (Z-3) ──────────────────────────
+
+SAVINGS_VERSION = 1
+DEFAULT_CLOUD_RATES_PATH = Path(__file__).parent / "cloud_cost_reference.json"
+
+
+def load_cloud_rates(path: str | Path | None = None) -> dict:
+    """Load cloud-equivalent cost reference. Returns empty dict on failure."""
+    target = Path(path) if path else DEFAULT_CLOUD_RATES_PATH
+    if not target.exists():
+        return {}
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def resolve_savings_tier(profile: str | None, rates: dict) -> tuple[str, dict]:
+    """Map a profile name to a tier key and its rates dict.
+
+    Returns (tier_key, tier_rates). Uses default_tier when profile is unknown.
+    """
+    tiers = rates.get("tiers", {})
+    profile_to_tier = rates.get("profile_to_tier", {})
+    default_tier = rates.get("default_tier", "medium")
+    tier_key = profile_to_tier.get(profile or "", default_tier)
+    tier_rates = tiers.get(tier_key, tiers.get(default_tier, {}))
+    return tier_key, tier_rates
+
+
+def _safe_float(v: object) -> float:
+    try:
+        return float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def compute_savings(input_tokens: int, output_tokens: int,
+                    tier_rates: dict, actual_cost: float | None) -> dict:
+    """Compute cloud-equivalent savings for a single call or bucket.
+
+    Returns a dict with cloud_equivalent_cost, actual_cost, and estimated_savings.
+    All amounts in CNY.
+    """
+    in_rate = _safe_float(tier_rates.get("in_per_1k", 0))
+    out_rate = _safe_float(tier_rates.get("out_per_1k", 0))
+    cloud = round((input_tokens / 1000.0) * in_rate + (output_tokens / 1000.0) * out_rate, 6)
+    actual = round(_safe_float(actual_cost), 6) if actual_cost is not None else 0.0
+    return {
+        "cloud_equivalent_cost_cny": cloud,
+        "actual_cost_cny": actual,
+        "estimated_savings_cny": round(max(cloud - actual, 0.0), 6),
+    }
+
+
+def _classify_savings_confidence(records: list[dict], used_default_tier: bool) -> str:
+    """Derive savings confidence label for a group of records.
+
+    high  — all records have non-estimated tokens, known execution location,
+            and the profile was explicitly mapped to a tier
+    medium — some records have estimated tokens, or the tier was unresolvable
+             (using default_tier fallback)
+    low   — any record has unknown execution location
+    none  — no token data
+    """
+    if not records:
+        return "none"
+    total_tokens = sum(
+        int(r.get("input_tokens", 0) or 0) + int(r.get("output_tokens", 0) or 0)
+        for r in records)
+    if total_tokens == 0:
+        return "none"
+    any_estimated = any(r.get("tokens_estimated") for r in records)
+    any_unknown_loc = any(r.get("execution_location", "unknown") in ("unknown", None)
+                          for r in records)
+    if any_unknown_loc:
+        return "low"
+    if any_estimated or used_default_tier:
+        return "medium"
+    return "high"
+
+
+def savings_for_group(records: list[dict], rates: dict) -> dict:
+    """Compute a savings bucket for a group of ledger records.
+
+    *records* should be a list of ledger record dicts (same task/profile/etc.).
+    Returns a dict with token totals, savings arithmetic, and confidence.
+    """
+    profiles: dict[str, int] = {}
+    for r in records:
+        p = r.get("profile") or ""
+        profiles[p] = profiles.get(p, 0) + 1
+    best_profile = max(profiles, key=profiles.get) if profiles else ""
+    tier_key, tier_rates = resolve_savings_tier(best_profile or None, rates)
+
+    profile_to_tier = rates.get("profile_to_tier", {})
+    used_default_tier = best_profile not in profile_to_tier
+
+    total_input = sum(int(r.get("input_tokens", 0) or 0) for r in records)
+    total_output = sum(int(r.get("output_tokens", 0) or 0) for r in records)
+    actual_cost = sum(_safe_float(r.get("estimated_cost_cny")) for r in records)
+
+    savings = compute_savings(total_input, total_output, tier_rates, actual_cost)
+    confidence = _classify_savings_confidence(records, used_default_tier)
+
+    cost_conf: dict[str, int] = {}
+    for r in records:
+        cc = r.get("cost_confidence", "none") or "none"
+        cost_conf[cc] = cost_conf.get(cc, 0) + 1
+
+    return {
+        "calls": len(records),
+        "successful_calls": sum(1 for r in records if r.get("success") is True),
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total_input + total_output,
+        "tier": tier_key,
+        "tier_label": tier_rates.get("label", "") if tier_rates else "",
+        **savings,
+        "savings_confidence": confidence,
+        "cost_confidence_summary": cost_conf,
+    }
+
+
+def build_savings_report(records: list[dict], rates: dict | None = None,
+                         group_by_key: str | None = None,
+                         baseline_commit: str = "unknown") -> dict:
+    """Build a full savings report over *records*.
+
+    If *group_by_key* is provided (e.g. 'profile', 'task_type'), buckets are
+    returned per value of that key.  Otherwise only the ``total`` bucket.
+    """
+    if rates is None:
+        rates = load_cloud_rates()
+    rate_version = rates.get("_version", 0)
+
+    buckets: dict[str, dict] = {}
+    if group_by_key:
+        grouped = group_by(records, group_by_key)
+        for bucket_key, bucket_summary in grouped.items():
+            bucket_records = [r for r in records
+                              if str(r.get(group_by_key) or "").strip()
+                              or "<none>" == bucket_key]
+            # Rebuild: group_by returns summaries, not record lists — refilter
+            bucket_records = [r for r in records
+                              if (str(r.get(group_by_key) or "") or "<none>") == bucket_key]
+            buckets[bucket_key] = savings_for_group(bucket_records, rates)
+    else:
+        buckets = {}
+
+    total = savings_for_group(records, rates)
+
+    report: dict[str, Any] = {
+        "savings_version": SAVINGS_VERSION,
+        "generated_at": _utc_now_iso(),
+        "baseline_commit": baseline_commit,
+        "cloud_rate_version": rate_version,
+        "method": "cloud_equivalent_cost - actual_cost",
+        "advisory_only": True,
+        "not_for_billing": True,
+        "total": total,
+    }
+    if buckets:
+        report["by"] = group_by_key
+        report["buckets"] = buckets
+
+    return report
