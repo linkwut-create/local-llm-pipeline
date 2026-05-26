@@ -102,6 +102,29 @@
   practicality audit, NOT immediate new tooling. No code changes, no
   push. Working tree clean in both projects.
 
+- **X-0.6** (`2d75905`): Message-only amend. Fix accidental leading `@` in
+  X-0.5 commit subject (PowerShell here-string artifact). File content
+  unchanged from X-0.5.
+
+- **X-1** (audit, no commit): Auto-upgrade policy practicality audit.
+  Verdict: **PASS.** Confirmed `_check_quality_escalation()` has only 3
+  branches: `timeout` (downgrade), `confidence=="low"` (default OFF since
+  P3-C1), `uncertain_points > 3` (default OFF since P3-C2).
+  `confidence=="medium"` was never an auto-escalation trigger — the X-0
+  finding was a doc-understanding gap, not a code bug. Runtime behavior
+  is correct. Gap is purely docs: no controller guidance for medium
+  confidence. Recommended X-2 docs-only policy refinement. No code/test/
+  VERSION changes.
+
+- **X-2** (this commit): Docs-only medium confidence policy refinement.
+  Adds controller guidance for `confidence=medium`: informational only,
+  never an auto-escalation trigger; controller may continue when output
+  is useful and task is read-only/low-risk; controller should manually
+  re-run when output is vague, critical files are truncated, or task is
+  high-risk/safety-sensitive. Updated CLAUDE.md Escalation Rules table,
+  AGENTS.md Controller Requirements section, and docs/mcp-task-policy.md
+  Escalation Rules table. No runtime/test/VERSION/tool changes.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,

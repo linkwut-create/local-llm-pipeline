@@ -312,6 +312,22 @@ Codex or Claude Code.
 - Review git diff before final response.
 - Treat worker output as advisory only.
 
+### Confidence Handling (X-2)
+
+Worker `confidence` (`high` / `medium` / `low`) is informational, not a
+runtime gate:
+
+- `confidence=high` — output is reliable; proceed.
+- `confidence=medium` — **never an auto-escalation trigger.** Controller may
+  continue if output is useful and task is read-only or low/medium risk.
+  Controller should manually re-run or escalate if output is vague, critical
+  files were truncated, or the task is high-risk. Document the decision in
+  `controller_notes`.
+- `confidence=low` — upgrade candidate per current env-gated escalation policy
+  (`LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE`). Default OFF since P3-C1.
+
+Runtime behavior is unchanged — this is controller guidance only.
+
 ## MCP Integration (v0.11.0)
 
 The pipeline exposes **12** source-non-mutating MCP tools via

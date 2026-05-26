@@ -312,6 +312,7 @@ advisory) are unchanged by P3.
 |---------|------------------|------------------------------------|
 | `local_summarize_file` returns `confidence=low` | No auto-escalation. Controller decides whether to re-run with `smart_summary`. | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` restores legacy auto-escalation. |
 | `local_review_diff` returns `uncertain_points` > 3 | No auto-escalation. Controller decides whether to re-run with `diff_reviewer` / `deep_reviewer`. | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` restores legacy auto-escalation. |
+| `local_summarize_file` / `local_review_diff` returns `confidence=medium` | **Informational only.** Never an auto-escalation trigger. Controller may continue if output is useful and task is read-only or low/medium risk. Controller should manually re-run if output is vague, critical files were truncated, or task is high-risk/safety-sensitive. Document the decision in `controller_notes`. | n/a — medium confidence is not an escalation trigger. |
 | Worker `error_type == "timeout"` | Downgrades to a lighter model (unchanged by P3). | n/a — downgrade, not strong-model escalation. |
 | Diff touches `tools/local_llm_mcp_server.py` | Minimum `diff_reviewer`. Consider `local_debate_review_diff`. | n/a (controller policy) |
 | Diff touches commit gate, hook, or router logic | Must use `local_debate_review_diff` (fast mode minimum). | n/a |

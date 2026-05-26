@@ -380,6 +380,7 @@ lighter model, not a strong-model escalation, so it doesn't inflate cost.
 |---------|---------|------------------------------------|
 | `summarize` returns `confidence=low` | No auto-escalation. Controller may manually re-run with `smart_summary` if the flagged area matters. | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` restores legacy auto-escalation. |
 | `review` returns `uncertain_points` > 3 | No auto-escalation. Controller may manually re-run with `diff_reviewer` / `deep_reviewer` if the uncertain points are material. | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` restores legacy auto-escalation. |
+| `summarize` / `review` returns `confidence=medium` | Informational only. Never an auto-escalation trigger. Controller may continue if output is useful and task is read-only or low/medium risk. Controller should manually re-run if output is vague, critical files were truncated, or task is high-risk/safety-sensitive. Document the decision in `controller_notes`. | n/a — medium confidence is not an escalation trigger. |
 | Worker `error_type == "timeout"` | Downgrades to a lighter model (unchanged). | n/a — downgrade, not escalation. |
 | Diff touches MCP server, commit gate, router | Debate or deep review mandatory (controller policy, not runtime). | n/a |
 | Pre-release / tag / publish | `release_auditor` mandatory (controller policy). | n/a |

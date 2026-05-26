@@ -102,6 +102,8 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | X-0.5 | Done (dogfood, no commit) | **PARTIAL.** Cross-project delegation dogfood on local-translator-agent. Task: memory_context / retrieve_terminology_for_prompt workflow audit. Delegation worked enough to be useful: local_workflow_plan / work_order_template effective, local_summarize_file produced useful summaries of prompts.py and tm_service.py, discovered real structural risks (inline import duplicated at 17+ call sites, naming drift in memory_context/terminology_block, dispatch logic scattered across job_id/profile_id/none). Findings: local_summarize_tree output was off-target, local_summarize_file returned confidence=medium but auto-upgrade policy did not fire — this is a process gap (not a tool availability problem). No files modified in target project, no commit, no push. Recommended next step: X-1 auto-upgrade policy practicality audit, NOT immediate new tooling. |
+| X-1 | Done (audit, no commit) | **PASS.** Auto-upgrade policy practicality audit. Confirmed: `_check_quality_escalation()` has only 3 branches — `timeout` (downgrade), `confidence=="low"` (default OFF since P3-C1), `uncertain_points > 3` (default OFF since P3-C2). `confidence=="medium"` was never an escalation trigger — X-0 finding was a doc misunderstanding, not a code bug. Runtime behavior correct. Gap is docs: no guidance for controllers about what medium confidence means. Recommended X-2 docs-only policy refinement. No code/test/VERSION changes. |
+| X-2 | Done (this commit) | Docs-only medium confidence policy refinement. Added controller guidance for `confidence=medium` to CLAUDE.md, AGENTS.md, and docs/mcp-task-policy.md. No runtime/test/VERSION/tool changes. |
 
 ## MCP Cost Discipline
 
