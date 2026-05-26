@@ -110,15 +110,16 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Z-0 | Done (audit, no commit) | **PASS.** Read-only quality/value verification planning audit at `b351aa9`. Designed: (A) quality smoke — fixed-input battery with heuristic checks (empty output, off-target, malformed JSON, confidence, hallucination, latency); (B) cost savings report — read-only `call_ledger_cli.py savings` with static `cloud_cost_reference.json`; (C) cross-project feedback ledger — manual CLI-only append-only JSONL; (D) project brief doc as first slice. Call ledger baseline: 2,980 records, 91.0% success, 13.5M tokens, 0 CNY cost. Recommended sequence: Z-1 (baseline doc) → Z-2 (quality smoke) → Z-3 (cost savings) → Z-4 (feedback ledger). Hard constraints: MCP tool count stays 12, no VERSION bump, no push/tag/release, no local-translator-agent changes throughout Z-chain. |
-| Z-1 | Done (this commit) | Docs-only project brief / current baseline doc. Created `docs/Z_BASELINE.md` recording: pipeline baseline (HEAD/VERSION/tests/ledger), target projects (pipeline + translator-agent + durable-agent), dogfood baselines, Z-chain roadmap, quality threshold definitions (empty/off-target/malformed JSON/confidence/hallucination/latency), cost-savings assumptions (read-only over existing ledger, static cloud rates, no mutation of `estimated_cost_cny`), feedback-loop assumptions (manual CLI-only, append-only JSONL, same privacy rules as call ledger), risk register (6 risks, all mitigated), and hard boundaries (no 13th MCP tool, no VERSION bump, no runtime changes). No code/test/VERSION/tag changes. MCP tool count remains 12. |
+| Z-1 | Done (`6941d78`) | Docs-only project brief / current baseline doc. Created `docs/Z_BASELINE.md` recording: pipeline baseline (HEAD/VERSION/tests/ledger), target projects (pipeline + translator-agent + durable-agent), dogfood baselines, Z-chain roadmap, quality threshold definitions (empty/off-target/malformed JSON/confidence/hallucination/latency), cost-savings assumptions (read-only over existing ledger, static cloud rates, no mutation of `estimated_cost_cny`), feedback-loop assumptions (manual CLI-only, append-only JSONL, same privacy rules as call ledger), risk register (6 risks, all mitigated), and hard boundaries (no 13th MCP tool, no VERSION bump, no runtime changes). No code/test/VERSION/tag changes. MCP tool count remains 12. |
+| Z-2 | Done (`ac3d5c3`) | CLI-only quality smoke skeleton. Added `tools/quality_smoke.py` (456 lines) — advisory CLI battery with 4-call default battery (summarize-file ×2, review-diff, generate-test-plan) against fixed known inputs, 6 heuristic checks (empty output, off-target, malformed JSON, abnormal confidence, hallucination, latency), JSON report to `.local_llm_out/quality_smoke/`, exit codes 0/1/2. Added `tests/test_quality_smoke.py` (489 lines, 57 tests) — all mocked, no real model calls. No MCP tool registration, no hook/gate/guard integration, no CI scheduling, no `--use-router`, no existing file modifications. Full suite 2052 passed. VERSION `0.12.0` unchanged. MCP tool count remains 12. |
 
 ### Z-chain roadmap
 
 ```
 Z-0: quality/value verification planning audit       ← DONE (audit, no commit)
 Z-1: project brief/current baseline doc               ← DONE (this commit)
-Z-2: local model output quality smoke                 ← next, code (not started)
-Z-3: cost/token savings report                        ← code (not started)
+Z-2: local model output quality smoke                 ← DONE (`ac3d5c3`)
+Z-3: cost/token savings report                        ← next, code (not started)
 Z-4: cross-project feedback ledger                    ← code (not started)
 ```
 

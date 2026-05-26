@@ -153,6 +153,18 @@
   throughout Z-chain).  No code/test/VERSION/tag changes.  MCP tool count
   remains 12.
 
+- **Z-2** (`ac3d5c3`): CLI-only quality smoke skeleton.  Added
+  `tools/quality_smoke.py` (456 lines) — advisory CLI battery: 4-call
+  default battery (summarize-file ×2, review-diff, generate-test-plan)
+  against fixed known inputs, 6 heuristic checks (empty output, off-target,
+  malformed JSON, abnormal confidence, hallucination, latency), JSON report
+  to `.local_llm_out/quality_smoke/`, exit codes 0/1/2.  Added
+  `tests/test_quality_smoke.py` (489 lines, 57 tests) — all mocked, no real
+  model calls.  No MCP tool registration, no hook/gate/guard integration,
+  no CI scheduling, no `--use-router`, no existing file modifications.
+  Full suite 2052 passed.  VERSION `0.12.0` unchanged.  MCP tool count
+  remains 12.
+
 ## Post-v0.11.0 (J-chain, 2026-05-26)
 
 - **J-A**: Productivity Advisor Planning Audit (read-only).  Evaluated 5 candidates,
