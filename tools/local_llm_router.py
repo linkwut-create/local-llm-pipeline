@@ -357,6 +357,9 @@ def main():
 
     profile_override = None
     model_override = None
+    local_only = False
+    cloud_ok = False
+    privacy_strict = True  # default: strict privacy, no auto-upload
     filtered_args = []
     i = 0
     while i < len(passthrough_args):
@@ -371,6 +374,26 @@ def main():
             continue
         elif arg == "--confirm-high-risk":
             i += 1
+            continue
+        elif arg == "--local-only":
+            local_only = True
+            i += 1
+            continue
+        elif arg == "--cloud-ok":
+            cloud_ok = True
+            privacy_strict = False  # explicit opt-in overrides strict privacy
+            i += 1
+            continue
+        elif arg == "--no-cloud":
+            local_only = True
+            i += 1
+            continue
+        elif arg == "--privacy" and i + 1 < len(passthrough_args):
+            if passthrough_args[i + 1] == "strict":
+                privacy_strict = True
+            elif passthrough_args[i + 1] == "relaxed":
+                privacy_strict = False
+            i += 2
             continue
         else:
             filtered_args.append(arg)
@@ -547,6 +570,69 @@ def main():
 
     # MCP-AUDIT-5: record invocation result
     _try_audit_result(task, profile_name, model, result.returncode, elapsed_ms)
+
+    # ---- cloud escalation ----
+    if result.returncode != 0 and not local_only:
+        profile_is_cloud = profile_cfg.get("cloud", False)
+        if profile_is_cloud:
+            # Already tried cloud — don't escalate further
+            print("Cloud model failed — no further escalation.", file=sys.stderr)
+            sys.exit(result.returncode)
+
+        # Check privacy before any cloud call
+        input_data = ""
+        if has_stdin:
+            input_data = stdin_data
+        else:
+            # For non-stdin tasks, the target file content is in filtered_args
+            input_data = " ".join(filtered_args)
+
+        privacy_ok = True
+        if privacy_strict and input_data:
+            try:
+                from deepseek_client import _check_privacy
+                privacy_ok, privacy_reason = _check_privacy(input_data)
+                if not privacy_ok:
+                    print(f"Cloud escalation blocked by privacy gate: {privacy_reason}", file=sys.stderr)
+            except ImportError:
+                print("WARNING: deepseek_client not available for privacy check.", file=sys.stderr)
+
+        # Only escalate if explicitly allowed (--cloud-ok) or profile has cloud trigger
+        if cloud_ok or profile_cfg.get("_escalation_trigger"):
+            try:
+                from deepseek_client import should_escalate_to_cloud, resolve_escalation_profile, call_deepseek
+                do_escalate, esc_level, esc_reason = should_escalate_to_cloud(
+                    task, risk, local_failures=1,
+                    privacy_ok=privacy_ok, cloud_ok=cloud_ok,
+                )
+                if do_escalate:
+                    esc_profile = resolve_escalation_profile(profile_name, profiles_data, escalation_level=esc_level)
+                    if esc_profile:
+                        esc_model = esc_profile.get("model", "deepseek-v4-flash")
+                        esc_thinking = esc_profile.get("thinking", False)
+                        esc_effort = esc_profile.get("reasoning_effort", "low")
+                        print(f"Escalating to cloud: {esc_model} (level={esc_level}, reason={esc_reason})", file=sys.stderr)
+
+                        cloud_result = call_deepseek(
+                            prompt=input_data[:200000],  # cap at 200K chars
+                            model=esc_model,
+                            thinking=esc_thinking,
+                            reasoning_effort=esc_effort,
+                        )
+                        if cloud_result["ok"]:
+                            print(cloud_result["content"])
+                            print(f"\nCloud: {esc_model} ({cloud_result['elapsed_seconds']:.1f}s)", file=sys.stderr)
+                            sys.exit(0)
+                        else:
+                            print(f"Cloud escalation failed: {cloud_result['error']}", file=sys.stderr)
+                    else:
+                        print(f"No escalation profile found for level {esc_level}", file=sys.stderr)
+                else:
+                    if result.returncode != 0:
+                        print(f"Cloud escalation not triggered: {esc_reason}", file=sys.stderr)
+            except ImportError:
+                if cloud_ok:
+                    print("WARNING: deepseek_client module not found. Cloud escalation unavailable.", file=sys.stderr)
 
     sys.exit(result.returncode)
 
