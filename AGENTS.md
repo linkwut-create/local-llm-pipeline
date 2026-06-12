@@ -82,6 +82,12 @@ enforced by Claude Code's subagent system.
 | **planner** | `.claude/agents/planner.md` | deepseek-v4-pro + max | No | Break tasks, assess risk, read governance docs, output plan |
 | **code-worker** | `.claude/agents/code-worker.md` | deepseek-v4-flash + high | Yes | Implement only files in task packet, never expand scope |
 | **reviewer** | `.claude/agents/reviewer.md` | deepseek-v4-pro + xhigh | No | Review diffs against all BANs, catch interface breaks, flag missing tests |
+| **tester** | `.claude/agents/tester.md` | deepseek-v4-flash + medium | No* | Run tests, classify failures, suggest minimal fixes |
+| **interface-reviewer** | `.claude/agents/interface-reviewer.md` | deepseek-v4-pro + high | No | Review diffs for CLI/MCP/config/provider contract breakage |
+| **docs-agent** | `.claude/agents/docs-agent.md` | deepseek-v4-flash + low | Yes† | Update governance files after task completion |
+
+*Tester may fix only if task packet explicitly authorizes.
+†Docs-agent may only edit .md files.
 
 ### Invocation
 
