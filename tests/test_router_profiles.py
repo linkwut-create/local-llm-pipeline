@@ -142,7 +142,7 @@ def test_check_model_available_empty_model():
 def test_resolve_profile_candidates_list():
     """Profile resolution should return a profile with candidates for fallback."""
     _, model, _ = router.resolve_profile("summarize-file", None, None)
-    assert model == "gemma4:e4b"  # default profile for summarize-file
+    assert model == "gemma4:e4b-unsloth"  # default profile for summarize-file (tag updated 2026-06-12)
 
 
 def test_profiles_without_candidates_error_safe():

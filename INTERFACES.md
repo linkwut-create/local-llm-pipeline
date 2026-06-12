@@ -251,13 +251,33 @@
 - **Required Methods**: `call_model(prompt, model, ...) -> ModelCallResult`
 - **Input Format**: text prompt + model name
 - **Output Format**: `ModelCallResult(content: str, usage: dict | None)`
-- **Supported Providers**: `ollama`, `openai-compatible`
+- **Supported Providers**: `ollama`, `openai-compatible`, `deepseek`
 - **Error Handling**: 返回 `(None, error_info)` 而非 raise
-- **Timeout Rules**: worker 层 60s default, debate 层 120s
+- **Timeout Rules**: worker 层 60s default, debate 层 120s, cloud 层 180s
 - **Fallback Rules**: 
   - Timeout → lighter model
   - confidence=low | uncertain_points > 3 → 默认不升级（P3-C1/C2）
   - 可恢复 legacy 行为 via env knob
+
+### Cloud Provider Contract (DeepSeek)
+
+- **Provider**: `deepseek`
+- **Base URL**: `https://api.deepseek.com`
+- **Models**: `deepseek-v4-pro`, `deepseek-v4-flash`
+- **Auth**: `DEEPSEEK_API_KEY` env var (required)
+- **API Format**: OpenAI-compatible ChatCompletions
+- **Thinking Mode**: via `extra_body={"thinking": {"type": "enabled"|"disabled"}}`
+- **Reasoning Effort**: `low` / `medium` / `high` (maps to `reasoning_effort` parameter)
+- **Context**: 1M tokens max input
+- **Output**: 16K-32K tokens (Flash), 32K (Pro)
+- **Privacy Gate**:
+  - 默认不上传文件内容
+  - 必须通过 privacy gate 检查：不含 `.env`、secrets、私有大文本、未经脱敏的用户内容
+  - 只允许上传 task packet（本地压缩后的结构化摘要）+ explicitly allowed file snippets
+- **Escalation Triggers**:
+  - Flash: 本地模型同一任务失败 2 次，或 task packet 超过本地上下文限制
+  - Pro: 修改公共接口 / provider / router / MCP / config schema，或 release gate，或本地模型与 Flash 结论冲突
+- **Cost Discipline**: cloud agent 必须在 call ledger 中标记 `execution_location=cloud`、`cost_confidence=high`
 
 ### Provider Registration (profiles)
 - **Entry Format**: `{"model": str, "risk_level": str, "use_for": [str], "_backend_class": str, ...}`

@@ -127,6 +127,20 @@
   - 如果此前命令错误，必须明确标注"废弃，不要执行"
   - 提交前用 `git diff --cached --name-only` 验证暂存文件清单
 
+### BAN-011: 禁止为了方便绕过 local-first 直接调用云模型
+- **Reason**: local-first 是项目核心设计原则。绕过本地直接调用云端会让隐私保护、成本控制、离线能力全部失效
+- **禁止**:
+  - 在 router 中将云模型设为任何 task 的默认 profile
+  - 未经隐私 gate 检查就将文件内容发送到云端
+  - 把 `.env`、secrets、私有大文本、未公开论文原文、完整仓库上传云端
+  - 在本地模型可用时跳过本地直接调用云端
+- **正确做法**:
+  - 默认走本地模型
+  - 本地失败 2 次后才升级 DeepSeek Flash
+  - 高风险/接口/release 才升级 DeepSeek Pro
+  - 含敏感内容的文件必须先本地摘要、脱敏、压缩，再决定是否上传
+  - 云模型只接收 task packet + explicit file snippets，不接收完整仓库
+
 ---
 
 ## 3. Fragile Areas

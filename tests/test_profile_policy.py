@@ -307,6 +307,7 @@ VALID_BACKEND_CLASSES = {
     "llamacpp_unconfigured",
     "unavailable",
     "placeholder",
+    "cloud_deepseek",
 }
 
 
