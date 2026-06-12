@@ -30,12 +30,11 @@
 - **Source**: MCP QA memory (`mcp-qa.md`)
 
 ### PROB-003: qwen3.6_35b_moe_mtp 模型 99.2% 失败率
-- **Status**: mitigated (removed from default debate chain in J-L3)
+- **Status**: resolved (2026-06-12: tag fix qwen3.6:35b-q8-ud → qwen3.6:35b; Ollama dropped -q8-ud suffix. Model now works via standard Ollama. MTP endpoints still offline but base model is available.)
 - **Area**: tools/local_llm_debate.py, tools/local_llm_profiles.json
 - **Symptom**: MTP 模型通过 llama.cpp 端点几乎全部失败
-- **Cause**: MTP 模型的 llama.cpp standalone 路径不可用；Ollama 路径正常
-- **Mitigation**: J-L3 将 qwen3.6_35b_moe_mtp 从默认 debate chain 移除，替换为 deep_reviewer
-- **Do Not**: 不要把 MTP 模型加入默认自动路由链
+- **Root Cause**: Ollama 模型标签变更（去掉 -q8-ud 后缀），旧标签查询失败
+- **Fix**: 2026-06-12 标签全量同步。deep_reviewer 确认可用（review-diff OK）。
 - **Related**: [[qwen36-ssm-models]]
 
 ### PROB-004: MCP server 进程变更后不重启导致 stale response
@@ -53,6 +52,14 @@
 - **Mitigation**: 使用更轻量的模型作为默认；重模型仅手动指定
 - **Do Not**: 不要把 cold-start 风险高的模型设为 auto-eligible
 - **Related**: [[qwen36-ssm-models]]
+
+### PROB-007: deepseek-r1:32b (non-distill) 通过 Ollama 返回空响应
+- **Status**: mitigated (2026-06-12: switched deep_reasoning to distill variant)
+- **Area**: Ollama / deepseek-r1 model
+- **Symptom**: `deepseek-r1:32b` 返回空响应，`deepseek-r1:32b-distill` 正常工作
+- **Cause**: Ollama 的 R1 非蒸馏版本可能存在 thinking token 格式兼容问题
+- **Mitigation**: deep_reasoning profile 改用 distill variant（任务测试通过）
+- **Do Not**: 非蒸馏版可保留在 candidates 列表中作为备选，但不要设为默认
 
 ### PROB-006: 翻译任务 worker 对非英语输入产生幻觉
 - **Status**: known limitation

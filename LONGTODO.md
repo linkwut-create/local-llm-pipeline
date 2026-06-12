@@ -57,17 +57,17 @@
 - [x] **DeepSeek API 真实调用验证** (2026-06-12: Flash/Flash-thinking/Pro 全部 OK)
 
 ### Phase 2: Cross-Project Distribution
-- [ ] 治理文档模板分发到 local-translator-agent
-- [ ] 治理文档模板分发到 local-durable-agent
-- [ ] 治理文档模板分发到 browser-local-agent
+- [x] 治理文档模板分发到 local-translator-agent (2026-06-12)
+- [ ] 治理文档模板分发到 local-durable-agent (项目不存在，待创建)
+- [ ] 治理文档模板分发到 browser-local-agent (项目不存在，待创建)
 - [ ] 标准化 installer 的 post-install 治理文档初始化
 - [ ] 跨项目 agent 工作流一致性验证
 
 ### Phase 3: Agent Integration
-- [ ] Subagent role 标准化 (planner / coder / tester / reviewer / interface / docs)
+- [x] Subagent role 标准化 (2026-06-12: 6 roles — planner/code-worker/reviewer/tester/interface-reviewer/docs-agent)
 - [ ] Subagent 输入格式标准化（task packet: 目标 + 相关文档片段 + 允许文件 + 禁止范围）
 - [ ] Subagent 输出格式标准化
-- [ ] GRILLME.md 作为新项目初始化的标准第一步
+- [x] GRILLME.md 作为新项目初始化的标准第一步 (2026-06-12: 模板已分发到 local-translator-agent)
 
 ### Phase 4: Productization
 - [ ] 自动 log rotation（hook-events.jsonl 目前无界增长）
