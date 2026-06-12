@@ -47,8 +47,14 @@
 - [x] Advisor output quality (Q-chain)
 - [x] Quality/value verification (Z-chain)
 - [x] Cross-project feedback ledger (Z-4)
-- [ ] **项目治理文档体系** (当前任务 — AGENTS / PROBLEMS / LONGTODO / INTERFACES / GRILLME)
-- [ ] **模板目录** 供其他项目复用治理文档
+- [x] **项目治理文档体系** (2026-06-12: AGENTS/PROBLEMS/LONGTODO/INTERFACES/GRILLME + 11 BAN)
+- [x] **模板目录** (2026-06-12: templates/project-governance/)
+- [x] **Profile 标签全量同步** (2026-06-12: 13+ profiles, Ollama 简化标签)
+- [x] **DeepSeek V4 cloud escalation** (2026-06-12: 4 profiles + API client + privacy gate)
+- [x] **Subagent + Skill 自动化** (2026-06-12: planner/code-worker/reviewer + project-governance/task-bootstrap)
+- [x] **Router escalation CLI flags** (2026-06-12: --local-only/--cloud-ok/--no-cloud/--privacy)
+- [x] **模型任务测试** (2026-06-12: 7/8 关键 profile 通过, deep_reasoning distill 修复)
+- [x] **DeepSeek API 真实调用验证** (2026-06-12: Flash/Flash-thinking/Pro 全部 OK)
 
 ### Phase 2: Cross-Project Distribution
 - [ ] 治理文档模板分发到 local-translator-agent

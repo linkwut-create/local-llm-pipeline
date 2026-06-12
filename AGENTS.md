@@ -72,6 +72,49 @@ local-llm-pipeline is a **local AI development control layer** — not a tool co
 Codex, Claude Code, and local LLMs are executors — the pipeline provides the
 control layer that gates commits and releases.
 
+## 3. Agent Roles
+
+Defined in `.claude/agents/`. The role definitions are machine-readable and
+enforced by Claude Code's subagent system.
+
+| Agent | File | Model | Writes | Purpose |
+|-------|------|-------|--------|---------|
+| **planner** | `.claude/agents/planner.md` | deepseek-v4-pro + max | No | Break tasks, assess risk, read governance docs, output plan |
+| **code-worker** | `.claude/agents/code-worker.md` | deepseek-v4-flash + high | Yes | Implement only files in task packet, never expand scope |
+| **reviewer** | `.claude/agents/reviewer.md` | deepseek-v4-pro + xhigh | No | Review diffs against all BANs, catch interface breaks, flag missing tests |
+
+### Invocation
+
+```
+/project-governance <task>   — audit governance docs, produce task packet
+/task-bootstrap <task>       — classify, read docs, find files, generate packet
+```
+
+Skills defined in `.claude/skills/`.
+
+### Delegation Chain
+
+```
+Task → planner (plan) → code-worker (implement) → reviewer (audit)
+                                      ↓ fail
+                               escalate to DeepSeek Flash/Pro
+```
+
+## 7. Hard No
+
+- **No editing files outside the task packet allowed-files list.**
+- **No committing, pushing, tagging, or releasing** without explicit authorization.
+- **No bypassing local-first for cloud convenience** (BAN-011).
+- **No uploading secrets, private keys, `.env`, full repos, or unsanitized user data to cloud APIs.**
+- **No skipping debate review** when diff touches MCP server/router/hooks/gate/security/DB schema (BAN-004).
+- **No modifying `VERSION`** outside release-prep phase.
+- **No adding dependencies** without explicit approval.
+- **No expanding task scope** — if you find an unrelated bug, report it; don't fix it.
+- **No `local_debate_review_diff` skip** for hook/gate/DB/schema/security/release changes.
+- **No PowerShell here-string for `git commit -m`** (BAN-005).
+- **No chat log or execution log contamination in governance files** (BAN-009).
+- **No treating draft code (`.local_llm_out/`) as applied code.**
+
 ## Controller Delegation Contract (U-1)
 
 **Core principle**: Big model plans. Local models execute bounded read-only heavy
