@@ -62,7 +62,7 @@ def call_ollama(model: str, prompt: str, timeout: int = 180) -> dict:
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "options": {"num_predict": 2000, "temperature": 0.1},
+            "options": {"num_predict": 800, "temperature": 0.1},
         }).encode()
         req = urllib.request.Request(
             OLLAMA_API, data=data,
