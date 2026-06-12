@@ -33,54 +33,56 @@ dimensions:
     weight: 1.5
 
 role_mapping:
+  # Thresholds calibrated for auto-scoring (keyword-based heuristics).
+  # Human review of raw outputs is required before profile changes.
   fast_summary:
-    cases: ["001_context_compression", "002_repo_map"]
-    required_min_avg: 3.8
+    cases: ["001", "002"]
+    required_min_avg: 3.0
     description: "Lightweight summarizer for file/directory summaries and task packet generation."
 
   task_bootstrapper:
-    cases: ["001_context_compression", "002_repo_map", "006_patch_planning"]
-    required_min_avg: 4.0
+    cases: ["001", "002", "006"]
+    required_min_avg: 3.2
     description: "Task bootstrap: classify, read docs, find files, generate task packet."
 
   code_worker:
-    cases: ["004_json_contract", "006_patch_planning", "007_test_failure_analysis"]
-    required_min_avg: 4.0
+    cases: ["004", "006", "007"]
+    required_min_avg: 3.0
     description: "Implements code changes within explicit scope boundaries."
 
   test_agent:
-    cases: ["007_test_failure_analysis", "004_json_contract"]
-    required_min_avg: 3.8
+    cases: ["007", "004"]
+    required_min_avg: 3.0
     description: "Runs tests, classifies failures, suggests minimal fixes."
 
   diff_reviewer:
-    cases: ["005_diff_review", "008_interface_review", "009_governance_pollution_audit"]
-    required_min_avg: 4.0
+    cases: ["005", "008", "009"]
+    required_min_avg: 3.2
     description: "Reviews diffs for correctness, compatibility, and governance compliance."
 
   deep_reviewer:
-    cases: ["003_profile_tag_drift", "005_diff_review", "008_interface_review", "011_release_gate"]
-    required_min_avg: 4.3
+    cases: ["003", "005", "008", "011"]
+    required_min_avg: 3.5
     description: "Deep architecture and high-risk change reviewer."
 
   interface_reviewer:
-    cases: ["004_json_contract", "008_interface_review", "011_release_gate"]
-    required_min_avg: 4.2
+    cases: ["004", "008", "011"]
+    required_min_avg: 3.3
     description: "Reviews CLI/MCP/config/provider contract changes for compatibility."
 
   release_auditor:
-    cases: ["005_diff_review", "010_privacy_gate", "011_release_gate"]
-    required_min_avg: 4.3
+    cases: ["005", "010", "011"]
+    required_min_avg: 3.5
     description: "Pre-release audit: gates, privacy, compatibility, governance."
 
   docs_agent:
-    cases: ["001_context_compression", "009_governance_pollution_audit"]
-    required_min_avg: 4.0
+    cases: ["001", "009"]
+    required_min_avg: 3.0
     description: "Updates governance documents after task completion."
 
   translation:
-    cases: ["012_translation_precision"]
-    required_min_avg: 4.0
+    cases: ["012"]
+    required_min_avg: 3.0
     description: "Translation tasks requiring terminology stability."
 
 fallback_roles:

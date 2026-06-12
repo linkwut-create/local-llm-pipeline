@@ -152,9 +152,10 @@ def recommend_roles(role_signals: dict, rubric: dict) -> dict:
 
 def generate_report(all_scored: list[dict], report_path: Path | None = None) -> str:
     """Generate a Markdown report from scored results."""
+    import time as _time
     lines = []
     lines.append("# Model Audition Report")
-    lines.append(f"\nDate: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"\nDate: {_time.strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"Models Tested: {len(all_scored)}")
     lines.append("")
 
