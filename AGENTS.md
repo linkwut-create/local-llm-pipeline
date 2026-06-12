@@ -4,16 +4,70 @@ Codex-facing primary instruction file for local-llm-pipeline.
 CLAUDE.md is the Claude Code counterpart (contains slash commands, auto-invocation
 hooks, and subagent references not available in Codex).
 
-## Project Role
+## 0. Project Identity
 
-local-llm-pipeline is a **local AI development control layer** — not a tool
-collection.  It provides:
+### What This Project Is
+
+local-llm-pipeline is a **local AI development control layer** — not a tool collection.
+
+**一句话定位**: 让本地小模型跑重活（摘要、审查、测试计划、代码起草），大模型做审核和决策，降低 token 成本，通过 MCP 接入 Claude Code / Codex。
+
+### What This Project Is NOT
+
+- 不是翻译器、不是浏览器插件、不是游戏项目
+- 不是 SaaS / Web 服务
+- 不是模型训练/微调平台
+- 不是自动部署系统
+
+### Governance Files
+
+| File | Purpose | When to Read |
+|------|---------|-------------|
+| **AGENTS.md** (this file) | 项目宪法 + agent 操作规则 | 每次任务开始 |
+| **CLAUDE.md** | Claude Code 专用（slash commands, hooks, subagent） | Claude Code 会话自动加载 |
+| **PROBLEMS.md** | 累计问题、禁令、已知坑、高风险区域 | 每次代码修改前 |
+| **LONGTODO.md** | 长期路线图、需求、延期项、决策队列 | 触及 roadmap 时 |
+| **INTERFACES.md** | MCP/CLI/Config/Provider 接口契约 | 涉及 API/CLI/config 变更时 |
+| **GRILLME.md** | 新项目初始化访谈模板 | 新项目或新团队成员加入时 |
+
+## 1. Core Design Principles
+
+**不可动摇的原则**:
+
+1. **Local-first**: 默认不调用云端 API。本地模型跑重活，大模型做审核
+2. **Advisory-only**: 本地模型输出仅供 controller 参考，绝不自动修改源码
+3. **Modular-first**: 默认不引入重依赖（无 SQLite, 无 Web framework, 无 message queue）
+4. **Interface-stable**: 默认不破坏已有 CLI/MCP/config 接口
+5. **Test-before-change**: 默认先补测试，再改功能
+6. **Small-commits**: 默认小步提交，不做大爆炸式重构
+7. **Explicit-over-implicit**: 宁可显式配置，不要隐式自动行为（对 agent 来说显式 = 可审计）
+
+**优先级排序**: 安全性 > 接口稳定性 > 测试覆盖 > 功能完整性 > 性能 > UI 美观
+
+## 2. Architecture Map
+
+| Module | Path | Responsibility | Does NOT |
+|--------|------|---------------|----------|
+| **MCP Server** | `tools/local_llm_mcp_server.py` | 12 tools over stdio JSON-RPC | 不修改源文件，不部署 |
+| **Router** | `tools/local_llm_router.py` | Task → profile → model routing | 不执行任务（delegate to worker） |
+| **Worker** | `tools/local_llm_worker.py` | Model invocation, retry, structured output | 不做 routing 决策 |
+| **Debate** | `tools/local_llm_debate.py` | Multi-model cross-review (2-3 rounds) | 不在 commit gate 中使用 |
+| **Hooks** | `tools/claude_hooks/` | Auto-invocation, commit gate, dangerous guard, release guard | 不在 Codex 中运行 |
+| **Call Ledger** | `tools/call_ledger.py` | Token/cost observability (JSONL) | 不自动 rotation |
+| **Health** | `tools/local_llm_check.py`, `tools/health_store.py` | Environment health, telemetry | 不修改 profiles |
+| **Profiles** | `tools/local_llm_profiles.json` | Model registry (24 entries) | 不自动生成 |
+| **Config** | `tools/validate_configs.py` | Profile consistency validation | 不修改 profiles |
+| **Installer** | `install_local_llm_pipeline.py` | Cross-project installation | 不自动更新 |
+| **Feedback** | `tools/feedback_ledger.py` | Cross-project feedback (JSONL) | 不自动写入 |
+| **Tests** | `tests/` | ~2100 tests across 13 categories | 不调用真实模型（mocked） |
+
+### Services Provided
 
 - **Task bootstrap**: structured project context before broad work.
 - **Review gates**: pre-commit and pre-release safety checks via local models.
 - **Call ledger**: token/cost observability across models and tasks.
-- **MCP server**: 12 source-non-mutating tools for summarization, review, test, workflow planning
-  planning, and repo mapping.
+- **MCP server**: 12 source-non-mutating tools for summarization, review, test,
+  workflow planning, and repo mapping.
 
 Codex, Claude Code, and local LLMs are executors — the pipeline provides the
 control layer that gates commits and releases.

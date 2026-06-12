@@ -3,6 +3,17 @@
 Codex users: see AGENTS.md for Codex-facing instructions (CLAUDE.md contains
 Claude-specific slash commands, auto-invocation hooks, and subagent references).
 
+## Project Governance Files
+
+| File | Purpose | When to Read |
+|------|---------|-------------|
+| **AGENTS.md** | 项目宪法 + agent 操作规则 (Codex-facing) | 每次任务开始 |
+| **CLAUDE.md** (this file) | Claude Code 专用指令 | 会话自动加载 |
+| **PROBLEMS.md** | 累计问题、禁令、已知坑 | 每次代码修改前 |
+| **LONGTODO.md** | 长期路线图、需求、延期项 | 触及 roadmap 时 |
+| **INTERFACES.md** | MCP/CLI/Config/Provider 接口契约 | 涉及接口变更时 |
+| **GRILLME.md** | 新项目初始化访谈模板 | 新项目初始化时 |
+
 ## Controller Delegation Contract (U-1)
 
 **Core principle**: Big model (Claude Code) plans. Local models execute bounded
