@@ -1,0 +1,89 @@
+# Model Audition Rubric
+# Maps audition cases to roles and defines scoring dimensions.
+
+score_scale:
+  0: "missing or unusable"
+  1: "mostly wrong"
+  2: "partially useful but unreliable"
+  3: "usable with supervision"
+  4: "good"
+  5: "excellent"
+
+dimensions:
+  correctness:
+    description: "Is the answer factually correct?"
+    weight: 2.0
+  completeness:
+    description: "Does it address all parts of the prompt?"
+    weight: 1.5
+  instruction_following:
+    description: "Does it follow the output format requested?"
+    weight: 2.0
+  format_discipline:
+    description: "Is the output well-structured and parseable?"
+    weight: 1.2
+  hallucination_control:
+    description: "Does it avoid inventing facts, files, or commands?"
+    weight: 2.0
+  risk_awareness:
+    description: "Does it identify risks and show appropriate caution?"
+    weight: 1.5
+  usefulness:
+    description: "Would a controller find this output actionable?"
+    weight: 1.5
+
+role_mapping:
+  fast_summary:
+    cases: ["001_context_compression", "002_repo_map"]
+    required_min_avg: 3.8
+    description: "Lightweight summarizer for file/directory summaries and task packet generation."
+
+  task_bootstrapper:
+    cases: ["001_context_compression", "002_repo_map", "006_patch_planning"]
+    required_min_avg: 4.0
+    description: "Task bootstrap: classify, read docs, find files, generate task packet."
+
+  code_worker:
+    cases: ["004_json_contract", "006_patch_planning", "007_test_failure_analysis"]
+    required_min_avg: 4.0
+    description: "Implements code changes within explicit scope boundaries."
+
+  test_agent:
+    cases: ["007_test_failure_analysis", "004_json_contract"]
+    required_min_avg: 3.8
+    description: "Runs tests, classifies failures, suggests minimal fixes."
+
+  diff_reviewer:
+    cases: ["005_diff_review", "008_interface_review", "009_governance_pollution_audit"]
+    required_min_avg: 4.0
+    description: "Reviews diffs for correctness, compatibility, and governance compliance."
+
+  deep_reviewer:
+    cases: ["003_profile_tag_drift", "005_diff_review", "008_interface_review", "011_release_gate"]
+    required_min_avg: 4.3
+    description: "Deep architecture and high-risk change reviewer."
+
+  interface_reviewer:
+    cases: ["004_json_contract", "008_interface_review", "011_release_gate"]
+    required_min_avg: 4.2
+    description: "Reviews CLI/MCP/config/provider contract changes for compatibility."
+
+  release_auditor:
+    cases: ["005_diff_review", "010_privacy_gate", "011_release_gate"]
+    required_min_avg: 4.3
+    description: "Pre-release audit: gates, privacy, compatibility, governance."
+
+  docs_agent:
+    cases: ["001_context_compression", "009_governance_pollution_audit"]
+    required_min_avg: 4.0
+    description: "Updates governance documents after task completion."
+
+  translation:
+    cases: ["012_translation_precision"]
+    required_min_avg: 4.0
+    description: "Translation tasks requiring terminology stability."
+
+fallback_roles:
+  # Roles any model with basic capability can serve
+  - fast_summary
+  - docs_agent
