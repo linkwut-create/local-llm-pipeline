@@ -196,7 +196,7 @@
       "_backend_class": "ollama"
     },
     "deep_reasoning": {
-      "model": "deepseek-r1:32b",
+      "model": "deepseek-r1:32b-distill",
       "_strengths": [
         "reasoning",
         "logic",
@@ -211,10 +211,14 @@
         "failure-mode-analysis"
       ],
       "risk_level": "high",
-      "_benchmark": "140s risk — CLI only, critical reasoning (zero12)",
+      "_benchmark": "140s risk analysis. distill variant confirmed working 2026-06-12. deepseek-r1:32b (non-distill) returns empty — likely Ollama R1 format issue.",
       "_community_reputation": "DeepSeek R1 reasoning distilled into Qwen 32B. Official model card targets reasoning, math, and code. Strong community validation for deep analysis tasks.",
       "_constraints": "CLI only. Only for architecture changes, security risks, root cause analysis. Never for commit gate or default routing.",
-      "_backend_class": "ollama"
+      "_backend_class": "ollama",
+      "candidates": [
+        "deepseek-r1:32b-distill",
+        "deepseek-r1:32b"
+      ]
     },
     "translation": {
       "model": "glm4.7:flash",
@@ -570,7 +574,11 @@
       "reasoning_effort": "low",
       "max_context_tokens": 1000000,
       "max_output_tokens": 16384,
-      "_strengths": ["speed", "cost", "medium-complexity"],
+      "_strengths": [
+        "speed",
+        "cost",
+        "medium-complexity"
+      ],
       "temperature": 0.1,
       "max_chars": 200000,
       "max_output_chars": 16000,
@@ -595,7 +603,11 @@
       "reasoning_effort": "medium",
       "max_context_tokens": 1000000,
       "max_output_tokens": 32768,
-      "_strengths": ["reasoning", "multi-file", "fallback"],
+      "_strengths": [
+        "reasoning",
+        "multi-file",
+        "fallback"
+      ],
       "temperature": 0.1,
       "max_chars": 200000,
       "max_output_chars": 16000,
@@ -619,7 +631,12 @@
       "reasoning_effort": "high",
       "max_context_tokens": 1000000,
       "max_output_tokens": 32768,
-      "_strengths": ["architecture", "security", "judgment", "arbitration"],
+      "_strengths": [
+        "architecture",
+        "security",
+        "judgment",
+        "arbitration"
+      ],
       "temperature": 0.1,
       "max_chars": 200000,
       "max_output_chars": 16000,
@@ -645,7 +662,11 @@
       "reasoning_effort": "high",
       "max_context_tokens": 1000000,
       "max_output_tokens": 32768,
-      "_strengths": ["planning", "design", "long-term"],
+      "_strengths": [
+        "planning",
+        "design",
+        "long-term"
+      ],
       "temperature": 0.1,
       "max_chars": 200000,
       "max_output_chars": 16000,
