@@ -99,7 +99,7 @@
 
 ## Current State (post-v0.9.8)
 
-- 9 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
+- 12 MCP tools, all source-non-mutating (local_draft_code writes only to .local_llm_out/)
 - 3-round debate (fast mode default for MCP), parallel review for release audits
 - 1300 tests, 13 run_checks categories, 23 profile entries
 - Remote Ollama via LOCAL_LLM_BASE_URL / OLLAMA_HOST
