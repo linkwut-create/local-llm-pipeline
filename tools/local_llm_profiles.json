@@ -72,7 +72,7 @@
       "candidates": [
         "qwen3-coder-next-q8:latest",
         "qwen3-coder:30b",
-        "qwen3.6:27b-q8-ud"
+        "qwen3.6:27b"
       ],
       "risk_level": "medium",
       "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
@@ -124,7 +124,7 @@
       "_backend_class": "ollama"
     },
     "deep_reviewer": {
-      "model": "qwen3.6:35b-q8-ud",
+      "model": "qwen3.6:35b",
       "_strengths": [
         "deep-review",
         "architecture",
@@ -139,15 +139,15 @@
         "architecture-review"
       ],
       "candidates": [
-        "qwen3.6:35b-q8-ud",
-        "qwen3.5-35b-q8:latest",
+        "qwen3.6:35b",
+        "qwen3.5-35b:latest",
         "mistral-medium-3.5-128b-q5_k_xl:latest"
       ],
       "risk_level": "high",
-      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12)",
+      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12). Tag corrected 2026-06-12: qwen3.6:35b-q8-ud → qwen3.6:35b (same weights, Ollama dropped -q8-ud suffix).",
       "_community_reputation": "Qwen3.6 35B is a strong generalist with wide community adoption. Reliable on this machine (0 timeouts).",
-      "_constraints": "Not for commit gate (>30B). Use qwen3.6:35b-q8-ud (native MTP heads for ~1.5x speedup) over qwen3.5-35b for deep review.",
-      "_backend_class": "ollama_heavy_manual"
+      "_constraints": "Not for commit gate (>30B).",
+      "_backend_class": "ollama"
     },
     "heavy_reviewer": {
       "model": "gpt-oss-120b-f16:latest",
@@ -460,13 +460,13 @@
       "_launch": "ollama create mistral-small-119b:q5 -f Modelfile (model loads but chat returns 500)",
       "candidates": [
         "mistral-medium-3.5-128b-q5_k_xl:latest",
-        "qwen3.6:35b-q8-ud"
+        "qwen3.6:35b"
       ],
       "_status": "unavailable — requires ollama llama.cpp update for mistral4 architecture",
       "_backend_class": "unavailable"
     },
     "qwen3.6_27b_mtp": {
-      "model": "qwen3.6:27b-q8-ud",
+      "model": "qwen3.6:27b",
       "_strengths": [
         "general",
         "speed",
@@ -483,7 +483,7 @@
         "rewrite-text"
       ],
       "candidates": [
-        "qwen3.6:27b-q8-ud",
+        "qwen3.6:27b",
         "qwen3.5-27b-q8:latest",
         "gemma4-26b-it:q8_0"
       ],
@@ -497,7 +497,7 @@
       "_backend_class": "ollama_mtp_pending"
     },
     "qwen3.6_35b_moe_mtp": {
-      "model": "qwen3.6:35b-q8-ud",
+      "model": "qwen3.6:35b",
       "_strengths": [
         "deep-review",
         "architecture",
@@ -514,7 +514,7 @@
         "review-diff"
       ],
       "candidates": [
-        "qwen3.6:35b-q8-ud",
+        "qwen3.6:35b",
         "qwen3.5-35b-q8:latest",
         "mistral-small-24b-q8_xl:latest",
         "mistral-medium-3.5-128b-q5_k_xl:latest"
