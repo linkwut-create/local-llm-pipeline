@@ -118,9 +118,10 @@
         "review-diff"
       ],
       "risk_level": "medium",
-      "_benchmark": "27s review + reasoning capability — best combo (zero12)",
-      "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Good balance of reasoning depth and speed.",
+      "_benchmark": "27s review + reasoning capability. Audition: nemotron not tested (TIMEOUT). Backup: qwen3.6:27b (15/15, 1424s dense).",
+      "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Community: 'good balance of reasoning depth and speed.' Backup qwen3.6:27b dense — slower but reliable.",
       "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
+      "_audition_date": "2026-06-12",
       "_backend_class": "ollama"
     },
     "deep_reviewer": {
@@ -144,10 +145,11 @@
         "mistral-medium-3.5-128b-q5_k_xl:latest"
       ],
       "risk_level": "high",
-      "_benchmark": "68s review, 0 timeouts — most reliable deep reviewer (zero12). Tag corrected 2026-06-12: qwen3.6:35b-q8-ud → qwen3.6:35b (same weights, Ollama dropped -q8-ud suffix).",
-      "_community_reputation": "Qwen3.6 35B is a strong generalist with wide community adoption. Reliable on this machine (0 timeouts).",
-      "_constraints": "Not for commit gate (>30B).",
-      "_backend_class": "ollama"
+      "_benchmark": "Audition 15/15, 417s. Core cases: tag drift 3.7, diff review 3.1, release gate 3.3. Community: 'first local model that saturated my benchmark.' Tag corrected 2026-06-12: qwen3.6:35b-q8-ud → qwen3.6:35b.",
+      "_community_reputation": "Qwen3.6 35B MoE (3B active/token). Widely regarded as strongest mid-size local model for coding and agentic tasks. Must set reasoning-budget to cap thinking tokens — community reports infinite reasoning loops without it.",
+      "_constraints": "Not for commit gate (>30B). Set reasoning-budget=4096 to cap thinking tokens and prevent unbounded loops.",
+      "_backend_class": "ollama",
+      "_audition_date": "2026-06-12"
     },
     "heavy_reviewer": {
       "model": "gpt-oss:120b",
@@ -240,12 +242,13 @@
       "_backend_class": "ollama"
     },
     "release_auditor": {
-      "model": "mistral3.5:128b",
+      "model": "qwen3.6:35b",
       "_strengths": [
         "accuracy",
         "deep-review",
         "architecture",
-        "release-audit"
+        "release-audit",
+        "engineering-judgment"
       ],
       "temperature": 0.1,
       "max_chars": 140000,
@@ -257,13 +260,15 @@
         "release-risk-review"
       ],
       "candidates": [
+        "qwen3.6:35b",
         "mistral3.5:128b",
         "gpt-oss:120b"
       ],
       "risk_level": "high",
-      "_benchmark": "126s review — accuracy king, 0 timeouts (zero12)",
-      "_community_reputation": "Mistral Medium 3.5 128B MoE. Widely regarded for accuracy in deep review tasks. Top of local benchmarks.",
-      "_constraints": "Release audit only. Must never enter commit gate or default review path.",
+      "_benchmark": "Audition 15/15, 417s. Core cases: release gate 3.3, tag drift 3.7, diff review 3.1. Community: 'first local model that saturated my benchmark.'",
+      "_community_reputation": "Qwen3.6 35B MoE (3B active/token). Widely regarded as strongest mid-size local model. Strong agentic coding and release judgment. Must set reasoning-budget to prevent loops.",
+      "_constraints": "Release audit only. Must never enter commit gate or default review path. Set reasoning-budget to cap thinking tokens. Previous model mistral3.5:128b timed out in audition — kept as fallback candidate.",
+      "_audition_date": "2026-06-12",
       "_backend_class": "ollama_heavy_manual"
     },
     "gemma4_26b_llamacpp": {
