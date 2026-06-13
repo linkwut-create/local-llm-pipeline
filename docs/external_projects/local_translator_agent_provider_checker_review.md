@@ -75,3 +75,12 @@
 ## Recommended Next Read-Only Task
 
 `tests/test_fast.py` — fast/smoke tests, likely lightest dependency footprint.
+
+---
+
+## Import Target Review (#87)
+
+Confirmed: `services/provider_checker.py` documented in #86. `_safe_error` redacts
+API keys, bearer tokens, and auth headers from error messages — privacy-aware by
+design. All tests mock OpenAI calls. No real provider config or API key values read.
+External repo unmodified.
