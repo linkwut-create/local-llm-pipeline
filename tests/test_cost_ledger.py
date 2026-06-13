@@ -547,3 +547,55 @@ def test_summary_by_model_keys():
         assert "total_input" in data
         assert "total_output" in data
 
+
+# ═══════════════════════════════════════════════════════════════
+# Malformed JSONL handling regression
+# ═══════════════════════════════════════════════════════════════
+
+def test_summary_empty_lines_no_crash(tmp_path, monkeypatch):
+    test_dir = tmp_path / "cl_malformed"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="valid", model="deepseek-v4-flash", input_tokens=10, output_tokens=5)
+    # Write an empty line directly
+    month_file = test_dir / "202606.jsonl"
+    with open(month_file, "a", encoding="utf-8") as f:
+        f.write("\n")
+    s = summary()
+    assert s["total_calls"] == 1  # empty line ignored
+
+
+def test_summary_malformed_json_no_crash(tmp_path, monkeypatch):
+    test_dir = tmp_path / "cl_badjson"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="valid", model="deepseek-v4-flash", input_tokens=10, output_tokens=5)
+    with open(test_dir / "202606.jsonl", "a", encoding="utf-8") as f:
+        f.write("this is not valid json\n")
+    s = summary()
+    assert s["total_calls"] == 1  # malformed line skipped
+
+
+def test_summary_missing_fields_no_crash(tmp_path, monkeypatch):
+    test_dir = tmp_path / "cl_missing"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="t1", model="deepseek-v4-flash", input_tokens=100, output_tokens=50)
+    import json
+    with open(test_dir / "202606.jsonl", "a", encoding="utf-8") as f:
+        # Record missing estimated_cost
+        f.write(json.dumps({"task": "broken", "model": "deepseek-v4-flash"}) + "\n")
+    s = summary()
+    assert s["total_calls"] >= 1  # valid record still counted
+
+
+def test_malformed_does_not_contaminate_totals(tmp_path, monkeypatch):
+    test_dir = tmp_path / "cl_clean"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="good", model="deepseek-v4-flash", input_tokens=100, output_tokens=50)
+    import json
+    with open(test_dir / "202606.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"task": "bad", "model": "deepseek-v4-flash",
+                            "estimated_cost": 9999}) + "\n")
+    s = summary()
+    # Malformed (no input/output) shouldn't distort by_model token sums
+    m = s["by_model"].get("deepseek-v4-flash", {})
+    assert m["total_input"] == 100
+
