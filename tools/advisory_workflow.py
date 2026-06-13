@@ -105,13 +105,13 @@ def recommend_decision(task: str, cloud_ok: bool = False,
 
 
 def run(task: str, cloud_ok: bool = False, local_failures: int = 0,
-        notes: str = "") -> dict:
+        notes: str = "", actual: str = "") -> dict:
     """Preflight: analyze, recommend, log to shadow routes, return result."""
     result = recommend_decision(task, cloud_ok=cloud_ok, local_failures=local_failures)
 
     # Record to shadow log
     _shadow_log(task,
-                actual="",
+                actual=actual,
                 notes=f"preflight: {result['recommended_controller_decision']}"
                       f"{' ' + notes if notes else ''}",
                 cloud_ok=cloud_ok)
@@ -137,6 +137,8 @@ def main():
     parser.add_argument("--local-failures", type=int, default=0,
                         help="Consecutive local model failures")
     parser.add_argument("--notes", default="", help="Free-form notes")
+    parser.add_argument("--actual", default="",
+                        help="Actual human decision (e.g. local-first, pro-review)")
     args = parser.parse_args()
 
     task = " ".join(args.task) if args.task else ""
@@ -145,7 +147,8 @@ def main():
         sys.exit(1)
 
     result = run(task, cloud_ok=getattr(args, "cloud_ok", False),
-                 local_failures=args.local_failures, notes=args.notes)
+                 local_failures=args.local_failures, notes=args.notes,
+                 actual=args.actual)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

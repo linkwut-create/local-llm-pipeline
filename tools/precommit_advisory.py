@@ -126,7 +126,8 @@ def _recommend(task: str, cloud_ok: bool = False,
 
 # ── Main ──
 
-def run(cloud_ok: bool = False, task_override: str = "") -> dict:
+def run(cloud_ok: bool = False, task_override: str = "",
+        actual: str = "") -> dict:
     """Run precommit advisory and return the result dict."""
     task = _build_task(task_override)
 
@@ -144,7 +145,7 @@ def run(cloud_ok: bool = False, task_override: str = "") -> dict:
 
     _shadow_log(
         task,
-        actual="",
+        actual=actual,
         notes=f"precommit: {result['recommended_controller_decision']}"
               f"{' (no diff)' if no_diff_task else ''}",
         cloud_ok=cloud_ok,
@@ -166,9 +167,12 @@ def main():
                         help="Allow cloud escalation suggestions")
     parser.add_argument("--task", default="",
                         help="Override auto-generated task description")
+    parser.add_argument("--actual", default="",
+                        help="Actual human decision (e.g. local-first, pro-review)")
     args = parser.parse_args()
 
-    result = run(cloud_ok=args.cloud_ok, task_override=args.task)
+    result = run(cloud_ok=args.cloud_ok, task_override=args.task,
+                 actual=args.actual)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
