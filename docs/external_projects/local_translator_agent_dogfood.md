@@ -152,3 +152,18 @@ Apply the standard #45 rule:
 | 6 | SRT bilingual output review | medium | local-first | No | No |
 | 7 | release checklist review | high | pro-review | No | No |
 | 8 | audio/text history privacy audit | high | pro-review | No | Yes |
+
+## Task Selection Rules
+
+When choosing the next read-only dogfood task for this project:
+
+1. **Prefer config/schema/static tests** before media/model/API tests.
+2. **Avoid tests that require** audio loading, OCR/image processing,
+   subtitle content, or history DB access.
+3. **Only inspect function names, imports, and assertion categories**
+   unless deeper review is explicitly approved by controller.
+4. **Do not run external project tests** until test side effects
+   (audio playback, model loading, API calls, GUI launch) are known.
+5. **Do not modify external repo** — all output stays in governance repo.
+6. **If a file's content is uncertain**, read only the filename and
+   line count, then ask controller before reading further.
