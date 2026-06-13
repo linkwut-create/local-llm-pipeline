@@ -155,3 +155,36 @@ def test_cli_no_traceback():
         cwd=str(Path(__file__).parent.parent),
     )
     assert "Traceback" not in r.stdout
+
+
+# ── cloud_ok gate ──
+
+def test_cloud_ok_false_does_not_escalate():
+    """When cloud_ok=False (default), high-risk tasks must NOT escalate to pro-review or flash-fallback."""
+    tasks = [
+        "prepare release gate v0.14.0",
+        "change provider config schema for MCP compatibility",
+        "review security boundary around router escalation",
+    ]
+    for task in tasks:
+        r = recommend_decision(task, cloud_ok=False)
+        # cloud_ok=False must keep decisions local, never escalate to cloud paths
+        assert r["recommended_controller_decision"] in ("local", "local-first", "defer"), \
+            f"{task}: cloud_ok=False but got {r['recommended_controller_decision']}"
+        assert r["cloud_allowed"] is False, \
+            f"{task}: cloud_ok=False but cloud_allowed=True"
+
+
+def test_output_never_sets_would_block_true():
+    """Advisory workflow output must never set would_block=true — it is advisory-only."""
+    tasks = [
+        "review diff",
+        "prepare release",
+        "check .env for secrets",
+        "unknown xyzzy",
+    ]
+    for task in tasks:
+        r = recommend_decision(task, cloud_ok=True)
+        # The output is a routing recommendation, not a gate decision
+        assert "would_block" not in r or r.get("would_block") is not True, \
+            f"{task}: would_block is true but advisory workflow must not block"
