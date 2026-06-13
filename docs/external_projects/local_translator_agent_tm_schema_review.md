@@ -79,3 +79,50 @@
 ## Recommended Next Read-Only Task
 
 Review `services/tm_service.py` public API surface (function signatures, class names, docstrings only) — to understand the schema layer that these tests validate.
+
+---
+
+## Import Target Review (2026-06-14)
+
+### `services/tm_service.py` — Public API
+
+| Function | Category |
+|----------|----------|
+| `get_connection(db_path)` | DB connection |
+| `now_iso()` | Timestamp util |
+| `source_hash(text)` | Hash function (tested) |
+| `migrate_tm(db_path)` | Schema migration (tested) |
+| `create_project(...)` | Project CRUD |
+| `list_projects(...)` | Project list |
+| `create_document(...)` | Document CRUD |
+| `create_segment(...)` | Segment CRUD |
+| `create_segments_batch(...)` | Batch segment |
+| `save_variant(...)` | Variant CRUD |
+| `get_variants_for_segment(...)` | Variant read |
+| `save_human_revision(...)` | Human revision |
+| `create_term_decision(...)` | Terminology create |
+| `upsert_term_decision(...)` | Terminology upsert |
+| `get_term_decisions(...)` | Terminology read |
+| `get_effective_terminology(...)` | Effective terms |
+| `detect_term_conflicts(...)` | Conflict detection |
+| `get_term_conflicts(...)` | Conflict list |
+| `resolve_term_conflict(...)` | Conflict resolution |
+
+### `services/session_service.py` — Public API
+
+| Symbol | Type |
+|--------|------|
+| `SessionService` | Class (session management) |
+| `migrate_db(db_path)` | Session DB migration (tested) |
+| `_row_to_dict(row)` | Internal helper |
+
+### Schema Module Assessment
+
+- **All SQLite-backed**: No network calls, no API keys, no audio/image processing
+- **Schema tested by test_tm_schema.py**: `migrate_tm`, `source_hash`, table/column/index existence
+- **Not yet tested in this file**: CRUD operations, conflict resolution, terminology decisions
+- **Safe for further read-only review**: Yes — function signatures are public code, not secrets
+
+### External Repo Modification
+
+**None.** Confirmed after import target read.
