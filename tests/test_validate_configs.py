@@ -143,3 +143,48 @@ def test_cli_json_output():
     assert "tasks_count" in data
     assert "errors" in data
     assert "warnings" in data
+
+
+# ═══════════════════════════════════════════════════════════════
+# CLI regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_cli_runs_without_error():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/validate_configs.py"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0
+
+
+def test_cli_json_output_parseable():
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/validate_configs.py", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(r.stdout.strip())
+    assert "ok" in data
+
+
+def test_cli_missing_file_fails():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/validate_configs.py", "--profiles", "nonexistent.json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode != 0
+
+
+def test_cli_no_traceback_in_output():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/validate_configs.py"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
