@@ -190,3 +190,26 @@ When choosing the next read-only dogfood task for this project:
 - Live API tests (test_api*.py, test_followup_api.py)
 - Embedding/live Ollama smoke (test_tm_embedding_live_smoke.py)
 - GUI/overlay tests (test_overlay_smoke.py, test_realtime_overlay_mode.py)
+
+## Provider/API Read-Only Boundary Rules
+
+When reviewing provider checker or API-related files:
+
+1. **Structure-only code review** — function names, signatures, imports. Not config values.
+2. **Do not read** `.env`, provider config instances, API key names, API key values, or provider endpoint URLs.
+3. **Do not run** provider checks, chat probes, or network calls during read-only review.
+4. **Do not call** Ollama, OpenAI, DeepSeek, or any provider adapter during review.
+5. **Provider/API tasks that soft gate marks as high or manual-confirm** should be recorded as `pro-review` per #45 rule.
+6. **Provider checker modules that internally redact API keys** (like `_safe_error`) are strong evidence of privacy-aware design — note this but do not test the redaction.
+
+## Next Phase: Controlled Proposal Mode
+
+After #90, shift from read-only structure review to controlled proposal mode:
+
+- Select one small real issue in local-translator-agent
+- Soft gate the task
+- Read-only analysis of relevant files
+- Produce: patch plan, risk report, files-to-touch list, test plan
+- Do NOT modify external repo
+- Do NOT run external tests
+- Do NOT read secrets
