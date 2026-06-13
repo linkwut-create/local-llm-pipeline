@@ -205,6 +205,11 @@ def evaluate(
         "reason": "; ".join(reasons),
         "next_required_action": _next_action(decision, stage),
         "generated_at": timestamp,
+        # DeepSeek V4 Flash/Pro cost-tiering (from router_explain.TieringPolicy)
+        "recommended_execution_route": route.recommended_execution_route,
+        "recommended_model": route.recommended_model,
+        "cost_tier": route.cost_tier,
+        "context_overhead_warning": route.context_overhead_warning,
     }
 
 
@@ -271,6 +276,11 @@ def main():
         print(f"  would-block: {result['would_block']}")
         print(f"  reason:   {result['reason']}")
         print(f"  next:     {result['next_required_action']}")
+        print(f"  tier:     route={result.get('recommended_execution_route', '?')}  "
+              f"model={result.get('recommended_model') or '(none)'}  "
+              f"cost={result.get('cost_tier', '?')}")
+        if result.get('context_overhead_warning'):
+            print(f"  WARNING: {result['context_overhead_warning'][:120]}")
 
     sys.exit(0)
 

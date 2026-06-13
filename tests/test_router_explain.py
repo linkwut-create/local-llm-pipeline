@@ -26,6 +26,7 @@ from router_explain import (
     PrivacyGate,
     ProfileMapper,
     EscalationPolicy,
+    TieringPolicy,
     RouterEngine,
     RouteDecision,
     format_explain,
@@ -583,3 +584,251 @@ def test_signals_not_empty():
     engine = RouterEngine()
     d = engine.analyze("review current diff for bugs")
     assert len(d.signals) >= 3  # classification, risk, privacy, profile
+
+
+# ═══════════════════════════════════════════════════════════════
+# 9. DeepSeek V4 Flash/Pro Cost-Tiering Policy
+# ═══════════════════════════════════════════════════════════════
+
+def test_tier_flash_direct_summarize():
+    r = TieringPolicy.resolve("summarize-file", "low", "safe")
+    assert r["recommended_execution_route"] == "flash_direct"
+    assert r["recommended_model"] == "deepseek-v4-flash"
+    assert r["cost_tier"] == "cheap"
+    assert r["context_overhead_warning"] is None
+
+
+def test_tier_flash_direct_governance():
+    r = TieringPolicy.resolve("governance-docs", "low", "safe")
+    assert r["recommended_execution_route"] == "flash_direct"
+    assert r["recommended_model"] == "deepseek-v4-flash"
+    assert r["cost_tier"] == "cheap"
+
+
+def test_tier_flash_direct_translate():
+    r = TieringPolicy.resolve("translate-text", "low", "safe")
+    assert r["recommended_execution_route"] == "flash_direct"
+    assert r["cost_tier"] == "cheap"
+
+
+def test_tier_flash_direct_find_files():
+    r = TieringPolicy.resolve("find-related-files", "low", "safe")
+    assert r["recommended_execution_route"] == "flash_direct"
+    assert r["cost_tier"] == "cheap"
+
+
+def test_tier_pro_code_modification_draft_fix():
+    """draft-fix is code modification → claude_code_pro, not flash_subagent."""
+    r = TieringPolicy.resolve("draft-fix", "medium", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+    assert "Code modification" in r["context_overhead_warning"]
+
+
+def test_tier_pro_code_modification_draft_feature():
+    r = TieringPolicy.resolve("draft-feature", "medium", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+    assert "Code modification" in r["context_overhead_warning"]
+
+
+def test_tier_pro_code_modification_draft_refactor():
+    r = TieringPolicy.resolve("draft-refactor", "medium", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+    assert "Code modification" in r["context_overhead_warning"]
+
+
+def test_tier_flash_subagent_review_diff():
+    r = TieringPolicy.resolve("review-diff", "medium", "safe")
+    assert r["recommended_execution_route"] == "flash_subagent"
+    assert r["cost_tier"] == "moderate"
+    assert r["context_overhead_warning"] is not None
+
+
+def test_tier_flash_subagent_test_plan():
+    r = TieringPolicy.resolve("generate-test-plan", "medium", "safe")
+    assert r["recommended_execution_route"] == "flash_subagent"
+    assert r["cost_tier"] == "moderate"
+
+
+def test_tier_pro_release():
+    r = TieringPolicy.resolve("release-risk-review", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+    assert "4x Flash cost" in r["context_overhead_warning"]
+
+
+def test_tier_pro_security():
+    r = TieringPolicy.resolve("security-review", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+
+
+def test_tier_pro_interface():
+    r = TieringPolicy.resolve("interface-review", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["cost_tier"] == "expensive"
+
+
+def test_tier_pro_architecture():
+    r = TieringPolicy.resolve("architecture-review", "medium", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["cost_tier"] == "expensive"
+
+
+def test_tier_pro_api_execution_boundary():
+    r = TieringPolicy.resolve("api-execution-boundary", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+
+
+def test_tier_pro_governance_integration():
+    r = TieringPolicy.resolve("governance-integration", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+
+
+def test_tier_pro_control_plane():
+    r = TieringPolicy.resolve("control-plane-boundary", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+
+
+def test_tier_high_risk_escalates_to_pro():
+    """Even non-Pro task types escalate to Pro when risk=high."""
+    r = TieringPolicy.resolve("draft-fix", "high", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+    assert r["recommended_model"] == "deepseek-v4-pro"
+    assert r["cost_tier"] == "expensive"
+
+
+def test_tier_critical_risk_escalates_to_pro():
+    r = TieringPolicy.resolve("draft-feature", "critical", "safe")
+    assert r["recommended_execution_route"] == "claude_code_pro"
+
+
+def test_tier_privacy_blocked():
+    r = TieringPolicy.resolve("draft-fix", "medium", "blocked")
+    assert r["recommended_execution_route"] == "blocked"
+    assert r["recommended_model"] is None
+    assert r["cost_tier"] == "free"
+    assert r["context_overhead_warning"] is None
+
+
+def test_tier_privacy_needs_sanitization():
+    r = TieringPolicy.resolve("summarize-file", "low", "needs_sanitization")
+    # needs_sanitization is NOT blocked → should still route normally
+    assert r["recommended_execution_route"] == "flash_direct"
+    assert r["cost_tier"] == "cheap"
+
+
+def test_tier_unknown_manual_confirm():
+    r = TieringPolicy.resolve("unknown", "low", "safe")
+    assert r["recommended_execution_route"] == "manual_confirm"
+    assert r["recommended_model"] is None
+    assert r["cost_tier"] == "free"
+    assert "unclassified" in r["context_overhead_warning"].lower()
+
+
+def test_tier_fallback_local_only():
+    """Unrecognized task_type with low risk → local_only fallback."""
+    # Use a task_type that's not in any set
+    r = TieringPolicy.resolve("hypothetical-future-task", "low", "safe")
+    assert r["recommended_execution_route"] == "local_only"
+    assert r["recommended_model"] is None
+    assert r["cost_tier"] == "free"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 10. Tiering integration in RouterEngine output
+# ═══════════════════════════════════════════════════════════════
+
+def test_engine_output_includes_tier_fields():
+    engine = RouterEngine()
+    d = engine.analyze("summarize this file for me")
+    assert d.recommended_execution_route == "flash_direct"
+    assert d.recommended_model == "deepseek-v4-flash"
+    assert d.cost_tier == "cheap"
+    assert d.context_overhead_warning is None
+
+
+def test_engine_output_pro_fields():
+    engine = RouterEngine()
+    d = engine.analyze("prepare release v2.3 for production deployment")
+    assert d.recommended_execution_route == "claude_code_pro"
+    assert d.recommended_model == "deepseek-v4-pro"
+    assert d.cost_tier == "expensive"
+
+
+def test_engine_output_code_modification_warning():
+    """draft-fix → claude_code_pro, NOT flash_subagent."""
+    engine = RouterEngine()
+    d = engine.analyze("fix null pointer exception in login handler")
+    assert d.recommended_execution_route == "claude_code_pro"
+    assert d.recommended_model == "deepseek-v4-pro"
+    assert d.cost_tier == "expensive"
+    assert "Code modification" in d.context_overhead_warning
+
+
+def test_engine_output_subagent_for_review():
+    """review-diff → flash_subagent (review, not code modification)."""
+    engine = RouterEngine()
+    d = engine.analyze("review current diff for bugs")
+    assert d.recommended_execution_route == "flash_subagent"
+    assert d.recommended_model == "deepseek-v4-flash"
+    assert d.cost_tier == "moderate"
+    assert "90k tokens" in d.context_overhead_warning
+
+
+def test_engine_output_blocked_tier():
+    engine = RouterEngine()
+    d = engine.analyze("use this API key: sk-12345678901234567890abcdef")
+    assert d.recommended_execution_route == "blocked"
+    assert d.recommended_model is None
+    assert d.cost_tier == "free"
+
+
+def test_to_dict_includes_tier_fields():
+    engine = RouterEngine()
+    d = engine.analyze("review current diff for bugs")
+    data = d.to_dict()
+    tier_fields = [
+        "recommended_execution_route",
+        "recommended_model",
+        "cost_tier",
+        "context_overhead_warning",
+    ]
+    for field in tier_fields:
+        assert field in data, f"Missing tier field: {field}"
+
+
+def test_tiering_signals_in_output():
+    engine = RouterEngine()
+    d = engine.analyze("review current diff for bugs")
+    assert "tiering" in d.signals
+    assert any("route=" in s for s in d.signals["tiering"])
+    assert any("model=" in s for s in d.signals["tiering"])
+    assert any("cost=" in s for s in d.signals["tiering"])
+
+
+def test_tiering_policy_no_api_calls():
+    """TieringPolicy.resolve is pure function — no API calls, no I/O.
+
+    Note: "deepseek-v4-flash" / "deepseek-v4-pro" appear as string literals
+    (recommended model names), not as API calls. That's expected and safe.
+    """
+    import inspect
+    source = inspect.getsource(TieringPolicy.resolve)
+    assert "requests" not in source
+    assert "http" not in source
+    assert "openai" not in source.lower()
+    assert "urllib" not in source
+    assert "subprocess" not in source
+    assert "os.environ" not in source
+    # Verify no DeepSeek SDK import or client call (model name strings are OK)
+    assert "DeepSeekClient" not in source
+    assert "deepseek_client" not in source
+    assert "api_key" not in source.lower()

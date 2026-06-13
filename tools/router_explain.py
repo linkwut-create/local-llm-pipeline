@@ -64,6 +64,11 @@ class RouteDecision:
     # Diagnostics
     signals: Dict[str, List[str]] = field(default_factory=dict)
     confidence: float = 1.0
+    # DeepSeek V4 Flash/Pro cost-tiering (v0.13.0+)
+    recommended_execution_route: str = "local_only"  # flash_direct | claude_code_pro | flash_subagent | local_only | blocked | manual_confirm
+    recommended_model: Optional[str] = None           # deepseek-v4-flash | deepseek-v4-pro | None
+    cost_tier: str = "free"                           # cheap | moderate | expensive | free
+    context_overhead_warning: Optional[str] = None     # subagent overhead warning or None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -406,6 +411,168 @@ class EscalationPolicy:
 
 
 # ═══════════════════════════════════════════════════════════════
+# DeepSeek V4 Flash/Pro Cost-Tiering Policy
+# ═══════════════════════════════════════════════════════════════
+
+class TieringPolicy:
+    """
+    Map task_type + risk_level + privacy_status → execution route,
+    recommended model, cost tier, and context overhead warning.
+
+    Rules (priority order):
+      1. privacy=blocked → blocked
+      2. release/security/interface/architecture/API/governance → claude_code_pro
+      2b. draft-fix/feature/refactor → claude_code_pro (code mod ≠ subagent)
+      3. risk=high/critical → claude_code_pro
+      4. review-diff/generate-test-plan → flash_subagent (moderate, +overhead warning)
+      5. summarize/docs/translate/find-files → flash_direct (cheap)
+      6. unknown → manual_confirm
+      7. fallback → local_only (free)
+
+    Design constraints:
+      - Pure function: no I/O, no API calls, no file reads.
+      - Advisory-only: controller makes final routing decision.
+      - Mock-only: never calls DeepSeek API.
+    """
+
+    # Task types that should use Flash direct (no subagent overhead)
+    FLASH_DIRECT_TASKS = {
+        "summarize-file",
+        "summarize-tree",
+        "rewrite-text",
+        "translate-text",
+        "find-related-files",
+        "governance-docs",
+        "suggest-improvements",
+    }
+
+    # Task types that should use Claude Code Pro (complex/high-stakes)
+    PRO_TASKS = {
+        "release-risk-review",
+        "security-review",
+        "interface-review",
+        "architecture-review",
+        "deep-code-review",
+        "api-execution-boundary",
+        "governance-integration",
+        "control-plane-boundary",
+    }
+
+    # Code-modification tasks: real code changes — Claude Code Pro only.
+    # Flash subagent has ~90k token overhead; not a safe default for
+    # fix/feature/refactor work. Controller may downgrade with explicit approval.
+    CODE_MODIFICATION_TASKS = {
+        "draft-fix",
+        "draft-feature",
+        "draft-refactor",
+    }
+
+    # Task types suitable for Flash subagent (needs agent, not critical,
+    # no code modification — review/analysis only)
+    FLASH_SUBAGENT_TASKS = {
+        "generate-test-plan",
+        "review-diff",
+    }
+
+    @classmethod
+    def resolve(cls, task_type: str, risk_level: str,
+                privacy_status: str) -> dict:
+        """
+        Return tiering fields as a dict:
+          recommended_execution_route, recommended_model,
+          cost_tier, context_overhead_warning
+        """
+        # Rule 1: Privacy blocked → local-only or blocked
+        if privacy_status == "blocked":
+            return {
+                "recommended_execution_route": "blocked",
+                "recommended_model": None,
+                "cost_tier": "free",
+                "context_overhead_warning": None,
+            }
+
+        # Rule 2: Pro tasks → claude_code_pro
+        if task_type in cls.PRO_TASKS:
+            return {
+                "recommended_execution_route": "claude_code_pro",
+                "recommended_model": "deepseek-v4-pro",
+                "cost_tier": "expensive",
+                "context_overhead_warning": (
+                    "Pro includes reasoning tokens; ~4x Flash cost per token. "
+                    "Use only for high-stakes decisions."
+                ),
+            }
+
+        # Rule 2b: Code-modification tasks → claude_code_pro
+        # Flash subagent ~90k token overhead is NOT a safe default for
+        # fix/feature/refactor work. Controller may downgrade with explicit approval.
+        if task_type in cls.CODE_MODIFICATION_TASKS:
+            return {
+                "recommended_execution_route": "claude_code_pro",
+                "recommended_model": "deepseek-v4-pro",
+                "cost_tier": "expensive",
+                "context_overhead_warning": (
+                    "Code modification should stay in Claude Code Pro "
+                    "unless explicitly approved. Flash subagent has ~90k "
+                    "token overhead and is not a safe default for "
+                    "fix/feature/refactor work."
+                ),
+            }
+
+        # Rule 3: High/critical risk → claude_code_pro (even if not in PRO_TASKS)
+        if risk_level in ("high", "critical"):
+            return {
+                "recommended_execution_route": "claude_code_pro",
+                "recommended_model": "deepseek-v4-pro",
+                "cost_tier": "expensive",
+                "context_overhead_warning": (
+                    f"risk={risk_level} → Pro required for final decision"
+                ),
+            }
+
+        # Rule 4: Flash subagent tasks → flash_subagent
+        if task_type in cls.FLASH_SUBAGENT_TASKS:
+            return {
+                "recommended_execution_route": "flash_subagent",
+                "recommended_model": "deepseek-v4-flash",
+                "cost_tier": "moderate",
+                "context_overhead_warning": (
+                    "Subagent overhead ~90k tokens per call. "
+                    "Prefer flash_direct for simple/single-step tasks."
+                ),
+            }
+
+        # Rule 5: Flash direct tasks → flash_direct
+        if task_type in cls.FLASH_DIRECT_TASKS:
+            return {
+                "recommended_execution_route": "flash_direct",
+                "recommended_model": "deepseek-v4-flash",
+                "cost_tier": "cheap",
+                "context_overhead_warning": None,
+            }
+
+        # Rule 6: Unknown → manual_confirm
+        if task_type == "unknown":
+            return {
+                "recommended_execution_route": "manual_confirm",
+                "recommended_model": None,
+                "cost_tier": "free",
+                "context_overhead_warning": (
+                    "Task unclassified — human should clarify intent "
+                    "before routing to any paid model."
+                ),
+            }
+
+        # Rule 7: Fallback → local_only (safe default)
+        return {
+            "recommended_execution_route": "local_only",
+            "recommended_model": None,
+            "cost_tier": "free",
+            "context_overhead_warning": None,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
 # Router Engine
 # ═══════════════════════════════════════════════════════════════
 
@@ -451,7 +618,19 @@ class RouterEngine:
         flash_cond = EscalationPolicy.get_flash_condition(task_type, risk_level, privacy_status)
         pro_cond = EscalationPolicy.get_pro_condition(task_type, risk_level, privacy_status)
 
-        # Step 6: Build reason
+        # Step 6: DeepSeek V4 Flash/Pro cost-tiering
+        tier = TieringPolicy.resolve(task_type, risk_level, privacy_status)
+        signals["tiering"] = [
+            f"route={tier['recommended_execution_route']}",
+            f"model={tier['recommended_model'] or 'none'}",
+            f"cost={tier['cost_tier']}",
+        ]
+        if tier.get("context_overhead_warning"):
+            signals["tiering"].append(
+                f"warning={tier['context_overhead_warning'][:80]}"
+            )
+
+        # Step 7: Build reason
         reason_parts = [f"task classified as '{task_type}'"]
 
         if risk_level in ("high", "critical"):
@@ -473,6 +652,11 @@ class RouterEngine:
         else:
             reason_parts.append("no suitable local model — direct to cloud")
 
+        reason_parts.append(
+            f"execution route: {tier['recommended_execution_route']} "
+            f"(cost: {tier['cost_tier']})"
+        )
+
         return RouteDecision(
             task_type=task_type,
             risk_level=risk_level,
@@ -484,6 +668,10 @@ class RouterEngine:
             reason=" ; ".join(reason_parts),
             signals=signals,
             confidence=type_conf,
+            recommended_execution_route=tier["recommended_execution_route"],
+            recommended_model=tier["recommended_model"],
+            cost_tier=tier["cost_tier"],
+            context_overhead_warning=tier.get("context_overhead_warning"),
         )
 
 
@@ -522,6 +710,13 @@ def format_explain(decision: RouteDecision) -> str:
     else:
         lines.append(f"    -> Pro: NOT ALLOWED (privacy blocked)")
 
+    lines.append("")
+    lines.append(f"  DeepSeek V4 Tiering:")
+    lines.append(f"    Execution route: {decision.recommended_execution_route}")
+    lines.append(f"    Recommended model: {decision.recommended_model or '(none)'}")
+    lines.append(f"    Cost tier: {decision.cost_tier}")
+    if decision.context_overhead_warning:
+        lines.append(f"    WARNING: {decision.context_overhead_warning}")
     lines.append("")
     lines.append(f"  Reason: {decision.reason}")
     lines.append("")
@@ -620,6 +815,11 @@ def _run_demo(engine: RouterEngine):
         pro = decision.pro_escalation_condition
         print(f"    flash: {flash[:100] if flash else '(blocked)'}{'...' if flash and len(flash) > 100 else ''}")
         print(f"    pro:   {pro[:100] if pro else '(blocked)'}{'...' if pro and len(pro) > 100 else ''}")
+        print(f"    tier:  route={decision.recommended_execution_route}  "
+              f"model={decision.recommended_model or '(none)'}  "
+              f"cost={decision.cost_tier}")
+        if decision.context_overhead_warning:
+            print(f"    WARNING: {decision.context_overhead_warning[:120]}")
         print()
 
 

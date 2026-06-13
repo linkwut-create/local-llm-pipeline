@@ -101,6 +101,11 @@ def recommend_decision(task: str, cloud_ok: bool = False,
         "advisory_only": True,
         "local_failures": local_failures,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        # DeepSeek V4 Flash/Pro cost-tiering
+        "recommended_execution_route": decision.recommended_execution_route,
+        "recommended_model": decision.recommended_model,
+        "cost_tier": decision.cost_tier,
+        "context_overhead_warning": decision.context_overhead_warning,
     }
 
 
@@ -165,6 +170,11 @@ def main():
             print(f"  flash:    {result['flash_escalation_condition'][:100]}")
         if result["pro_escalation_condition"]:
             print(f"  pro:      {result['pro_escalation_condition'][:100]}")
+        print(f"  tier:     route={result.get('recommended_execution_route', '?')}  "
+              f"model={result.get('recommended_model') or '(none)'}  "
+              f"cost={result.get('cost_tier', '?')}")
+        if result.get('context_overhead_warning'):
+            print(f"  WARNING: {result['context_overhead_warning'][:120]}")
 
 
 if __name__ == "__main__":

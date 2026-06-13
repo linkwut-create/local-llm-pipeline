@@ -115,12 +115,18 @@ def test_classify_tier_no_network():
 
 
 def test_no_api_key_access():
-    """Test file does not import deepseek client or os.environ for API keys."""
-    import sys
-    # No deepseek client import
-    assert "deepseek_client" not in sys.modules
-    # classify_tier does not read environment
+    """classify_tier is pure: no API keys, no env reads, no cloud calls.
+
+    Uses source inspection (not sys.modules) to avoid cross-test isolation.
+    The function under test is classify_tier — that's the security boundary.
+    """
     import inspect
+
     source = inspect.getsource(classify_tier)
     assert "os.environ" not in source
     assert "getenv" not in source
+    assert "DEEPSEEK_API_KEY" not in source
+    assert "requests" not in source
+    assert "http" not in source
+    assert "urllib" not in source
+    assert "subprocess" not in source
