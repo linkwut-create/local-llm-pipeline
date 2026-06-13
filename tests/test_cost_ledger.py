@@ -655,3 +655,13 @@ def test_cli_no_traceback():
     )
     assert "Traceback" not in r.stdout
 
+
+
+def test_estimate_zero_tokens():
+    r = estimate(task="empty", model="deepseek-v4-flash", input_tokens=0, output_tokens=0)
+    assert r["estimated_cost"] == 0.0
+
+def test_estimate_large_tokens_no_overflow():
+    r = estimate(task="large", model="deepseek-v4-flash", input_tokens=1000000, output_tokens=500000)
+    assert r["estimated_cost"] is not None
+    assert r["estimated_cost"] > 0
