@@ -66,4 +66,21 @@ Never read: `.env`, `history.db`, user data, audio, images, logs, API keys.
 different types of external project files (schema tests + profile/API tests).
 Both tasks remained within read-only boundaries.
 
+---
+
+## Third Task Summary (#81—#82: Preset Checker)
+
+| 指标 | 值 |
+|------|-----|
+| External files read | `tests/test_preset_checker.py` (287 lines, 11 tests), `services/preset_checker.py` (3 symbols) |
+| Test type | Fully mocked readiness/preset checks |
+| Privacy risk | Low — all monkeypatch, no real model/network |
+| External repo modified | No (0 files) |
+| Secrets read | 0 |
+
+**Third task also successful.** All three external read-only tasks completed
+across different file types (schema, profile/API, preset/readiness) while
+maintaining zero external modification and zero secret access. The governance
+flow is now validated across three distinct task types.
+
 **Next milestone**: Expand to a second safe test file review, then consider broader structural analysis of the translator project.
