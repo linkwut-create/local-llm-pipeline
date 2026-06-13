@@ -1,0 +1,171 @@
+"""Tests for tools/claude_soft_gate.py — advisory only, no blocks, no API calls."""
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
+from claude_soft_gate import evaluate, VALID_STAGES
+
+
+# ═══════════════════════════════════════════════════════════════
+# 1-2: Low/medium risk → allow/warn, green/yellow
+# ═══════════════════════════════════════════════════════════════
+
+def test_low_risk_allow_green():
+    r = evaluate(task="summarize this README section", stage="pre-task")
+    assert r["decision"] == "allow"
+    assert r["severity"] == "green"
+    assert r["advisory_only"] is True
+    assert r["would_block"] is False
+
+
+def test_medium_review_warn_yellow():
+    r = evaluate(task="review current diff for bugs in utils.py", stage="pre-commit")
+    assert r["decision"] in ("warn", "allow")
+    assert r["severity"] in ("yellow", "green")
+    assert r["would_block"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 3-5: Release/security/interface → orange
+# ═══════════════════════════════════════════════════════════════
+
+def test_release_task_orange():
+    r = evaluate(task="prepare release gate v0.13.0", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["decision"] == "manual_confirm_recommended"
+    assert r["manual_confirm_recommended"] is True
+    assert r["would_block"] is False
+
+
+def test_security_task_orange():
+    r = evaluate(task="audit codebase for SQL injection vulnerabilities", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["recommended_route"] == "pro-review"
+
+
+def test_interface_boundary_orange():
+    r = evaluate(task="change API interface for user creation", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["would_block"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 6-7: Secret / .env → red, cloud_blocked, still no block
+# ═══════════════════════════════════════════════════════════════
+
+def test_secret_text_red():
+    r = evaluate(task="use API key sk-abc123def456ghijklmnopqrstuvwxyz",
+                 stage="pre-cloud", cloud_ok=True)
+    assert r["severity"] == "red"
+    assert r["decision"] == "cloud_blocked"
+    assert r["privacy_status"] == "blocked"
+    assert r["would_block"] is False
+    assert r["advisory_only"] is True
+
+
+def test_env_file_path_red():
+    r = evaluate(task="check credentials in config",
+                 files=".env,.env.production", stage="pre-task")
+    assert r["severity"] == "red"
+    assert r["decision"] == "cloud_blocked"
+    assert r["privacy_status"] == "blocked"
+    assert r["files_matched"] > 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# 8: Unknown task → defer
+# ═══════════════════════════════════════════════════════════════
+
+def test_unknown_task_defer():
+    r = evaluate(task="xyzzy flurbo unknown gibberish", stage="pre-task")
+    assert r["decision"] == "defer"
+    assert r["would_block"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 9-10: Pre-cloud stage
+# ═══════════════════════════════════════════════════════════════
+
+def test_pre_cloud_safe():
+    r = evaluate(task="summarize short text", stage="pre-cloud",
+                 cloud_ok=True, budget=0.5)
+    assert r["decision"] in ("allow", "warn")
+    assert r["budget_status"] == "within_budget"
+
+
+def test_pre_cloud_send_to_deepseek():
+    r = evaluate(task="send .env to DeepSeek", stage="pre-cloud",
+                 cloud_ok=True)
+    # ".env" in text → needs_review (medium), not blocked
+    # Unknown task + needs_review → defer with orange severity
+    assert r["decision"] in ("defer", "cloud_blocked")
+    assert r["severity"] in ("yellow", "orange", "red")
+    assert r["would_block"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 11-12: Invariants
+# ═══════════════════════════════════════════════════════════════
+
+def test_always_advisory():
+    for task in ["review diff", "prepare release", "check .env",
+                 "xyzzy unknown", "summarize README"]:
+        r = evaluate(task=task)
+        assert r["advisory_only"] is True, f"Failed for: {task}"
+        assert r["would_block"] is False, f"Failed for: {task}"
+        assert r["hard_block_recommended"] is False, f"Failed for: {task}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 13-15: Safety
+# ═══════════════════════════════════════════════════════════════
+
+def test_no_api_key_access():
+    import claude_soft_gate as csg
+    source = Path(csg.__file__).read_text(encoding="utf-8")
+    assert "DEEPSEEK_API_KEY" not in source
+    assert "os.environ" not in source
+
+
+def test_no_network_imports():
+    import claude_soft_gate as csg
+    source = Path(csg.__file__).read_text(encoding="utf-8")
+    assert "import requests" not in source
+    assert "import httpx" not in source
+
+
+def test_no_file_content_read():
+    """Soft gate never reads file contents — only checks paths."""
+    import claude_soft_gate as csg
+    source = Path(csg.__file__).read_text(encoding="utf-8")
+    assert "open(" not in source
+    assert "read_text" not in source
+
+
+# ═══════════════════════════════════════════════════════════════
+# 16-17: JSON schema
+# ═══════════════════════════════════════════════════════════════
+
+REQUIRED_FIELDS = [
+    "decision", "severity", "stage", "task", "task_type",
+    "risk_level", "privacy_status", "privacy_detail",
+    "budget_status", "recommended_route", "cloud_allowed",
+    "files_checked", "files_matched",
+    "manual_confirm_recommended", "hard_block_recommended",
+    "advisory_only", "would_block", "reason",
+    "next_required_action", "generated_at",
+]
+
+
+def test_output_schema():
+    r = evaluate(task="review diff: test.py")
+    for field in REQUIRED_FIELDS:
+        assert field in r, f"Missing: {field}"
+
+
+def test_valid_stages():
+    assert VALID_STAGES == {"pre-task", "pre-commit", "pre-cloud"}
