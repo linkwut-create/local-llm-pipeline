@@ -184,3 +184,73 @@ def test_invalid_error_mentions_canonical():
 def test_invalid_error_includes_local_first():
     r = log(task="bad2", actual="nope")
     assert "local-first" in r["error"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# External task privacy tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_external_task_logged_without_secrets(tmp_path, monkeypatch):
+    """External project task can be logged without secret fields."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+    r = log(task="Google Play: review store listing for release", actual="pro-review")
+    # Must not include secret-related fields
+    assert "api_key" not in r
+    assert "secret" not in r
+    assert "token" not in r
+    # Record was written successfully
+    assert "error" not in r
+
+
+def test_shadow_record_excludes_api_key(tmp_path, monkeypatch):
+    """Shadow route record must not contain API key field."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+    log(task="translator: fix subtitle regression", actual="local-first")
+    shadow_dir = tmp_path / "shadow_routes"
+    for f in shadow_dir.glob("*.jsonl"):
+        with open(f, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                assert "api_key" not in data
+
+
+def test_shadow_record_excludes_raw_file_contents(tmp_path, monkeypatch):
+    """Shadow record must not contain raw file contents."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+    log(task="game-dev: review save system design", actual="pro-review")
+    shadow_dir = tmp_path / "shadow_routes"
+    for f in shadow_dir.glob("*.jsonl"):
+        with open(f, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                assert "file_content" not in data
+                assert "raw_text" not in data
+
+
+def test_actual_enum_validated_on_external_tasks(tmp_path, monkeypatch):
+    """Actual enum validation still works for external project tasks."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+    r1 = log(task="browser-plugin: review content script permissions", actual="pro-review")
+    assert "error" not in r1
+    r2 = log(task="browser-plugin: audit manifest", actual="bad-actual")
+    assert "error" in r2
+    assert r2["written"] is False
+
+
+def test_malformed_external_task_no_crash(tmp_path, monkeypatch):
+    """Malformed external task name does not crash the logger."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+    weird_tasks = [
+        "",
+        "  ",
+        "a" * 500,  # very long task name
+    ]
+    for task in weird_tasks:
+        r = log(task=task, actual="local-first")
+        assert isinstance(r, dict)  # Always returns a dict, never throws
