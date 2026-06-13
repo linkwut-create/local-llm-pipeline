@@ -173,14 +173,44 @@ Result:
 
 ---
 
+## docs_agent Shadow Test — gemma4:31b-unsloth
+
+Date: 2026-06-13
+Profile change: committed `bd1945d`
+
+| # | Task | Method | Status | Latency | Result |
+|---|------|--------|:--:|--------|--------|
+| 1 | Summarize profile_suggestions.md | summarize | non-empty | 138s | Accurate: all roles, deps, issues |
+| 2 | Review PROBLEMS.md for gemma4 entry | direct | N/A | — | Needs PROB-009 (no existing entry) |
+| 3 | Summarize LONGTODO.md | summarize | non-empty | 95s | Accurate: roadmap, deps, non-goals |
+
+Note: Task 2 was attempted via `contextual_analyze` but blocked by router
+high-risk classification (not a model failure). Direct review yielded same
+conclusion.
+
+Result:
+- Empty response: **0/2**
+- Hallucination: **0/2**
+- Over-expansion: **0/2**
+- Latency: **95-138s** (acceptable for 31B)
+- Verdict: **STABLE — keep as docs_agent primary**
+
+---
+
+## Router Observation
+
+- `contextual_analyze` may over-classify docs review as `risk=high`
+- Status: observe, not blocking docs_agent landing
+- Follow-up: router risk classification calibration needed
+
 ## Summary
 
 ```
 ✅ Applied:
   fast_summary → gemma4:12b-unsloth (fd6a9ce, 5/5 observation passed)
+  docs_agent → gemma4:31b-unsloth (bd1945d, 2/2 shadow passed)
 
-⏸️  Pending observation:
-  docs_agent → gemma4:31b-unsloth (wait for fast_summary to prove stable)
+🛑 Profile changes paused — observe before next change
 
 🔒 Frozen — DO NOT CHANGE without more evidence:
   deep_reviewer → needs full battery on qwen3.6:35b
