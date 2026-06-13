@@ -176,6 +176,15 @@
 - **Side Effects**: Writes shadow routing log (`.local_llm_out/shadow_routes/`)
 - **Compatibility**: decision values additive only
 
+### Command: py -3 tools/precommit_advisory.py [--cloud-ok] [--task "<desc>"] [--json]
+- **Purpose**: Non-blocking precommit route check. Reads git diff, prints advisory, always exits 0.
+- **Input**: auto-detected git diff (or `--task` override) + optional `--cloud-ok`, `--json`
+- **Output**: precommit recommendation + full router analysis
+- **Exit Codes**: ALWAYS 0 — never blocks commit
+- **LLM Call**: None (pure heuristic in-process via RouterEngine)
+- **Side Effects**: Writes shadow routing log (`.local_llm_out/shadow_routes/`)
+- **Compatibility**: non-blocking by design; exit code contract must never change
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`

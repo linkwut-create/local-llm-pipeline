@@ -236,6 +236,17 @@ Claude Code is the controller. The local worker is advisory only.
   `py -3 tools/router_explain.py --demo`
   (advisory-only, controller decides final routing)
 
+- `advisory_workflow` — preflight route-aware task advisor. Wraps router_explain
+  + shadow_route_log. Outputs recommended_controller_decision:
+  `py -3 tools/advisory_workflow.py "<task>" --cloud-ok`
+  (advisory-only, never executes, never calls DeepSeek)
+
+- `precommit_advisory` — non-blocking precommit route check. Reads git diff,
+  prints advisory recommendation, always exits 0:
+  `py -3 tools/precommit_advisory.py`
+  `py -3 tools/precommit_advisory.py --cloud-ok`
+  (advisory-only, never blocks commit, never calls DeepSeek)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.
