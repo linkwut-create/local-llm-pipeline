@@ -110,3 +110,28 @@ they never modify source files directly. `local_draft_code` writes drafts only
 to `.local_llm_out/` and requires controller verification before any source change.
 No write/delete/shell/git/deploy capabilities. Controller must verify
 all important claims. See [AGENTS.md](AGENTS.md) for full policy.
+
+## Windows Command Examples
+
+On Windows, use `py -3` to invoke the correct Python interpreter.
+
+```bash
+# Run test suites
+py -3 -m pytest tests/test_validate_configs.py -q
+py -3 -m pytest tests/test_cost_ledger.py -q
+
+# Validate configuration
+py -3 tools/validate_configs.py
+py -3 tools/validate_configs.py --json
+
+# Cost ledger
+py -3 tools/cost_ledger.py --summary
+py -3 tools/cost_ledger.py --budget 200 --summary
+
+# Environment health check
+py -3 tools/local_llm_check.py
+
+# Commit workflow
+py -3 tools/precommit_advisory.py --cloud-ok
+py -3 tools/claude_soft_gate.py --stage pre-task --task "<task>" --json
+```
