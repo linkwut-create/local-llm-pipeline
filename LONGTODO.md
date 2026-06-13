@@ -188,7 +188,26 @@ Cost ledger + budget guard skeleton (`tools/cost_ledger.py`) is ready.
 
 ---
 
-## 8. Advisory Workflow — Status
+## 8. Privacy Gate — Status (2026-06-13)
+
+Privacy gate hardening (`tools/privacy_gate.py`) is ready.
+
+**Done**:
+- `--text` content privacy check (regex + keyword rules)
+- `--path` file path privacy check (suffix + exact match)
+- 9 rule categories: private keys, API keys, credential files, full repo export, cloud upload semantics
+- 3-tier output: `safe` | `blocked` | `needs_review`
+- README/Changelog/template context auto-downgrade
+- 44 mock tests
+
+**Pending**:
+- Budget guard integration (cost_ledger + privacy_gate → combined gate)
+- DeepSeek dry-run execution contract
+- Real content scanning (file content, not just path)
+
+---
+
+## 9. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 

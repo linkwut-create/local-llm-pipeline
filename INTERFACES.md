@@ -203,6 +203,15 @@
 - **Side Effects**: Writes `.local_llm_out/cost_ledger/` (append-only JSONL)
 - **Compatibility**: JSONL schema fields additive only; pricing configurable via `COST_LEDGER_PRICING_JSON` env var
 
+### Command: py -3 tools/privacy_gate.py --text "<TEXT>"|--path "<PATH>" [--json]
+- **Purpose**: Local rule-based privacy check for cloud API safety. Detects secrets, credentials, private keys, and full-repo-export intent. Advisory-only.
+- **Input**: `--text` (content to check) or `--path` (file path to check) + optional `--json`
+- **Output**: `{allowed_for_cloud, privacy_status: safe|blocked|needs_review, severity: low|medium|high|critical, matched_rules, redaction_required, reason, advisory_only}`
+- **Exit Codes**: 0=success, 1=no input
+- **LLM Call**: None (pure rule-based regex/keyword matching)
+- **Side Effects**: None (read-only, no file writing)
+- **Compatibility**: Rule set additive only; output fields additive only
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`
@@ -401,6 +410,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-008: privacy_gate 新增 CLI tool
+- **Date**: 2026-06-13 (privacy-gate chain)
+- **What**: 新增 `tools/privacy_gate.py` CLI tool — 本地规则隐私检测
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 44 mock tests in `tests/test_privacy_gate.py`
 
 ### IFACE-CHANGE-007: cost_ledger 新增 CLI tool
 - **Date**: 2026-06-13 (cost-ledger chain)
