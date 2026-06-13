@@ -54,7 +54,34 @@ def list_cases() -> list[str]:
     return sorted([f.stem for f in CASES_DIR.glob("*.md")])
 
 
-def call_ollama(model: str, prompt: str, timeout: int = 180) -> dict:
+# Pre-flight token limits to try, from small to large
+PREFLIGHT_TOKEN_LIMITS = [50, 200, 400, 800]
+
+
+def warmup_model(model: str, warmup_timeout: int = 1800) -> bool:
+    """Load the model into GPU with a tiny prompt. Not timed — loading only.
+    Returns True if model loaded and responded."""
+    print(f"    warmup: loading {model} (timeout={warmup_timeout}s)...", end=" ", flush=True)
+    r = call_ollama(model, "Say OK.", timeout=warmup_timeout, num_predict=5)
+    if r["ok"] and r["response"].strip():
+        print(f"OK ({r['elapsed_seconds']:.0f}s)", flush=True)
+        return True
+    print(f"FAIL ({r.get('error', 'unknown')})", flush=True)
+    return False
+
+
+def preflight_check(model: str, timeout: int = 180) -> int:
+    """Run a quick warmup to find the optimal num_predict for this model.
+    Returns the recommended num_predict value. Assumes model is already loaded."""
+    for np in PREFLIGHT_TOKEN_LIMITS:
+        r = call_ollama(model, "Say OK.", timeout=timeout, num_predict=np)
+        if r["ok"] and r["response"].strip():
+            return np
+    return PREFLIGHT_TOKEN_LIMITS[0]
+
+
+def call_ollama(model: str, prompt: str, timeout: int = 180,
+                num_predict: int = 400) -> dict:
     """Call Ollama with a prompt. Returns {ok, response, elapsed_seconds, error}."""
     start = time.time()
     try:
@@ -62,7 +89,7 @@ def call_ollama(model: str, prompt: str, timeout: int = 180) -> dict:
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "options": {"num_predict": 800, "temperature": 0.1},
+            "options": {"num_predict": num_predict, "temperature": 0.1},
         }).encode()
         req = urllib.request.Request(
             OLLAMA_API, data=data,
@@ -107,7 +134,8 @@ def get_ollama_models() -> list[str]:
         return []
 
 
-def run_audition(model: str, cases: list[str], timeout: int = 180) -> list[dict]:
+def run_audition(model: str, cases: list[str], timeout: int = 180,
+                 num_predict: int = 400) -> list[dict]:
     """Run all cases for one model. Returns list of result dicts."""
     results = []
     run_id = time.strftime("%Y%m%d-%H%M%S")
@@ -120,7 +148,7 @@ def run_audition(model: str, cases: list[str], timeout: int = 180) -> list[dict]
 
         print(f"  {case['case_id']} {case['title'][:60]}...", end=" ", flush=True)
 
-        result = call_ollama(model, case["prompt"], timeout=timeout)
+        result = call_ollama(model, case["prompt"], timeout=timeout, num_predict=num_predict)
         status = "OK" if result["ok"] and result["response"].strip() else "FAIL"
         print(f"{status} ({result['elapsed_seconds']:.1f}s)")
 
@@ -157,6 +185,7 @@ def main():
     parser.add_argument("--from-ollama", action="store_true", help="Test all Ollama models")
     parser.add_argument("--case", default=None, help="Run only specific case (e.g., 003)")
     parser.add_argument("--timeout", type=int, default=180, help="Per-case timeout in seconds")
+    parser.add_argument("--runs", type=int, default=1, help="Number of audition runs per model (default: 1)")
     parser.add_argument("--json-only", action="store_true", help="JSON output only")
     args = parser.parse_args()
 
@@ -177,18 +206,37 @@ def main():
         sys.exit(1)
 
     if not args.json_only:
-        print(f"Model Audition: {len(models)} models × {len(cases)} cases")
+        runs_str = f" × {args.runs} runs" if args.runs > 1 else ""
+        print(f"Model Audition: {len(models)} models × {len(cases)} cases{runs_str}")
         print(f"Results: {RESULTS_DIR}")
         print(f"Reports: {REPORTS_DIR}")
         print()
 
     all_saved = []
     for model in models:
+        # Phase 0: load model (long timeout — loading time not counted)
+        if not warmup_model(model, warmup_timeout=1800):
+            if not args.json_only:
+                print(f"[{model}] SKIP: failed to load")
+            continue
+
+        # Phase 1: find optimal num_predict (model already loaded, short timeout)
+        np = preflight_check(model, timeout=args.timeout)
         if not args.json_only:
-            print(f"[{model}]")
-        results = run_audition(model, cases, timeout=args.timeout)
-        path = save_results(results, model)
-        all_saved.append(path)
+            print(f"[{model}] preflight: num_predict={np}")
+
+        for run_num in range(1, args.runs + 1):
+            label = f"[{model}]" if args.runs == 1 else f"[{model}] run {run_num}/{args.runs}"
+            if not args.json_only:
+                print(label)
+            results = run_audition(model, cases, timeout=args.timeout, num_predict=np)
+            # Add run number and params to results
+            for r in results:
+                r["run_num"] = run_num
+                r["num_predict"] = np
+                r["timeout"] = args.timeout
+            path = save_results(results, f"{model}_run{run_num}" if args.runs > 1 else model)
+            all_saved.append(path)
         unload_model(model)
 
     if not args.json_only:

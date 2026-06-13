@@ -2,6 +2,9 @@
 .local_llm_out/
 .mcp_audit/
 
+# Model audition raw results (large, may contain sensitive context)
+evals/model_audition/results/*.jsonl
+
 # Python
 __pycache__/
 *.pyc

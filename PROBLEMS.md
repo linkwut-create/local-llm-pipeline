@@ -59,6 +59,14 @@
 - **Symptom**: `deepseek-r1:32b` 返回空响应，`deepseek-r1:32b-distill` 正常工作
 - **Cause**: Ollama 的 R1 非蒸馏版本可能存在 thinking token 格式兼容问题
 - **Mitigation**: deep_reasoning profile 改用 distill variant（任务测试通过）
+
+### PROB-008: Audition 参数不匹配被误判为模型能力失败
+- **Status**: mitigated (2026-06-13: preflight check added)
+- **Area**: tools/model_audition.py
+- **Symptom**: 800 tokens + 300s timeout 导致 glm4.7:flash(1/10)/deepseek-r1:32b-distill(0/15) 全 FAIL。降到 400 tokens + 600s 后全部 15/15 通过
+- **Cause**: num_predict 过高→context overflow/超长生成时间。timeout 过短→大模型首 case 冷启动超时。两者叠加被误判为"模型不可用"
+- **Fix**: 加入 preflight_check()——每个模型先跑 warmup，自动探测最优 num_predict（50→200→400→800 梯次尝试）。找到可用值后才开始正式试岗
+- **Do Not**: 不要用固定参数测试所有模型。不要在第一轮失败后就判定模型不可用
 - **Do Not**: 非蒸馏版可保留在 candidates 列表中作为备选，但不要设为默认
 
 ### PROB-006: 翻译任务 worker 对非英语输入产生幻觉
