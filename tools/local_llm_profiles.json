@@ -1,7 +1,7 @@
 {
   "profiles": {
     "fast_summary": {
-      "model": "gemma4:e4b-unsloth",
+      "model": "gemma4:12b-unsloth",
       "_strengths": [
         "speed",
         "summarization",
@@ -16,13 +16,14 @@
         "rewrite-text"
       ],
       "candidates": [
+        "gemma4:12b-unsloth",
         "gemma4:e4b-unsloth",
         "minicpm:4.5",
         "qwen3.5:9b"
       ],
       "risk_level": "low",
-      "_benchmark": "31s summarize-file (zero12). Tag fixed 2026-06-12: gemma4:e4b -> gemma4:e4b-unsloth.",
-      "_community_reputation": "Gemma 4 is Google's lightweight model series. Fast, reliable, good for low-stakes summarization tasks.",
+      "_benchmark": "2026-06-13: Upgraded e4b→12b-unsloth based on model audition (fast_summary 3.1, 15-case battery stable). 2026-06-12: Tag fixed gemma4:e4b→gemma4:e4b-unsloth.",
+      "_community_reputation": "Gemma 4 is Google's lightweight model series. Unsloth variant required — native Ollama gemma4 tags blocked (temperature sensitivity causes empty responses at T≤0.7). See evals/model_audition/reports/profile_suggestions.md.",
       "_backend_class": "ollama"
     },
     "smart_summary": {
