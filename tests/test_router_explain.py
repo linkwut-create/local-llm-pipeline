@@ -126,6 +126,30 @@ def test_classify_governance_claude():
     assert r == "low"
 
 
+def test_classify_governance_changelog():
+    t, r, c = TaskClassifier.classify("summarize CHANGELOG.md and suggest missing entries")
+    assert t == "governance-docs", f"Expected governance-docs, got {t}"
+    assert r == "low"
+
+
+def test_classify_multi_service_feature():
+    t, r, c = TaskClassifier.classify("add rate limiting to API gateway across 3 services")
+    assert t == "draft-feature", f"Expected draft-feature, got {t}"
+    assert r == "medium"
+
+
+def test_classify_refactor_provider_config():
+    t, r, c = TaskClassifier.classify("refactor provider config schema")
+    assert t == "interface-review", f"Expected interface-review, got {t}"
+    assert r == "high"
+
+
+def test_classify_migration_database_columns():
+    t, r, c = TaskClassifier.classify("review migration that changes database columns")
+    assert t == "interface-review", f"Expected interface-review, got {t}"
+    assert r == "high"
+
+
 def test_classify_unknown():
     t, r, c = TaskClassifier.classify("xyzzy flurbo gronk")
     assert t == "unknown", f"Expected unknown, got {t}"
@@ -345,6 +369,39 @@ def test_engine_simple_query():
 def test_engine_governance_docs():
     engine = RouterEngine()
     d = engine.analyze("review PROBLEMS.md for missing entries and update LONGTODO.md")
+    assert d.task_type == "governance-docs"
+    assert d.risk_level == "low"
+    assert d.recommended_local_profile == "docs_agent"
+
+
+def test_engine_multi_service_feature():
+    engine = RouterEngine()
+    d = engine.analyze("add rate limiting to API gateway across 3 services")
+    assert d.task_type == "draft-feature"
+    assert d.risk_level == "medium"
+    assert d.recommended_local_profile == "code_worker"
+    assert d.flash_escalation_condition is not None
+
+
+def test_engine_refactor_provider_config():
+    engine = RouterEngine()
+    d = engine.analyze("refactor provider config schema")
+    assert d.task_type == "interface-review"
+    assert d.risk_level == "high"
+    assert "Pro" in d.pro_escalation_condition
+
+
+def test_engine_migration_columns():
+    engine = RouterEngine()
+    d = engine.analyze("review migration that changes database columns")
+    assert d.task_type == "interface-review"
+    assert d.risk_level == "high"
+    assert "Pro" in d.pro_escalation_condition
+
+
+def test_engine_changelog_governance():
+    engine = RouterEngine()
+    d = engine.analyze("summarize CHANGELOG.md and suggest missing entries")
     assert d.task_type == "governance-docs"
     assert d.risk_level == "low"
     assert d.recommended_local_profile == "docs_agent"

@@ -111,7 +111,7 @@ class TaskClassifier:
         ("release-risk-review", r"\brelease\b|\bdeploy\b|\bpublish\b|\bship\b|\bhotfix\b|\bproduction\b", "high"),
         ("security-review", r"\bsecurity\b|\bvulnerab\b|\bexploit\b|\binjection\b|\bxss\b|\bcsrf\b|\bcve\b|\baudit\b.*\bsecurity\b", "high"),
         # interface change: bidirectional — "change X interface" OR "interface X change"
-        ("interface-review", r"\binterface\b.*\b(chang|break|review)|\b(chang|break).*\binterface\b|\bapi\b.*\b(chang|break)|\b(chang|break).*\bapi\b|\bschema\b.*\b(chang|migrat)|\b(chang|migrat).*\bschema\b|\bbackward\b.*\bcompat\b|\bdeprecat\b|\brouter\b.*\bconfig\b|\bprovider\b.*\bchang|\bddl\b|\balter\b.*\btable\b|\bcolumn\b.*\b(add|drop|modif|alter)|\b(add|drop|modif).*\bcolumn\b", "high"),
+        ("interface-review", r"\binterface\b.*\b(chang|break|review)|\b(chang|break).*\binterface\b|\bapi\b.*\b(chang|break)|\b(chang|break).*\bapi\b|\bschema\b.*\b(chang|migrat)|\b(chang|migrat).*\bschema\b|\bbackward\b.*\bcompat\b|\bdeprecat\b|\brouter\b.*\bconfig\b|\bprovider\b.*\b(chang|config|schema)|\b(config|schema).*\brefactor\b|\bddl\b|\balter\b.*\btable\b|\bcolumn\b.*\b(add|drop|modif|alter)|\b(add|drop|modif).*\bcolumn\b|\bmigrat.*\b(database|db|column|table|schema)|\b(database|schema).*\bmigrat", "high"),
         # review-diff BEFORE architecture-review (more specific)
         ("review-diff", r"\breview\b.*\bdiff\b|\bdiff\b.*\breview\b|\bcommit\b.*\breview\b|\bpr\b.*\breview\b", "medium"),
         ("deep-code-review", r"\bcode review\b|\bdeep\b.*\breview\b|\breview\b.*\bdeep\b|\breview\b.*\bchange\b|\breview\b.*\bcode\b|\b审查\b.*\b代码\b", "medium"),
@@ -119,9 +119,9 @@ class TaskClassifier:
         ("draft-refactor", r"\brefactor\b|\brestructur\b|\bclean\b.*\bup\b|\bsimplify\b", "medium-high"),
         ("draft-fix", r"\bfix\b|\bbug\b|\bpatch\b|\bhotfix\b|\berror\b|\bcrash\b|\bexception\b|\bstack.*trace\b|\bnull\b.*\bpointer\b", "medium"),
         ("generate-test-plan", r"\btest\b.*\bfail|\bfail.*\btest\b|\bflaky\b|\bassertion\b|\btest\b.*\berror\b|\btest\b.*\bplan\b|\btest\b.*\banaly\b", "medium"),
-        ("draft-feature", r"\bfeature\b|\bimplement\b|\badd\b.*\b(new|column)\b|\bbuild\b", "medium"),
+        ("draft-feature", r"\bfeature\b|\bimplement\b|\badd\b.*\b(new|column|service|api|gateway|module|endpoint|handler|support)\b|\bbuild\b|\bacross\b.*\bservice", "medium"),
         # governance-docs BEFORE suggest-improvements and summarize-file (more specific)
-        ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bgovernance\b", "low"),
+        ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bchangelog\.md\b|\brelease_notes\.md\b|\bgovernance\b", "low"),
         ("suggest-improvements", r"\bimprov\b|\boptimiz\b|\bperformance\b|\bbottleneck\b|\bsuggest\b", "low"),
         ("summarize-file", r"\bsummar(y|ize)\b|\bexplain\b.*\bfile\b|\bwhat\b.*\bdoes\b|\bhow\b.*\bwork\b", "low"),
         ("rewrite-text", r"\bdocument\b|\breadme\b|\bcomment\b|\bdocstring\b|\bchangelog\b", "low"),
