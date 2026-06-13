@@ -337,3 +337,38 @@ def test_path_only_safe_file():
 def test_path_only_key_file():
     result = check(path="id_rsa")
     assert result["privacy_status"] == "blocked"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Windows path regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_windows_env_production_blocked():
+    result = check(path=r"C:\project\.env.production")
+    assert result["privacy_status"] == "blocked"
+
+
+def test_windows_ssh_key_blocked():
+    result = check(path=r"C:\Users\name\.ssh\id_rsa")
+    assert result["privacy_status"] == "blocked"
+
+
+def test_windows_normal_source_safe():
+    result = check(path=r"C:\project\src\main.py")
+    assert result["privacy_status"] == "safe"
+
+
+def test_windows_pem_file_blocked():
+    result = check(path=r"C:\certs\server.pem")
+    assert result["privacy_status"] == "blocked"
+
+
+def test_windows_mixed_slashes_env():
+    """Mixed slash Windows path still blocked."""
+    result = check(path="C:/project/.env")
+    assert result["privacy_status"] == "blocked"
+
+
+def test_windows_credentials_json_blocked():
+    result = check(path=r"D:\config\credentials.json")
+    assert result["privacy_status"] == "blocked"
