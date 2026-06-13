@@ -327,6 +327,28 @@ Broader real-run strategy design is complete.
 - 4-pilot sequence for gradual rollout
 - 8-stage implementation roadmap
 - Pro real-run blocked until separate smoke test passes
+- **Paused**: broader DeepSeek real-run, Flash pilot, Pro smoke chain (per 2026-06-13 pivot)
+
+---
+
+## 16. Claude Code Soft Gate Design — Status (2026-06-13)
+
+Claude Code soft gate integration design is complete.
+
+**Done**:
+- `docs/claude_code_soft_gate_design.md` — 10-section design
+- 5-tier gate model: advisory → soft → warning → manual-confirm → hard block
+- 3 integration points: pre-task, pre-commit, pre-cloud
+- Input minimization rules (no auto-collection)
+- Soft gate output schema (JSON, machine-readable)
+- Color-coded severity levels (green/yellow/orange/red)
+- CLAUDE.md integration draft
+- Dogfood protocol formalized
+- Upgrade criteria defined (soft → warning gate)
+- Explicitly paused items listed
+
+**Pending**:
+- Claude Code soft gate implementation skeleton
 
 ---
 
