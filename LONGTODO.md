@@ -35,6 +35,29 @@ py -3 tools/cost_ledger.py --budget 200 --summary  # monthly budget
 Note: smoke test usage (prompt/completion tokens) now recorded in ledger.
 Historical ledger records are not rewritten. Summary may show old zero-token entries.
 
+### Dogfood Workflow
+
+```bash
+# 1. Soft gate pre-task
+py -3 tools/claude_soft_gate.py --stage pre-task --task "<task>" --json
+
+# 2. Record actual (canonical values only)
+py -3 tools/shadow_route_log.py "<task>" --actual "<actual>"
+
+# 3. Execute + test
+
+# 4. Precommit + record
+py -3 tools/precommit_advisory.py --cloud-ok
+py -3 tools/shadow_route_log.py "precommit review for <task>" --actual "<actual>"
+
+# 5. Commit (explicit files only, no git add -A)
+git add <files>
+git commit -m "..."
+
+# 6. Periodic checkpoint (#20, #30)
+py -3 tools/soft_gate_dogfood_status.py --since 2026-06-13 --target 30 --json
+```
+
 ---
 
 ## 0. Long-Term Vision
