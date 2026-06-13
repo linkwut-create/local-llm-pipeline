@@ -150,3 +150,51 @@ def test_cli_no_traceback():
         cwd=str(Path(__file__).parent.parent),
     )
     assert "Traceback" not in r.stdout
+
+
+# ── Output stability ──
+
+def test_would_block_absent_or_false():
+    """route_explain output must not assert would_block=true."""
+    tasks = [
+        "review diff",
+        "prepare release",
+        "check .env",
+        "unknown xyzzy",
+    ]
+    for task in tasks:
+        r = call_route_explain({"task": task})
+        assert "would_block" not in r or r.get("would_block") is not True, \
+            f"would_block=true for: {task}"
+
+
+def test_cli_text_output_no_traceback():
+    """Text (non-JSON) output path also has no traceback."""
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/route_explain_mcp.py"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
+
+
+def test_unknown_task_remains_low_risk():
+    """Any unrecognized task defaults to unknown/low, never high."""
+    gibberish_tasks = [
+        "xyzzy flurbo gronk",
+        "blargle snorf",
+        "asdf qwer zxcv",
+    ]
+    for task in gibberish_tasks:
+        r = call_route_explain({"task": task})
+        assert r["task_type"] == "unknown", f"Expected unknown, got {r['task_type']} for: {task}"
+        assert r["risk_level"] == "low", f"Expected low, got {r['risk_level']} for: {task}"
+
+
+def test_json_output_stable_fields():
+    """All calls return the same set of top-level keys."""
+    r1 = call_route_explain({"task": "review diff"})
+    r2 = call_route_explain({"task": "prepare release v0.13"})
+    assert set(r1.keys()) == set(r2.keys()), \
+        f"Field mismatch: {set(r1.keys())} vs {set(r2.keys())}"
