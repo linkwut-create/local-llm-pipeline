@@ -499,3 +499,25 @@ Checkpoint #40 preparation requirements (separated from #36 per 1-task-1-commit 
 - Warning gate / Stop hook / hard block still blocked
 - Process deviation: #37 initially had record without new implementation commit
 - Process deviation: #39 was initially merged into #36
+
+---
+
+## 21. Dogfood Actual Labeling Rule — Status (2026-06-14)
+
+Dogfood actual labeling rule established after #45 correction:
+
+**High-risk / governance / manual-confirm tasks should be logged as `pro-review`,
+even when implementation is local and no cloud call occurs.**
+
+| Condition | Actual |
+|-----------|--------|
+| `router_risk_level == "high"` | `pro-review` (normally) |
+| `decision == "manual_confirm_recommended"` | `pro-review` (normally) |
+| `task_type in {governance-integration, control-plane-boundary}` | `pro-review` (normally) |
+| `task_type in {release-risk-review, interface-review, security-review}` | `pro-review` |
+| Low/medium ordinary implementation, tests, docs | `local-first` |
+
+This rule was created because #44 (governance-integration/high) was labeled
+`local-first`, producing a new critical_misrouting that was an operator
+labeling error, not a router error. No router calibration was performed
+in response.
