@@ -167,7 +167,28 @@ Shadow routing log (`tools/shadow_route_log.py`) 已就绪，下一步工作：
 
 ---
 
-## 7. Advisory Workflow — Status
+## 7. Cost Ledger — Status (2026-06-13)
+
+Cost ledger + budget guard skeleton (`tools/cost_ledger.py`) is ready.
+
+**Done**:
+- `--estimate` dry-run cost estimation (never writes)
+- `--record` append-only JSONL to `.local_llm_out/cost_ledger/YYYYMM.jsonl`
+- `--summary` monthly cost aggregation
+- `--budget <CNY>` budget limit with exceeded detection
+- Configurable pricing via `COST_LEDGER_PRICING_JSON` env var
+- Unknown model → `unknown_price` (never crashes)
+- 26 mock tests
+
+**Pending**:
+- Privacy gate hardening (budget guard gate integration)
+- DeepSeek dry-run execution contract
+- Real Flash/Pro cost tracking with accurate pricing
+- Budget guard auto-block before real API calls
+
+---
+
+## 8. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 

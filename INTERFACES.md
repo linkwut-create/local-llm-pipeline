@@ -194,6 +194,15 @@
 - **Side Effects**: Writes report file only when `--output` specified
 - **Compatibility**: report metric keys additive only
 
+### Command: py -3 tools/cost_ledger.py --estimate|--record|--summary [--model <NAME>] [--input-tokens <N>] [--output-tokens <N>] [--task "<DESC>"] [--budget <CNY>] [--json]
+- **Purpose**: Local cost ledger and budget guard skeleton for future DeepSeek Flash/Pro calls. Estimate costs, record to JSONL, summarize monthly usage. Advisory-only.
+- **Input**: `--estimate` (dry-run, no write) or `--record` (write JSONL) or `--summary` (monthly report) + optional `--model`, `--input-tokens`, `--output-tokens`, `--task`, `--budget`, `--month`, `--notes`, `--json`
+- **Output**: stdout (human-readable or JSON with `--json`). Records written to `.local_llm_out/cost_ledger/YYYYMM.jsonl`.
+- **Exit Codes**: 0=success, 1=no mode selected, 2=invalid arguments
+- **LLM Call**: None (pure local arithmetic, no model calls)
+- **Side Effects**: Writes `.local_llm_out/cost_ledger/` (append-only JSONL)
+- **Compatibility**: JSONL schema fields additive only; pricing configurable via `COST_LEDGER_PRICING_JSON` env var
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`
@@ -279,6 +288,14 @@
 - **Format**: JSONL (append-only)
 - **Created By**: `tools/feedback_ledger.py`
 - **Can Delete**: 否（历史记录）
+
+### Path: .local_llm_out/cost_ledger/
+- **Purpose**: 云端 API 调用成本预估账本
+- **Format**: JSONL (YYYYMM.jsonl, append-only)
+- **Created By**: `tools/cost_ledger.py`
+- **Read By**: controller（人工）+ budget guard（未来）
+- **Can Delete**: 是（删除后失去历史成本追踪；费用未被真实从账户扣除）
+- **Migration Required**: 否
 
 ### Path: tools/local_llm_profiles.json
 - **Purpose**: 模型 profile 注册表
@@ -384,6 +401,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-007: cost_ledger 新增 CLI tool
+- **Date**: 2026-06-13 (cost-ledger chain)
+- **What**: 新增 `tools/cost_ledger.py` CLI tool — 本地成本账本 + budget guard skeleton
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 26 mock tests in `tests/test_cost_ledger.py`
 
 ### IFACE-CHANGE-006: local_route_explain 新增为 13th MCP tool
 - **Date**: 2026-06-13 (route-explain-mcp chain)
