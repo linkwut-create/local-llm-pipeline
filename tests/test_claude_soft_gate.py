@@ -297,3 +297,45 @@ def test_cli_json_starts_with_brace():
     )
     stripped = r.stdout.strip()
     assert stripped.startswith("{"), f"Expected JSON, got: {stripped[:80]}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# External task wording smoke tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_translator_project_advisory_only():
+    """Translator project test task returns advisory_only=true."""
+    r = evaluate(task="translator: fix subtitle timing regression in episode 12", stage="pre-task")
+    assert r["advisory_only"] is True
+    assert r["would_block"] is False
+
+
+def test_google_play_release_no_would_block():
+    """Google Play release review does not set would_block=true."""
+    r = evaluate(task="Google Play: review release APK signing before production", stage="pre-task")
+    assert r["would_block"] is False
+
+
+def test_browser_extension_permission_review_advisory():
+    """Browser extension permission review remains advisory-only."""
+    r = evaluate(task="browser-plugin: review content script permissions for tabs access", stage="pre-task")
+    assert r["advisory_only"] is True
+
+
+def test_game_build_packaging_advisory():
+    """Game build packaging review remains advisory-only."""
+    r = evaluate(task="game-dev: review build packaging for source leaks in release", stage="pre-task")
+    assert r["advisory_only"] is True
+    assert r["would_block"] is False
+
+
+def test_secret_like_external_task_routes_safely():
+    """Task mentioning .env or credentials in external context routes safely (not crash)."""
+    tasks = [
+        "game-dev: check .env.example for default settings",
+        "browser-plugin: audit credentials.json schema",
+    ]
+    for task in tasks:
+        r = evaluate(task=task, stage="pre-task")
+        assert r["advisory_only"] is True
+        assert "decision" in r  # Always produces a decision, never throws
