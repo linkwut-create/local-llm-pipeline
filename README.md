@@ -124,9 +124,16 @@ py -3 -m pytest tests/test_cost_ledger.py -q
 py -3 tools/validate_configs.py
 py -3 tools/validate_configs.py --json
 
-# Cost ledger
+# Cost ledger (records usage/cost metadata only)
 py -3 tools/cost_ledger.py --summary
 py -3 tools/cost_ledger.py --budget 200 --summary
+```
+
+Cost ledger records usage and cost metadata only. It must not store API keys,
+raw prompt text, or reasoning output. Historical records are not rewritten.
+Ledger files live under `.local_llm_out/cost_ledger/`.
+
+```bash
 
 # Environment health check
 py -3 tools/local_llm_check.py
