@@ -665,3 +665,101 @@ def test_estimate_large_tokens_no_overflow():
     r = estimate(task="large", model="deepseek-v4-flash", input_tokens=1000000, output_tokens=500000)
     assert r["estimated_cost"] is not None
     assert r["estimated_cost"] > 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Record schema regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_record_includes_core_schema_fields(tmp_path, monkeypatch):
+    """Every record must include task, model, input_tokens, output_tokens."""
+    test_dir = tmp_path / "cl_schema_core"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+
+    r = record(task="schema core check", model="qwen3-coder:30b",
+               input_tokens=500, output_tokens=200)
+
+    for field in ["task", "model", "input_tokens", "output_tokens"]:
+        assert field in r, f"Record missing core field: {field}"
+    assert r["task"] == "schema core check"
+    assert r["input_tokens"] == 500
+    assert r["output_tokens"] == 200
+
+
+def test_record_handles_missing_estimated_cost_safely(tmp_path, monkeypatch):
+    """Record with unknown model (no pricing) has null estimated_cost, not crash."""
+    test_dir = tmp_path / "cl_missing_cost"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+
+    r = record(task="unknown pricing", model="future-model-v99",
+               input_tokens=1000, output_tokens=500)
+
+    assert r["estimated_cost"] is None
+    assert r["price_known"] is False
+    assert r["allowed"] is True  # No budget, so still allowed
+
+
+def test_record_excludes_api_key(tmp_path, monkeypatch):
+    """Record JSON must never include an api_key field."""
+    test_dir = tmp_path / "cl_no_apikey"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+
+    record(task="check no key", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+
+    month_file = _month_file()
+    with open(month_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            assert "api_key" not in data
+            assert "API_KEY" not in data
+            assert "secret" not in data
+
+
+def test_record_excludes_raw_text(tmp_path, monkeypatch):
+    """Record JSON must not include raw prompt or reasoning text."""
+    test_dir = tmp_path / "cl_no_raw"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+
+    record(task="check no raw", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+
+    month_file = _month_file()
+    with open(month_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            assert "prompt" not in data
+            assert "reasoning" not in data
+            assert "raw_response" not in data
+            assert "full_text" not in data
+
+
+def test_summary_aggregates_after_schema_variations(tmp_path, monkeypatch):
+    """Summary still produces valid aggregation across records with mixed fields."""
+    test_dir = tmp_path / "cl_schema_agg"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+
+    # Normal record
+    record(task="normal", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+    # Unknown price record
+    record(task="unknown price", model="unknown-model-42",
+           input_tokens=200, output_tokens=100)
+    # Zero token record
+    record(task="zero", model="deepseek-v4-flash",
+           input_tokens=0, output_tokens=0)
+
+    s = summary()
+    assert s["total_calls"] == 3
+    assert s["allowed"] == 3
+    assert s["blocked"] == 0
+    # Unknown price counted separately
+    assert s["unknown_price"] == 1
+    # Zero-token record has zero cost
+    assert s["total_estimated_cost"] >= 0
