@@ -91,13 +91,63 @@ Status: **ADVISORY ONLY — do not auto-apply**
 
 ---
 
-## Gemma4 MTP Status
+## Gemma4 Native vs Unsloth vs MTP — Separate Conclusions
 
-- **Unsloth variants**: gemma4:12b-unsloth, gemma4:26b-unsloth, gemma4:31b-unsloth, gemma4:e4b-unsloth — all work and produce scores 3.1-3.4
-- **Native variants**: gemma4:12b, gemma4:26b, gemma4:31b — return empty responses in current Ollama environment
-- **Root cause**: MTP (Multi-Token Prediction) incompatibility between gemma4 native GGUF and current Ollama server
-- **Mitigation**: Use unsloth variants for now. Require idle/restart handling for production use.
-- **Non-blocking**: Unsloth variants cover the needed size range (4B-31B)
+### Diagnostic Results (2026-06-13)
+
+Systematic API comparison (`/api/generate` vs `/api/chat`, T=0.1/0.7/1.0,
+with/without system prompt, English/Chinese prompts):
+
+| Variant | T=0.1 (default) | T=0.7 | T=1.0 | Chat | Verdict |
+|---------|:-:|:-:|:-:|:-:|--------|
+| gemma4:26b native | EMPTY | marginal | OK (EN only) | EMPTY | **unstable** |
+| gemma4:12b native | EMPTY | EMPTY | EMPTY | — | **broken** |
+| gemma4:31b native | EMPTY | — | — | — | **broken** |
+| gemma4:26b-unsloth | OK (60ch) | — | — | — | **stable** |
+| gemma4:12b-unsloth | OK (3.1 score) | — | — | — | **stable** |
+
+### Root Cause
+
+**Ollama native gemma4 GGUF packaging has temperature sensitivity.**
+At T ≤ 0.7, the model gets stuck in a sampling dead zone and produces
+empty output. This is NOT a model weight problem — unsloth variants and
+llama.cpp endpoints work fine with the same weights. It is an Ollama
+template/packaging/serving issue.
+
+Additional findings:
+- System prompt makes native gemma4 WORSE (even at T=0.7)
+- Chinese/technical prompts fail at all temperatures on native
+- `/api/chat` and `/api/generate` both affected equally
+- gemma4:12b native is completely non-functional at any temperature
+
+### Three Separate Categories
+
+1. **Native Ollama gemma4 (12b/26b/31b)**: `status: unstable_under_ollama`
+   - Do NOT use for any role without direct API confirmation
+   - Root cause: Ollama GGUF template temperature sensitivity
+   - Not a model quality issue — unsloth proves weights are fine
+
+2. **Unsloth gemma4 (12b/26b/31b/e4b)**: `status: stable`
+   - Works reliably at T=0.1 with English and technical prompts
+   - Candidate for: fast_summary, docs_agent, task_bootstrapper
+   - Scores: 3.1-3.4 across full battery
+
+3. **Gemma4 MTP (llama.cpp endpoint)**: `status: deferred`
+   - Endpoint idle/restart stability issues
+   - Not an Ollama problem — llama.cpp server lifecycle issue
+   - Qwen3.6 MTP `nextn.eh_proj` tensor support also pending
+
+### Actionable Strategy
+
+```
+Native gemma4 → do not use (Ollama packaging bug, not model)
+Unsloth gemma4 → candidate for summary/docs only
+MTP endpoint → deferred (infrastructure, not model)
+```
+
+- **Mitigation**: Use unsloth variants for summary/docs roles
+- **Non-blocking**: Unsloth variants cover 4B-31B range
+- **Native gemma4**: Revisit after Ollama template/packaging fix
 
 ---
 
