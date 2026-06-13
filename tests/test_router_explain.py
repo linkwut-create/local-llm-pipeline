@@ -520,6 +520,65 @@ def test_confidence_range():
     assert 0.0 <= d.confidence <= 1.0
 
 
+# ═══════════════════════════════════════════════════════════════
+# C1-C5 Calibration Round: governance-integration + control-plane-boundary
+# ═══════════════════════════════════════════════════════════════
+
+def test_c1_soft_gate_design_high():
+    t, r, _ = TaskClassifier.classify("design Claude Code soft gate integration")
+    assert t in ("governance-integration", "api-execution-boundary")
+    assert r == "high"
+
+def test_c1_convergence_audit_high():
+    t, r, _ = TaskClassifier.classify("audit Claude Code soft gate skeleton convergence")
+    assert t in ("governance-integration", "api-execution-boundary")
+    assert r == "high"
+
+def test_c1_calibration_plan_high():
+    t, r, _ = TaskClassifier.classify("plan soft gate dogfood calibration after protocol")
+    assert t in ("governance-integration", "api-execution-boundary")
+    assert r == "high"
+
+def test_c2_warning_gate_high():
+    t, r, _ = TaskClassifier.classify("implement warning gate for Claude Code governance")
+    assert t in ("governance-integration", "control-plane-boundary", "api-execution-boundary")
+    assert r == "high"
+
+def test_c2_stop_hook_high():
+    t, r, _ = TaskClassifier.classify("integrate Stop hook into Claude Code workflow")
+    assert t == "control-plane-boundary"
+    assert r == "high"
+
+def test_c2_hard_block_high():
+    t, r, _ = TaskClassifier.classify("implement hard block for secret detection")
+    assert t == "control-plane-boundary"
+    assert r == "high"
+
+def test_c5_mcp_gate_high():
+    t, r, _ = TaskClassifier.classify("integrate MCP gate for tool-level access control")
+    assert t == "control-plane-boundary"
+    assert r == "high"
+
+def test_c5_llm_proxy_high():
+    t, r, _ = TaskClassifier.classify("implement llm-proxy for cloud model routing")
+    assert t == "control-plane-boundary"
+    assert r == "high"
+
+def test_c5_auto_worker_high():
+    t, r, _ = TaskClassifier.classify("implement automatic worker execution")
+    assert t == "control-plane-boundary"
+    assert r == "high"
+
+def test_safe_readme_not_high():
+    t, r, _ = TaskClassifier.classify("update README with new project description")
+    assert r != "high"
+    assert t not in ("governance-integration", "control-plane-boundary")
+
+def test_safe_summarize_not_high():
+    t, r, _ = TaskClassifier.classify("summarize the utils module for documentation")
+    assert r == "low"
+
+
 def test_signals_not_empty():
     engine = RouterEngine()
     d = engine.analyze("review current diff for bugs")

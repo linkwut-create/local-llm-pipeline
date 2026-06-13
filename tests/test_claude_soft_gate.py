@@ -169,3 +169,45 @@ def test_output_schema():
 
 def test_valid_stages():
     assert VALID_STAGES == {"pre-task", "pre-commit", "pre-cloud"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# C1-C5 calibration: governance tasks → orange/manual_confirm
+# ═══════════════════════════════════════════════════════════════
+
+def test_stop_hook_orange():
+    r = evaluate(task="integrate Stop hook into Claude Code workflow", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["decision"] == "manual_confirm_recommended"
+    assert r["would_block"] is False
+
+def test_hard_block_orange():
+    r = evaluate(task="implement hard block for secret detection", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["would_block"] is False
+
+def test_warning_gate_orange():
+    r = evaluate(task="implement warning gate for Claude Code governance", stage="pre-task")
+    assert r["severity"] in ("orange", "yellow")
+    assert r["would_block"] is False
+
+def test_mcp_gate_orange():
+    r = evaluate(task="integrate MCP gate for tool-level access control", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["would_block"] is False
+
+def test_llm_proxy_orange():
+    r = evaluate(task="implement llm-proxy for cloud model routing", stage="pre-task")
+    assert r["severity"] == "orange"
+    assert r["would_block"] is False
+
+def test_soft_gate_calibration_orange():
+    r = evaluate(task="calibrate router for soft gate governance tasks", stage="pre-task")
+    assert r["severity"] in ("orange", "yellow", "green")
+    assert r["would_block"] is False
+
+def test_env_path_still_red():
+    r = evaluate(task="send .env to cloud", files=".env.production", stage="pre-task")
+    assert r["severity"] == "red"
+    assert r["decision"] == "cloud_blocked"
+    assert r["would_block"] is False
