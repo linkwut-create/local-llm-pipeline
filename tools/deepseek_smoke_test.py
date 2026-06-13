@@ -35,11 +35,15 @@ _engine = RouterEngine()
 # Constants
 # ═══════════════════════════════════════════════════════════════
 
-FIXED_PROMPT = "Reply with exactly: OK"
-FIXED_PROMPT_ID = "smoke-test-v1-fixed"
-FIXED_PROMPT_PREVIEW = "Reply with exactly: OK"
-ESTIMATED_INPUT_TOKENS = 5
-ESTIMATED_OUTPUT_TOKENS = 20
+FIXED_PROMPT = "Return only the literal string OK in the final answer."
+FIXED_PROMPT_ID = "deepseek-flash-semantic-smoke-v2"
+FIXED_PROMPT_PREVIEW = "Return only...OK..."
+ESTIMATED_INPUT_TOKENS = 10
+ESTIMATED_OUTPUT_TOKENS = 128
+SMOKE_MAX_TOKENS = 128
+SMOKE_TEMPERATURE = 0.0  # NOTE: call_deepseek() does not expose temperature param.
+                         # Current default is 0.1 in _build_request().
+                         # Set to 0.0 when client supports it.
 MAX_BUDGET_CNY = 1.0
 ALLOWED_MODELS = {"deepseek-v4-flash"}
 FLASH_MODEL = "deepseek-v4-flash"
@@ -374,7 +378,7 @@ def _live_smoke_call(api_key: str) -> dict:
         prompt=FIXED_PROMPT,
         model=FLASH_MODEL,
         thinking=False,
-        max_tokens=20,
+        max_tokens=SMOKE_MAX_TOKENS,
         api_key=api_key,
         timeout=30,
     )

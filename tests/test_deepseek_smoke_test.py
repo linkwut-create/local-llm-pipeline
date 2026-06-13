@@ -16,6 +16,8 @@ from deepseek_smoke_test import (
     _safe_preview,
     FIXED_PROMPT,
     FIXED_PROMPT_ID,
+    FIXED_PROMPT_PREVIEW,
+    SMOKE_MAX_TOKENS,
     FLASH_MODEL,
     ALLOWED_MODELS,
     MAX_BUDGET_CNY,
@@ -203,12 +205,27 @@ def test_redact_error_strips_keys():
 # 15-16: Fixed prompt
 # ═══════════════════════════════════════════════════════════════
 
-def test_fixed_prompt_is_exact():
-    assert FIXED_PROMPT == "Reply with exactly: OK"
+def test_fixed_prompt_is_v2():
+    assert FIXED_PROMPT == "Return only the literal string OK in the final answer."
 
 
-def test_fixed_prompt_id():
-    assert FIXED_PROMPT_ID == "smoke-test-v1-fixed"
+def test_fixed_prompt_id_v2():
+    assert FIXED_PROMPT_ID == "deepseek-flash-semantic-smoke-v2"
+
+
+def test_fixed_prompt_is_privacy_safe():
+    from privacy_gate import check as privacy_check
+    result = privacy_check(text=FIXED_PROMPT)
+    assert result["privacy_status"] == "safe", f"v2 prompt must be safe, got {result['privacy_status']}"
+
+
+def test_max_tokens_is_128():
+    assert SMOKE_MAX_TOKENS == 128
+
+
+def test_preview_not_full_prompt():
+    """Preview must not expose full fixed prompt."""
+    assert len(FIXED_PROMPT_PREVIEW) < len(FIXED_PROMPT)
 
 
 # ═══════════════════════════════════════════════════════════════
