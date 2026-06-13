@@ -763,3 +763,67 @@ def test_summary_aggregates_after_schema_variations(tmp_path, monkeypatch):
     assert s["unknown_price"] == 1
     # Zero-token record has zero cost
     assert s["total_estimated_cost"] >= 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Monthly summary boundary tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_empty_month_summary_no_crash_isolated(tmp_path, monkeypatch):
+    """Empty ledger (isolated dir) produces zero-count summary, no crash."""
+    test_dir = tmp_path / "cl_empty_month"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    s = summary()
+    assert s["total_calls"] == 0
+    assert s["total_estimated_cost"] == 0.0
+    assert s["allowed"] == 0
+    assert s["blocked"] == 0
+
+
+def test_current_month_summary_stable_fields(tmp_path, monkeypatch):
+    """Summary output includes all expected stable fields."""
+    test_dir = tmp_path / "cl_stable"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="stable", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+    s = summary()
+    stable_fields = [
+        "total_calls", "total_estimated_cost", "currency",
+        "allowed", "blocked", "unknown_price", "by_model",
+        "all_time_calls", "all_time_estimated_cost",
+    ]
+    for field in stable_fields:
+        assert field in s, f"Summary missing stable field: {field}"
+
+
+def test_unknown_model_does_not_break_summary_totals(tmp_path, monkeypatch):
+    """Unknown model record adds to calls but not to cost totals."""
+    test_dir = tmp_path / "cl_unk_totals"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="known", model="deepseek-v4-flash",
+           input_tokens=1000, output_tokens=500)
+    record(task="future", model="future-model-3000",
+           input_tokens=2000, output_tokens=1000)
+    s = summary()
+    assert s["total_calls"] == 2
+    assert s["unknown_price"] == 1
+    # Known model still tracked correctly
+    flash = s["by_model"].get("deepseek-v4-flash", {})
+    assert flash.get("calls", 0) == 1
+
+
+def test_zero_token_does_not_break_totals(tmp_path, monkeypatch):
+    """Zero-token record adds to count, zero to cost, does not crash."""
+    test_dir = tmp_path / "cl_zero_totals"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="zero", model="deepseek-v4-flash",
+           input_tokens=0, output_tokens=0)
+    record(task="normal", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+    s = summary()
+    assert s["total_calls"] == 2
+    assert s["allowed"] == 2
+    # Total tokens correct
+    flash = s["by_model"].get("deepseek-v4-flash", {})
+    assert flash.get("total_input", 0) == 100
+    assert flash.get("total_output", 0) == 50
