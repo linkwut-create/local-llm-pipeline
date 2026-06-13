@@ -66,3 +66,15 @@
 ## Recommended Next Read-Only Task
 
 Review `tests/test_provider_checker.py` or `tests/test_fast.py` — both are fast/smoke tests unlikely to touch audio/user data.
+
+---
+
+## Import Target Review (#77)
+
+Confirmed: `profiles.py` import target already documented in #76. All 8 public
+symbols are config/profile CRUD, no secrets, no network, no audio/OCR.
+`PROFILES_DIR = DATA_DIR / "profiles"` stores profile configs only.
+
+### External Repo Modification
+
+**None.** Confirmed after #77.
