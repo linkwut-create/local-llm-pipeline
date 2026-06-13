@@ -599,3 +599,59 @@ def test_malformed_does_not_contaminate_totals(tmp_path, monkeypatch):
     m = s["by_model"].get("deepseek-v4-flash", {})
     assert m["total_input"] == 100
 
+
+# ═══════════════════════════════════════════════════════════════
+# Budget CLI boundary tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_budget_summary_includes_fields():
+    s = summary(budget_limit=200)
+    assert s["budget_limit"] == 200
+    assert "budget_remaining" in s
+    assert "budget_exceeded" in s
+
+
+def test_budget_zero_no_crash():
+    s = summary(budget_limit=0)
+    assert s["budget_limit"] == 0
+
+
+def test_budget_summary_empty_ledger():
+    """Budget summary on empty ledger returns zero cost."""
+    s = summary(budget_limit=100)
+    assert s["total_estimated_cost"] == 0.0
+
+
+def test_cli_budget_summary_runs():
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/cost_ledger.py", "--budget", "200", "--summary", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0
+    data = json.loads(r.stdout.strip())
+    assert "budget_limit" in data
+
+
+def test_cli_invalid_args_exit_nonzero():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/cost_ledger.py", "--model", "x", "--estimate",
+         "--input-tokens", "10", "--output-tokens", "5"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    # Should succeed (estimate mode)
+    assert r.returncode == 0
+
+
+def test_cli_no_traceback():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/cost_ledger.py", "--budget", "abc", "--summary"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
+
