@@ -179,7 +179,13 @@ def run_smoke_test(
             "smoke_call_result": stub,
             "http_status": None,
             "response_text_preview": None,
+            "response_text_source": "",
             "usage": None,
+            "reasoning_content_present": False,
+            "reasoning_tokens": 0,
+            "reasoning_text_logged": False,
+            "transport_smoke_pass": None,
+            "semantic_smoke_pass": None,
             "ledger_event_type": "manual_smoke_test_stubbed" if record_ledger else None,
             "cost_recorded": record_ledger,
             "reason": (
@@ -226,7 +232,13 @@ def run_smoke_test(
             "smoke_call_result": None,
             "http_status": None,
             "response_text_preview": None,
+            "response_text_source": "",
             "usage": None,
+            "reasoning_content_present": False,
+            "reasoning_tokens": 0,
+            "reasoning_text_logged": False,
+            "transport_smoke_pass": False,
+            "semantic_smoke_pass": False,
             "ledger_event_type": "smoke_test_failed" if record_ledger else None,
             "cost_recorded": record_ledger,
             "reason": "DEEPSEEK_API_KEY environment variable not set",
@@ -268,7 +280,13 @@ def run_smoke_test(
         "smoke_call_result": live_result,
         "http_status": live_result.get("http_status"),
         "response_text_preview": _safe_preview(live_result.get("response_text", "")),
+        "response_text_source": live_result.get("response_text_source", ""),
         "usage": live_result.get("usage"),
+        "reasoning_content_present": live_result.get("reasoning_content_present", False),
+        "reasoning_tokens": live_result.get("reasoning_tokens", 0),
+        "reasoning_text_logged": False,
+        "transport_smoke_pass": live_result["success"],
+        "semantic_smoke_pass": bool(live_result.get("response_text", "")),
         "ledger_event_type": ledger_event if record_ledger else None,
         "cost_recorded": record_ledger,
         "reason": (
@@ -287,27 +305,24 @@ def run_smoke_test(
 # ═══════════════════════════════════════════════════════════════
 
 def _extract_response_text(result: dict) -> str:
-    """Robustly extract response text from DeepSeek API result.
+    """Robustly extract FINAL response text from DeepSeek API result.
 
-    Tries multiple known field paths in priority order.
-    Returns empty string if no text found.
+    Tries known content fields in priority order. Does NOT return
+    reasoning_content — reasoning is not a user-facing response.
+    Returns empty string if no final text found.
     """
     # Standard field from deepseek_client
     content = result.get("content", "")
     if content:
         return content
 
-    # OpenAI-compatible nested path
+    # OpenAI-compatible nested path (content only, not reasoning)
     choices = result.get("choices", [])
     if choices:
         msg = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
         content = msg.get("content", "")
         if content:
             return content
-        # Reasoning content (DeepSeek V4 specific)
-        reasoning = msg.get("reasoning_content", "")
-        if reasoning:
-            return reasoning
 
     # Direct text field
     text = result.get("text", "")
@@ -315,6 +330,29 @@ def _extract_response_text(result: dict) -> str:
         return text
 
     return ""
+
+
+def _extract_reasoning_metadata(result: dict) -> dict:
+    """Extract reasoning metadata WITHOUT exposing raw reasoning text.
+
+    Returns presence signals only — raw reasoning text is NEVER returned.
+    """
+    choices = result.get("choices", [])
+    has_reasoning = False
+    if choices:
+        msg = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        reasoning = msg.get("reasoning_content", "")
+        has_reasoning = bool(reasoning)
+
+    usage = result.get("usage") or {}
+    reasoning_tokens = usage.get("completion_tokens_details", {}).get("reasoning_tokens", 0) if isinstance(usage, dict) else 0
+
+    return {
+        "reasoning_content_present": has_reasoning,
+        "reasoning_tokens": reasoning_tokens,
+        "reasoning_text_logged": False,
+        "reasoning_text_included_in_response": False,
+    }
 
 
 def _live_smoke_call(api_key: str) -> dict:
@@ -342,6 +380,7 @@ def _live_smoke_call(api_key: str) -> dict:
     )
 
     response_text = _extract_response_text(result)
+    reasoning_meta = _extract_reasoning_metadata(result)
 
     return {
         "success": result["ok"],
@@ -355,6 +394,9 @@ def _live_smoke_call(api_key: str) -> dict:
         "network_call": True,
         "api_key_read": True,
         "api_key_never_logged": True,
+        "reasoning_content_present": reasoning_meta["reasoning_content_present"],
+        "reasoning_tokens": reasoning_meta["reasoning_tokens"],
+        "reasoning_text_logged": False,
     }
 
 
@@ -483,7 +525,13 @@ def _abort(
         "smoke_call_result": None,
         "http_status": None,
         "response_text_preview": None,
+        "response_text_source": "",
         "usage": None,
+        "reasoning_content_present": False,
+        "reasoning_tokens": 0,
+        "reasoning_text_logged": False,
+        "transport_smoke_pass": None,
+        "semantic_smoke_pass": None,
         "ledger_event_type": None,
         "cost_recorded": False,
         "reason": reason,

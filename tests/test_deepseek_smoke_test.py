@@ -307,10 +307,11 @@ def test_extract_nested_choices():
     assert _extract_response_text(r) == "Hello"
 
 
-def test_extract_reasoning_content():
+def test_extract_reasoning_not_in_response():
+    """Reasoning_content must NOT be returned as response text."""
     r = {"choices": [{"message": {"content": "", "reasoning_content": "Thought: OK"}}]}
     text = _extract_response_text(r)
-    assert text == "Thought: OK" or text == ""
+    assert text == "", "reasoning_content must not leak into response_text"
 
 
 def test_extract_text_field():
@@ -342,6 +343,26 @@ def test_safe_preview_normal():
 
 def test_safe_preview_truncate():
     assert len(_safe_preview("x" * 200)) <= 100
+
+
+def test_reasoning_metadata_extraction():
+    """Reasoning metadata: presence=true but raw text NOT in output."""
+    from deepseek_smoke_test import _extract_reasoning_metadata
+    r = {"choices": [{"message": {"reasoning_content": "secret thought"}}],
+         "usage": {"completion_tokens_details": {"reasoning_tokens": 19}}}
+    meta = _extract_reasoning_metadata(r)
+    assert meta["reasoning_content_present"] is True
+    assert meta["reasoning_text_logged"] is False
+    assert meta["reasoning_text_included_in_response"] is False
+    assert meta["reasoning_tokens"] == 19
+    # Raw reasoning text must NOT be in the metadata
+    assert "secret" not in str(meta)
+
+
+def test_reasoning_metadata_none():
+    from deepseek_smoke_test import _extract_reasoning_metadata
+    meta = _extract_reasoning_metadata({})
+    assert meta["reasoning_content_present"] is False
 
 
 def test_monkeypatched_live_with_content(monkeypatch):
