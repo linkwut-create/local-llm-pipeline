@@ -120,6 +120,8 @@ class TaskClassifier:
         ("draft-fix", r"\bfix\b|\bbug\b|\bpatch\b|\bhotfix\b|\berror\b|\bcrash\b|\bexception\b|\bstack.*trace\b|\bnull\b.*\bpointer\b", "medium"),
         ("generate-test-plan", r"\btest\b.*\bfail|\bfail.*\btest\b|\bflaky\b|\bassertion\b|\btest\b.*\berror\b|\btest\b.*\bplan\b|\btest\b.*\banaly\b", "medium"),
         ("draft-feature", r"\bfeature\b|\bimplement\b|\badd\b.*\b(new|column)\b|\bbuild\b", "medium"),
+        # governance-docs BEFORE suggest-improvements and summarize-file (more specific)
+        ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bgovernance\b", "low"),
         ("suggest-improvements", r"\bimprov\b|\boptimiz\b|\bperformance\b|\bbottleneck\b|\bsuggest\b", "low"),
         ("summarize-file", r"\bsummar(y|ize)\b|\bexplain\b.*\bfile\b|\bwhat\b.*\bdoes\b|\bhow\b.*\bwork\b", "low"),
         ("rewrite-text", r"\bdocument\b|\breadme\b|\bcomment\b|\bdocstring\b|\bchangelog\b", "low"),
@@ -291,6 +293,7 @@ class ProfileMapper:
     FALLBACK_MAP = {
         "summarize-file": "fast_summary",
         "summarize-tree": "fast_summary",
+        "governance-docs": "docs_agent",
         "rewrite-text": "fast_summary",
         "suggest-improvements": "qwen3.6_27b_mtp",
         "draft-fix": "code_worker",

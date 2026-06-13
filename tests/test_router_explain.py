@@ -102,6 +102,30 @@ def test_classify_docs():
     assert r == "low"
 
 
+def test_classify_governance_problems():
+    t, r, c = TaskClassifier.classify("review PROBLEMS.md for missing entries")
+    assert t == "governance-docs", f"Expected governance-docs, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_longtodo():
+    t, r, c = TaskClassifier.classify("update LONGTODO.md with follow-up items")
+    assert t == "governance-docs", f"Expected governance-docs, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_agents():
+    t, r, c = TaskClassifier.classify("check AGENTS.md for outdated rules")
+    assert t == "governance-docs", f"Expected governance-docs, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_claude():
+    t, r, c = TaskClassifier.classify("update CLAUDE.md with new hook docs")
+    assert t == "governance-docs", f"Expected governance-docs, got {t}"
+    assert r == "low"
+
+
 def test_classify_unknown():
     t, r, c = TaskClassifier.classify("xyzzy flurbo gronk")
     assert t == "unknown", f"Expected unknown, got {t}"
@@ -210,6 +234,11 @@ def test_profile_simple_query():
     assert p == "fast_summary", f"Expected fast_summary, got {p}"
 
 
+def test_profile_governance_docs():
+    p = ProfileMapper.recommend("governance-docs", "low")
+    assert p == "docs_agent", f"Expected docs_agent, got {p}"
+
+
 def test_profile_release_gate():
     p = ProfileMapper.recommend("release-risk-review", "high")
     assert p is None  # Too risky for local only
@@ -311,6 +340,14 @@ def test_engine_simple_query():
     assert d.risk_level == "low"
     assert d.cloud_allowed is True
     assert d.recommended_local_profile is not None
+
+
+def test_engine_governance_docs():
+    engine = RouterEngine()
+    d = engine.analyze("review PROBLEMS.md for missing entries and update LONGTODO.md")
+    assert d.task_type == "governance-docs"
+    assert d.risk_level == "low"
+    assert d.recommended_local_profile == "docs_agent"
 
 
 def test_engine_privacy_blocked():
