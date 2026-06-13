@@ -248,3 +248,103 @@ def test_cli_json_warning_gate_false():
 def test_recommendation_continue_dogfood_below_target():
     r = status(since="2026-06-13", target=999)
     assert r["recommendation"] == "continue_dogfood"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Progress formatting regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_records_remaining_never_negative(tmp_path, monkeypatch):
+    """records_remaining must never go negative even if records > target."""
+    sd = tmp_path / "shadow_over"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    records = []
+    for i in range(50):  # 50 > target 30
+        records.append({
+            "task": f"t{i}", "router_task_type": "review-diff",
+            "router_risk_level": "medium", "router_privacy_status": "safe",
+            "actual_decision": "local-first", "match": True,
+            "timestamp": "2026-06-13T10:00:00Z",
+        })
+    _write_records(sd, records)
+    r = status(since="2026-06-13", target=30)
+    assert r["records_remaining"] >= 0, f"records_remaining is {r['records_remaining']}"
+    assert r["records_remaining"] == 0  # Capped at 0, not negative
+
+
+def test_progress_ratio_capped_when_records_exceed_target(tmp_path, monkeypatch):
+    """progress_ratio should cap at 1.0 when records > target."""
+    sd = tmp_path / "shadow_capped"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    records = []
+    for i in range(60):  # 2x target
+        records.append({
+            "task": f"t{i}", "router_task_type": "review-diff",
+            "router_risk_level": "medium", "router_privacy_status": "safe",
+            "actual_decision": "local-first", "match": True,
+            "timestamp": "2026-06-13T10:00:00Z",
+        })
+    _write_records(sd, records)
+    r = status(since="2026-06-13", target=30)
+    assert r["progress_ratio"] <= 1.0, f"progress_ratio={r['progress_ratio']} not capped"
+
+
+def test_target_30_behavior_stable(tmp_path, monkeypatch):
+    """With target=30, fields are populated consistently."""
+    sd = tmp_path / "shadow_t30"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "t1", "router_task_type": "review-diff", "router_risk_level": "medium",
+         "router_privacy_status": "safe", "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-13T10:00:00Z"},
+    ])
+    r = status(since="2026-06-13", target=30)
+    assert r["target_records"] == 30
+    assert r["records_total"] >= 0
+    # Even below target, all fields must be present
+    assert "match_rate" in r
+    assert "unknown_rate" in r
+    assert "critical_misrouting" in r
+
+
+def test_json_output_includes_warning_gate_candidate(tmp_path, monkeypatch):
+    """CLI --json output always includes warning_gate_candidate."""
+    sd = tmp_path / "shadow_json_wgc"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "t1", "router_task_type": "review-diff", "router_risk_level": "medium",
+         "router_privacy_status": "safe", "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-13T10:00:00Z"},
+    ])
+    import subprocess, json as _json
+    r_proc = subprocess.run(
+        ["py", "-3", "tools/soft_gate_dogfood_status.py",
+         "--since", "2026-06-13", "--target", "30", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = _json.loads(r_proc.stdout.strip())
+    assert "warning_gate_candidate" in data
+    assert isinstance(data["warning_gate_candidate"], bool)
+
+
+def test_recommendation_one_of_allowed_values(tmp_path, monkeypatch):
+    """recommendation is always one of the known allowed values."""
+    sd = tmp_path / "shadow_rec_vals"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    # Empty → continue_dogfood
+    r_empty = status(since="2026-06-13", target=30)
+    allowed = {
+        "continue_dogfood", "calibrate_router", "fix_privacy_safety",
+        "continue_dogfood_or_calibrate", "eligible_for_warning_gate_design",
+    }
+    assert r_empty["recommendation"] in allowed
+
+    # With data → check again
+    _write_records(sd, [
+        {"task": "t1", "router_task_type": "review-diff", "router_risk_level": "medium",
+         "router_privacy_status": "safe", "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-13T10:00:00Z"},
+    ])
+    r_data = status(since="2026-06-13", target=30)
+    assert r_data["recommendation"] in allowed
