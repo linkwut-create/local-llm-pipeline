@@ -422,6 +422,13 @@
 
 ## 8. Interface Change Log
 
+### IFACE-CHANGE-011: deepseek_execution_adapter mock skeleton
+- **Date**: 2026-06-13 (mock-skeleton chain)
+- **What**: 新增 `tools/deepseek_execution_adapter.py` — 真实调用适配器 mock skeleton，所有 gate 已实现但 --real-run 返回 real_run_not_implemented
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 25 mock tests in `tests/test_deepseek_execution_adapter.py`
+
 ### IFACE-CHANGE-010: DeepSeek API execution adapter design audit
 - **Date**: 2026-06-13 (design-audit chain)
 - **What**: 新增 `docs/deepseek_api_execution_adapter_design.md` — 10-section 执行适配器设计契约；`docs/phase4-prd.md` — Phase 4 产品需求文档收敛

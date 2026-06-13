@@ -239,12 +239,30 @@ DeepSeek API execution adapter design audit is complete.
   dual switch required; API key env-only; dry-run forever separated from real-run
 
 **Pending**:
-- `tools/deepseek_execution_adapter.py` mock skeleton (--real-run disabled by default)
 - Real API integration after mock skeleton audit
 
 ---
 
-## 11. Advisory Workflow — Status
+## 11. Execution Adapter Mock Skeleton — Status (2026-06-13)
+
+DeepSeek execution adapter mock skeleton (`tools/deepseek_execution_adapter.py`) is ready.
+
+**Done**:
+- Full gate sequence [1]-[6] implemented per design contract
+- Gate [1]: cloud_ok → cloud_ok_required
+- Gates [2]-[5]: router → privacy → budget → dry_run → mock_plan_ready
+- Gate [6]: real_run → real_run_not_implemented (always blocked)
+- would_call_deepseek always false; api_key_read always false; mock_only always true
+- Optional --record-ledger (default off, mock events only)
+- 25 mock tests
+
+**Pending**:
+- Mock skeleton convergence audit
+- Guarded real-run adapter (gate [6] → actual API call)
+
+---
+
+## 12. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 
