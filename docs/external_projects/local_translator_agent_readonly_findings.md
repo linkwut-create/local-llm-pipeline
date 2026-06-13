@@ -50,4 +50,20 @@ Never read: `.env`, `history.db`, user data, audio, images, logs, API keys.
 
 **This governance flow (soft gate → shadow route → read-only inspection → commit to governance repo) is usable for real external projects.** The boundary held: no external modification, no secret access, all records in governance repo. The actual labeling rule (#45) continued to work correctly.
 
+---
+
+## Second Task Summary (#76—#77: Profile Tests)
+
+| 指标 | 值 |
+|------|-----|
+| External files read | `tests/test_profiles.py` (77 lines, 2 tests), `profiles.py` (8 symbols) |
+| Test type | FastAPI TestClient integration tests |
+| Privacy risk | Low — profile configs, not user data |
+| External repo modified | No (0 files) |
+| Secrets read | 0 |
+
+**Second task also successful.** Confirms governance layer can handle
+different types of external project files (schema tests + profile/API tests).
+Both tasks remained within read-only boundaries.
+
 **Next milestone**: Expand to a second safe test file review, then consider broader structural analysis of the translator project.
