@@ -31,7 +31,9 @@ from router_explain import RouterEngine
 
 _engine = RouterEngine()
 
-VALID_ACTUALS = {"local", "local-first", "local-only", "flash-fallback", "pro-review", "cloud-blocked", "defer"}
+CANONICAL_ACTUALS = {"local", "local-first", "flash-fallback", "pro-review", "cloud-blocked", "defer"}
+LEGACY_ACTUALS = {"local-only"}
+VALID_ACTUALS = CANONICAL_ACTUALS | LEGACY_ACTUALS
 
 
 def _ensure_dir():
@@ -65,7 +67,9 @@ def log(task: str, actual: str = "", notes: str = "", cloud_ok: bool = False) ->
     actual_clean = actual.strip() if actual else ""
     if actual_clean and actual_clean not in VALID_ACTUALS:
         return {
-            "error": f"invalid actual '{actual_clean}'. Valid: {', '.join(sorted(VALID_ACTUALS))}",
+            "error": (f"invalid actual '{actual_clean}'. "
+                      f"Canonical: {', '.join(sorted(CANONICAL_ACTUALS))}. "
+                      f"Legacy: {', '.join(sorted(LEGACY_ACTUALS))}."),
             "written": False,
         }
     match = _auto_match(decision.risk_level, decision.cloud_allowed, actual_clean) if actual_clean else None

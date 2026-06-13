@@ -163,3 +163,24 @@ def test_invalid_not_written_to_jsonl(tmp_path, monkeypatch):
     log(task="test bad write", actual="garbage-actual")
     # Verify no file was created
     assert not sd.exists() or not list(sd.glob("*.jsonl"))
+
+
+def test_canonical_local_accepted():
+    r = log(task="canon local", actual="local")
+    assert "error" not in r
+
+
+def test_legacy_local_only_accepted():
+    r = log(task="legacy", actual="local-only")
+    assert "error" not in r
+
+
+def test_invalid_error_mentions_canonical():
+    r = log(task="bad", actual="wrong-value")
+    assert "Canonical" in r["error"]
+    assert "Legacy" in r["error"]
+
+
+def test_invalid_error_includes_local_first():
+    r = log(task="bad2", actual="nope")
+    assert "local-first" in r["error"]
