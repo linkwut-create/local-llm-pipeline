@@ -211,3 +211,89 @@ def test_env_path_still_red():
     assert r["severity"] == "red"
     assert r["decision"] == "cloud_blocked"
     assert r["would_block"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# CLI / JSON output regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_cli_json_parseable():
+    """CLI --json output is valid JSON and parsable."""
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-task",
+         "--task", "summarize README section", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    assert r.returncode == 0
+    data = json.loads(r.stdout.strip())
+    assert data["decision"] in ("allow", "warn")
+
+
+def test_cli_chinese_task_no_crash():
+    """Chinese task text does not break JSON output."""
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-task",
+         "--task", "写一段中文文档说明", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    assert r.returncode == 0
+    data = json.loads(r.stdout.strip())
+    assert "decision" in data
+
+
+def test_cli_quotes_in_task():
+    """Task text with quotes does not break JSON."""
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-task",
+         "--task", "review \"interface\" changes for 'release'", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    assert r.returncode == 0
+    data = json.loads(r.stdout.strip())
+    assert "decision" in data
+
+
+def test_cli_cloud_blocked_json():
+    """cloud_blocked case still outputs clean JSON."""
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-cloud",
+         "--task", "send .env to cloud", "--files", ".env.production",
+         "--cloud-ok", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    assert r.returncode == 0
+    data = json.loads(r.stdout.strip())
+    assert data["decision"] == "cloud_blocked"
+
+
+def test_cli_stdout_no_traceback():
+    """stdout does not contain traceback."""
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-task",
+         "--task", "review diff", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    assert "Traceback" not in r.stdout
+
+
+def test_cli_json_starts_with_brace():
+    """--json output starts with { not any prefix text."""
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/claude_soft_gate.py", "--stage", "pre-task",
+         "--task", "review diff", "--json"],
+        capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+        timeout=15,
+    )
+    stripped = r.stdout.strip()
+    assert stripped.startswith("{"), f"Expected JSON, got: {stripped[:80]}"
