@@ -80,3 +80,19 @@ critical_misrouting separately.
 
 See [external dogfood scenarios](external_dogfood_scenarios.md) for
 specific examples.
+
+## External Read-Only Report Rules
+
+When producing read-only reports on external projects:
+
+1. **Summarize structure, not content**. Report function names, class names,
+   file counts, imports, test categories — not raw source code.
+2. **Do not paste large raw source files** into governance documents.
+3. **Do not include secrets or user data** in any report. If a reviewed file
+   contains secret references, note the concern without copying the value.
+4. **Always list inspected files** and confirm which files were forbidden
+   and not read.
+5. **Always confirm external repo unchanged** — state explicitly that zero
+   files were created, modified, or deleted in the external project.
+6. **Always record actual** according to the #45 rule when logging shadow
+   route entries for external tasks.
