@@ -26,6 +26,33 @@
       "_community_reputation": "Gemma 4 is Google's lightweight model series. Unsloth variant required — native Ollama gemma4 tags blocked (temperature sensitivity causes empty responses at T≤0.7). See evals/model_audition/reports/profile_suggestions.md.",
       "_backend_class": "ollama"
     },
+    "docs_agent": {
+      "model": "gemma4:31b-unsloth",
+      "_strengths": [
+        "documentation",
+        "governance",
+        "accuracy",
+        "consistency"
+      ],
+      "temperature": 0.15,
+      "max_chars": 80000,
+      "max_output_chars": 4000,
+      "use_for": [
+        "update-governance-docs",
+        "review-documentation",
+        "maintain-docs"
+      ],
+      "candidates": [
+        "gemma4:31b-unsloth",
+        "gemma4:26b-unsloth",
+        "gemma4:12b-unsloth",
+        "qwen3.5:35b"
+      ],
+      "risk_level": "low",
+      "_benchmark": "2026-06-13: Created from model audition (docs_agent 3.4, 15-case battery) + shadow dogfood (2/2 summaries non-empty, accurate, no over-expansion). 31B unsloth selected as primary.",
+      "_community_reputation": "Gemma 4 unsloth variants are stable for documentation roles. Native Ollama gemma4 tags blocked (temperature sensitivity T≤0.7 empty response). docs_agent is docs-only — must not edit non-.md files per agent definition.",
+      "_backend_class": "ollama"
+    },
     "smart_summary": {
       "model": "qwen3.5-claude-opus:9b",
       "_strengths": [
