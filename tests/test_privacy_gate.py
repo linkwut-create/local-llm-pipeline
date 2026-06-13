@@ -390,3 +390,47 @@ def test_env_path_blocked_explicit():
 
 def test_normal_md_path_safe():
     assert check(path="docs/architecture.md").get("privacy_status") == "safe"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Filename casing regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_env_uppercase_blocked():
+    """.ENV (uppercase) should be blocked same as .env."""
+    assert check(path=".ENV").get("privacy_status") == "blocked"
+
+
+def test_env_mixed_case_blocked():
+    """.Env (mixed case) should be blocked same as .env."""
+    assert check(path=".Env").get("privacy_status") == "blocked"
+
+
+def test_env_with_path_uppercase_blocked():
+    """config/.ENV (uppercase in path) blocked."""
+    assert check(path="config/.ENV").get("privacy_status") == "blocked"
+
+
+def test_id_rsa_lowercase_blocked():
+    """id_rsa (lowercase) blocked as private key file."""
+    assert check(path="id_rsa").get("privacy_status") == "blocked"
+
+
+def test_id_rsa_mixed_case_blocked():
+    """Id_Rsa (mixed case) blocked according to current policy."""
+    assert check(path="Id_Rsa").get("privacy_status") == "blocked"
+
+
+def test_id_rsa_uppercase_blocked():
+    """ID_RSA (uppercase) blocked according to current policy."""
+    assert check(path="ID_RSA").get("privacy_status") == "blocked"
+
+
+def test_readme_md_safe():
+    """README.md is safe documentation."""
+    assert check(path="README.md").get("privacy_status") == "safe"
+
+
+def test_ordinary_source_safe():
+    """Ordinary source path is safe."""
+    assert check(path="src/utils.py").get("privacy_status") == "safe"
