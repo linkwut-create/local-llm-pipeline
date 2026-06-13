@@ -151,19 +151,43 @@ MTP endpoint → deferred (infrastructure, not model)
 
 ---
 
+## fast_summary Observation — gemma4:12b-unsloth
+
+Date: 2026-06-13
+Profile change: committed `fd6a9ce`
+
+| # | File | Status | Latency | Quality |
+|---|------|:--:|--------|---------|
+| 1 | AGENTS.md | non-empty | 89s | Accurate: constitution, agent roles, MCP tools |
+| 2 | PROBLEMS.md | non-empty | 74s | Accurate: PROB/BAN entries, fragile areas |
+| 3 | INTERFACES.md | non-empty | 78s | Accurate: MCP/CLI contracts, privacy risks |
+| 4 | LONGTODO.md | non-empty | 57s | Accurate: roadmap chains, dependencies |
+| 5 | profile_suggestions.md | non-empty | 59s | Accurate: self-diagnosis summary |
+
+Result:
+- Empty response: **0/5**
+- Hallucination: **0/5**
+- Over-expansion: **0/5**
+- Latency: **57-89s** (median 75s, acceptable for 12B)
+- Verdict: **STABLE — keep as fast_summary primary**
+
+---
+
 ## Summary
 
 ```
-Low-risk changes ready (1-2 profiles):
-  fast_summary → consider gemma4:12b-unsloth
-  docs_agent → consider gemma4:31b-unsloth
+✅ Applied:
+  fast_summary → gemma4:12b-unsloth (fd6a9ce, 5/5 observation passed)
 
-High-risk roles — DO NOT CHANGE without more evidence:
+⏸️  Pending observation:
+  docs_agent → gemma4:31b-unsloth (wait for fast_summary to prove stable)
+
+🔒 Frozen — DO NOT CHANGE without more evidence:
   deep_reviewer → needs full battery on qwen3.6:35b
   release_auditor → needs full battery + real gate dogfood
   interface_reviewer → no strong candidate yet
 
 Deferred:
   All >60GB models — hardware constraint, not capability
-  Gemma4 native — MTP inference issue, not model quality
+  Native gemma4 — Ollama GGUF temperature sensitivity (T≤0.7 empty), not weight quality
 ```
