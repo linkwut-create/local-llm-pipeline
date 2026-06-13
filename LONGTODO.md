@@ -164,3 +164,20 @@ Shadow routing log (`tools/shadow_route_log.py`) 已就绪，下一步工作：
 2. **Route decision dashboard**: 按 task_type / risk_level / match 分组查看
 3. **Advisory workflow integration**: controller/agent 执行任务前自动调用 `local_route_explain`，记录建议但不自动执行
 4. **DeepSeek auto-escalation**: 仅在 shadow routing 通过后启用 — 需要 privacy gate + budget guard + cost ledger + fallback/retry 规则
+
+---
+
+## 7. Advisory Workflow — Status
+
+Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
+
+**Done**:
+- Preflight CLI: `py -3 tools/advisory_workflow.py "<task>"`
+- Outputs recommended_controller_decision + full router analysis
+- Writes shadow routing log automatically
+- 13 mock tests
+
+**Pending**:
+- Hook integration (auto-invoke preflight on certain task triggers)
+- Controller comparison dashboard
+- Decision accuracy tracking over time

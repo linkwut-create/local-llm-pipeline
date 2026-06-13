@@ -163,9 +163,18 @@
 - **Input**: task description + optional `--actual` (human decision), `--list`, `--stats`
 - **Output**: JSONL to `.local_llm_out/shadow_routes/YYYYMMDD.jsonl`
 - **Exit Codes**: 0=success
-- **LLM Call**: 无（纯启发式 in-process via RouterEngine）
-- **Side Effects**: 写 `.local_llm_out/shadow_routes/`
-- **Compatibility**: JSONL schema 字段只能增
+- **LLM Call**: None (pure heuristic in-process via RouterEngine)
+- **Side Effects**: Writes `.local_llm_out/shadow_routes/`
+- **Compatibility**: JSONL schema fields additive only
+
+### Command: py -3 tools/advisory_workflow.py "<task>" [--cloud-ok] [--local-failures N] [--json]
+- **Purpose**: Preflight route-aware task advisor. Wraps router_explain + shadow_route_log. Advisory-only.
+- **Input**: task description + optional `--cloud-ok`, `--local-failures`, `--json`
+- **Output**: recommended_controller_decision (local|local-first|flash-fallback|pro-review|cloud-blocked|defer) + full router analysis
+- **Exit Codes**: 0=success
+- **LLM Call**: None (pure heuristic in-process via RouterEngine)
+- **Side Effects**: Writes shadow routing log (`.local_llm_out/shadow_routes/`)
+- **Compatibility**: decision values additive only
 
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
