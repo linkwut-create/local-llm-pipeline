@@ -158,6 +158,15 @@
 - **Side Effects**: 无
 - **Compatibility**: output 字段只能增；task_type 值只能增
 
+### Command: py -3 tools/shadow_route_log.py "<task>" [--actual "<decision>"] [--list|--stats]
+- **Purpose**: Record router_explain advisory decisions as shadow routing log (JSONL). Advisory-only.
+- **Input**: task description + optional `--actual` (human decision), `--list`, `--stats`
+- **Output**: JSONL to `.local_llm_out/shadow_routes/YYYYMMDD.jsonl`
+- **Exit Codes**: 0=success
+- **LLM Call**: 无（纯启发式 in-process via RouterEngine）
+- **Side Effects**: 写 `.local_llm_out/shadow_routes/`
+- **Compatibility**: JSONL schema 字段只能增
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`

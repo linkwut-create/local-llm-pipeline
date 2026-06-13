@@ -151,3 +151,16 @@
 | 2 | 是否需要 MCP server hot-reload？ | 开发便利 vs 实现复杂度 | MCP server 代码变更频率和 stale response 的实际影响 |
 | 3 | 是否需要跨项目 ledger 聚合？ | 全局视图 vs 项目隔离 | 是否有跨项目成本分析的实际需求 |
 | 4 | 是否需要 `local_llm_profiles.json` 的 JSON Schema 验证？ | 更严格的验证 vs 灵活性 | validate_configs.py 当前的检查是否足够 |
+| 5 | 是否从 shadow routing log 进入 advisory workflow integration？ | 积累证据 vs 提前自动化 | 30—50 条 shadow log，准确率 ≥ 85%，无 critical misrouting |
+| 6 | 是否启用真实 DeepSeek Flash/Pro 自动升级？ | 省钱 + 安全 vs 云端成本 + 隐私风险 | shadow routing 稳定，privacy gate 硬化，budget guard 就绪 |
+
+---
+
+## 6. Shadow Routing — Future Work
+
+Shadow routing log (`tools/shadow_route_log.py`) 已就绪，下一步工作：
+
+1. **Aggregate accuracy**: 累计 30—50 条 shadow log 后，输出准确率报告 (`--stats`)
+2. **Route decision dashboard**: 按 task_type / risk_level / match 分组查看
+3. **Advisory workflow integration**: controller/agent 执行任务前自动调用 `local_route_explain`，记录建议但不自动执行
+4. **DeepSeek auto-escalation**: 仅在 shadow routing 通过后启用 — 需要 privacy gate + budget guard + cost ledger + fallback/retry 规则
