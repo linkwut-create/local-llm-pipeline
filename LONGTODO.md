@@ -292,8 +292,24 @@ Real API smoke test design packet is complete.
 - 18-test plan for implementation phase
 
 **Pending**:
-- `tools/deepseek_smoke_test.py` standalone smoke test script
-- Manual real API smoke test execution (single, human-supervised)
+- Third smoke test with adjusted parameters (max_tokens=128, stronger prompt)
+- Pro model smoke test (separate design packet required)
+
+---
+
+## 14. Model Output Compatibility Audit — Status (2026-06-13)
+
+DeepSeek Flash output compatibility audit is complete.
+
+**Done**:
+- Root cause identified: max_tokens=20 exhausted by reasoning tokens
+- thinking=disabled does not eliminate internal reasoning token consumption
+- Client payload confirmed correct (no bug)
+- 5 fix recommendations (design only, not implemented)
+
+**Pending**:
+- Third smoke test with max_tokens=128, stronger prompt (requires separate approval)
+- Broader real-run strategy (blocked until semantic smoke passes)
 
 ---
 
