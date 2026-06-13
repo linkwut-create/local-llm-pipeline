@@ -1,5 +1,33 @@
 # LONGTODO.md
 
+## Project Status (2026-06-13)
+
+**Phase**: Soft gate dogfood accumulation.
+
+### Completed
+- Claude Code soft gate design + skeleton + convergence audit (PASS_WITH_LIMITS)
+- CLAUDE.md default soft gate protocol
+- Router calibration C1-C5 (10/10 probes correct)
+- Post-calibration audit (PASS_WITH_LIMITS)
+- Dogfood status reporter
+- Cost ledger smoke usage recording fix
+- DeepSeek Flash smoke test: transport + semantic PASS
+
+### Currently Blocked
+- Warning gate (match_rate < 85%, critical_misrouting > 0)
+- Stop hook / hard block
+- Broader DeepSeek real-run
+- Flash limited real pilot
+- Pro smoke chain
+- llm-proxy / automatic worker execution
+
+### Current Goal
+- Accumulate 30 additional labeled dogfood records
+- Keep privacy_bypass=0, false_cloud_on_secret=0
+- Improve match_rate and unknown_rate naturally through new records
+
+---
+
 ## 0. Long-Term Vision
 
 **一句话目标**: local-llm-pipeline 是本地 AI 开发控制层 — 让小模型跑重活，大模型做审核，降低 token 成本，接入 Claude Code / Codex / MCP。
