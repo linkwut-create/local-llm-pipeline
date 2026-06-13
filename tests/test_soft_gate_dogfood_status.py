@@ -243,3 +243,8 @@ def test_cli_json_warning_gate_false():
     r = subprocess.run(["py","-3","tools/soft_gate_dogfood_status.py","--since","2026-06-13","--target","30","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
     data = json.loads(r.stdout.strip())
     assert data["warning_gate_candidate"] is False
+
+
+def test_recommendation_continue_dogfood_below_target():
+    r = status(since="2026-06-13", target=999)
+    assert r["recommendation"] == "continue_dogfood"
