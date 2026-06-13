@@ -434,3 +434,38 @@ def test_readme_md_safe():
 def test_ordinary_source_safe():
     """Ordinary source path is safe."""
     assert check(path="src/utils.py").get("privacy_status") == "safe"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Documentation path tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_docs_guide_md_safe():
+    """docs/guide.md is safe documentation."""
+    assert check(path="docs/guide.md").get("privacy_status") == "safe"
+
+
+def test_docs_architecture_md_safe():
+    """docs/architecture.md is safe documentation."""
+    assert check(path="docs/architecture.md").get("privacy_status") == "safe"
+
+
+def test_markdown_configuration_mention_safe_or_needs_review():
+    """Ordinary markdown mentioning configuration is not blocked."""
+    result = check(text="configure the local model settings in config.yaml")
+    assert result["privacy_status"] != "blocked"
+
+
+def test_docs_readme_path_safe():
+    """README.md path is safe."""
+    assert check(path="README.md").get("privacy_status") == "safe"
+
+
+def test_literal_env_path_still_blocked():
+    """Literal .env path remains blocked even alongside docs."""
+    assert check(path="config/.env").get("privacy_status") == "blocked"
+
+
+def test_literal_credentials_path_still_blocked():
+    """Literal credentials.json remains blocked alongside docs."""
+    assert check(path="credentials.json").get("privacy_status") == "blocked"
