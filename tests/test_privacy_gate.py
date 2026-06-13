@@ -469,3 +469,37 @@ def test_literal_env_path_still_blocked():
 def test_literal_credentials_path_still_blocked():
     """Literal credentials.json remains blocked alongside docs."""
     assert check(path="credentials.json").get("privacy_status") == "blocked"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Secret phrase boundary tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_literal_api_key_pattern_blocked():
+    """Literal 'sk-' API key pattern in text is blocked."""
+    r = check(text="my key is sk-abc123def456ghijklmnopqrstuvwxyz")
+    assert r["privacy_status"] == "blocked"
+
+
+def test_generic_api_config_phrase_safe_or_needs_review():
+    """Generic 'API authentication settings' is not blocked."""
+    r = check(text="configure the API authentication settings")
+    assert r["privacy_status"] != "blocked"
+
+
+def test_env_path_blocked_alongside_safe_text():
+    """Literal .env path still blocked even in mixed input."""
+    r = check(text="see .env for settings", path="config/.env")
+    assert r["privacy_status"] == "blocked"
+
+
+def test_documentation_about_config_not_over_blocked():
+    """Documentation about configuration is not blocked."""
+    r = check(text="set up your configuration by editing config.yaml")
+    assert r["privacy_status"] != "blocked"
+
+
+def test_private_key_phrase_needs_review_or_blocked():
+    """Phrase 'PRIVATE KEY' in text triggers review or block per policy."""
+    r = check(text="add your PRIVATE KEY here")
+    assert r["privacy_status"] in ("blocked", "needs_review")
