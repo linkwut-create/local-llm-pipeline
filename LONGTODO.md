@@ -388,6 +388,22 @@ Calibration plan complete. Router changes NOT yet implemented.
 
 ---
 
+## 19. Post-Calibration Shadow Route Audit — Status (2026-06-13)
+
+Audit complete. Decision: PASS_WITH_LIMITS.
+
+**Done**:
+- `docs/post_calibration_shadow_route_audit.md`
+- 10/10 probes correctly classified after C1-C5
+- No new misroutings, no privacy bypass, no false cloud-on-secret
+- Historical data still drags metrics (expected)
+
+**Pending**:
+- Dogfood accumulation: 30 additional labeled records
+- Second calibration round (only if new misroutings appear)
+
+---
+
 ## 14. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
