@@ -247,6 +247,14 @@ Claude Code is the controller. The local worker is advisory only.
   `py -3 tools/precommit_advisory.py --cloud-ok`
   (advisory-only, never blocks commit, never calls DeepSeek)
 
+- `shadow_route_report` — dogfood metrics report from shadow routing JSONL logs.
+  Reads `.local_llm_out/shadow_routes/*.jsonl`, computes match rate, unknown rate,
+  privacy bypass detection, critical misrouting count, and recommendation:
+  `py -3 tools/shadow_route_report.py`
+  `py -3 tools/shadow_route_report.py --since 2026-06-13 --json`
+  `py -3 tools/shadow_route_report.py --output .local_llm_out/shadow_route_report.md`
+  (advisory-only, no LLM calls, no DeepSeek, no profile changes)
+
 ### Available Subagent
 
 - `local-worker-auditor` — uses the local worker and audits its output.

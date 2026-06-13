@@ -185,6 +185,15 @@
 - **Side Effects**: Writes shadow routing log (`.local_llm_out/shadow_routes/`)
 - **Compatibility**: non-blocking by design; exit code contract must never change
 
+### Command: py -3 tools/shadow_route_report.py [--since <DATE>] [--json] [--output <PATH>]
+- **Purpose**: Shadow route report exporter — dogfood metrics from `.local_llm_out/shadow_routes/*.jsonl`. Advisory-only.
+- **Input**: optional `--since` (YYYY-MM-DD or ISO), `--json`, `--output` (path under `.local_llm_out/` or external)
+- **Output**: Markdown report to stdout or file; JSON with `--json`
+- **Exit Codes**: 0=success
+- **LLM Call**: None (pure data aggregation, no model calls)
+- **Side Effects**: Writes report file only when `--output` specified
+- **Compatibility**: report metric keys additive only
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`
