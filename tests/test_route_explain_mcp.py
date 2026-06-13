@@ -198,3 +198,50 @@ def test_json_output_stable_fields():
     r2 = call_route_explain({"task": "prepare release v0.13"})
     assert set(r1.keys()) == set(r2.keys()), \
         f"Field mismatch: {set(r1.keys())} vs {set(r2.keys())}"
+
+
+# ── Malformed input ──
+
+def test_missing_task_field_no_crash():
+    """Missing 'task' key returns ok=false, not a traceback."""
+    r = call_route_explain({})
+    assert r["ok"] is False
+    assert r["error_type"] == "invalid_input"
+    assert "Traceback" not in str(r)
+
+
+def test_empty_task_policy_stable():
+    """Empty task string returns ok=false with invalid_input."""
+    r = call_route_explain({"task": ""})
+    assert r["ok"] is False
+    assert r["error_type"] == "invalid_input"
+
+
+def test_malformed_extra_fields_handled():
+    """Extra/unexpected fields do not crash the call."""
+    r = call_route_explain({
+        "task": "review diff",
+        "unexpected_field": 12345,
+        "another_bogus": None,
+    })
+    assert r["ok"] is True
+    assert r["task_type"] == "review-diff"
+
+
+def test_cli_malformed_input_no_traceback():
+    """CLI with malformed input does not produce traceback."""
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stderr
+
+
+def test_advisory_only_true_on_malformed():
+    """Even on malformed input, advisory_only remains true."""
+    r1 = call_route_explain({})       # missing task
+    r2 = call_route_explain({"task": ""})  # empty task
+    assert r1.get("advisory_only") is True
+    assert r2.get("advisory_only") is True
