@@ -110,3 +110,48 @@ def test_run_with_task_override(tmp_path, monkeypatch):
 def test_cloud_ok_default_false():
     r = _recommend("review diff: main.py")
     assert r["cloud_allowed"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# CLI regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_cli_runs_no_crash():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/precommit_advisory.py"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0
+
+
+def test_cli_cloud_ok_runs():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/precommit_advisory.py", "--cloud-ok"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0
+
+
+def test_cli_json_output():
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/precommit_advisory.py", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(r.stdout.strip())
+    assert "advisory_only" in data
+
+
+def test_cli_no_traceback():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/precommit_advisory.py"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
