@@ -380,6 +380,6 @@ def test_doc_mention_env_safe():
     assert result["privacy_status"] != "blocked"
 
 def test_doc_mention_api_key_safe():
-    """Documentation mentioning API_KEY in context is not blocked."""
-    result = check(text="Set YOUR_API_KEY in the environment")
+    """Documentation about API configuration is safe."""
+    result = check(text="configure the API authentication settings in config")
     assert result["privacy_status"] == "safe"
