@@ -286,6 +286,37 @@ def run_smoke_test(
 # Live call seam
 # ═══════════════════════════════════════════════════════════════
 
+def _extract_response_text(result: dict) -> str:
+    """Robustly extract response text from DeepSeek API result.
+
+    Tries multiple known field paths in priority order.
+    Returns empty string if no text found.
+    """
+    # Standard field from deepseek_client
+    content = result.get("content", "")
+    if content:
+        return content
+
+    # OpenAI-compatible nested path
+    choices = result.get("choices", [])
+    if choices:
+        msg = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        content = msg.get("content", "")
+        if content:
+            return content
+        # Reasoning content (DeepSeek V4 specific)
+        reasoning = msg.get("reasoning_content", "")
+        if reasoning:
+            return reasoning
+
+    # Direct text field
+    text = result.get("text", "")
+    if text:
+        return text
+
+    return ""
+
+
 def _live_smoke_call(api_key: str) -> dict:
     """Make a real DeepSeek API call with the fixed smoke test prompt.
 
@@ -310,11 +341,14 @@ def _live_smoke_call(api_key: str) -> dict:
         timeout=30,
     )
 
+    response_text = _extract_response_text(result)
+
     return {
         "success": result["ok"],
-        "response_text": result.get("content", ""),
+        "response_text": response_text,
+        "response_text_source": _classify_text_source(result, response_text),
         "usage": result.get("usage"),
-        "http_status": None,  # call_deepseek doesn't expose raw HTTP status
+        "http_status": None,
         "elapsed_ms": int(result.get("elapsed_seconds", 0) * 1000),
         "error_type": None if result["ok"] else _classify_error(result.get("error", "")),
         "error": None if result["ok"] else _redact_error(result.get("error", "")),
@@ -322,6 +356,21 @@ def _live_smoke_call(api_key: str) -> dict:
         "api_key_read": True,
         "api_key_never_logged": True,
     }
+
+
+def _classify_text_source(result: dict, text: str) -> str:
+    """Classify where the response text was extracted from."""
+    if text:
+        if result.get("content"):
+            return "content"
+        if result.get("choices", [{}])[0].get("message", {}).get("content"):
+            return "choices[0].message.content"
+        if result.get("choices", [{}])[0].get("message", {}).get("reasoning_content"):
+            return "choices[0].message.reasoning_content"
+        if result.get("text"):
+            return "text"
+        return "unknown"
+    return "empty"
 
 
 def _classify_error(error: str) -> str:
@@ -351,10 +400,16 @@ def _redact_error(error: str) -> str:
     return redacted
 
 
-def _safe_preview(text: str, max_len: int = 100) -> str | None:
-    """Safe preview of response text — no API key, bounded length."""
+def _safe_preview(text: str | None, max_len: int = 100) -> str:
+    """Safe preview of response text — no API key, bounded length.
+
+    Returns the preview string. Empty text returns "" (not None)
+    to distinguish "API returned empty content" from "no call made".
+    """
+    if text is None:
+        return "(no response)"
     if not text:
-        return None
+        return "(empty)"
     return text[:max_len]
 
 

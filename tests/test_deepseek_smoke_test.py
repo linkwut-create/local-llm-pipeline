@@ -11,6 +11,7 @@ from deepseek_smoke_test import (
     run_smoke_test,
     _manual_smoke_call_stub,
     _live_smoke_call,
+    _extract_response_text,
     _redact_error,
     _safe_preview,
     FIXED_PROMPT,
@@ -290,3 +291,76 @@ def test_allowlist_only_flash():
 
 def test_budget_max_is_1():
     assert MAX_BUDGET_CNY == 1.0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response extraction tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_extract_content_field():
+    r = {"ok": True, "content": "OK", "usage": None}
+    assert _extract_response_text(r) == "OK"
+
+
+def test_extract_nested_choices():
+    r = {"choices": [{"message": {"content": "Hello"}}]}
+    assert _extract_response_text(r) == "Hello"
+
+
+def test_extract_reasoning_content():
+    r = {"choices": [{"message": {"content": "", "reasoning_content": "Thought: OK"}}]}
+    text = _extract_response_text(r)
+    assert text == "Thought: OK" or text == ""
+
+
+def test_extract_text_field():
+    r = {"text": "Direct text"}
+    assert _extract_response_text(r) == "Direct text"
+
+
+def test_extract_empty():
+    assert _extract_response_text({}) == ""
+
+
+def test_extract_content_priority():
+    """content field takes priority over choices path."""
+    r = {"content": "From content", "choices": [{"message": {"content": "From choices"}}]}
+    assert _extract_response_text(r) == "From content"
+
+
+def test_safe_preview_empty():
+    assert _safe_preview("") == "(empty)"
+
+
+def test_safe_preview_none():
+    assert _safe_preview(None) == "(no response)"
+
+
+def test_safe_preview_normal():
+    assert _safe_preview("OK") == "OK"
+
+
+def test_safe_preview_truncate():
+    assert len(_safe_preview("x" * 200)) <= 100
+
+
+def test_monkeypatched_live_with_content(monkeypatch):
+    """Monkeypatched success with content → response_text_preview populated."""
+    def fake_live(api_key):
+        return {
+            "success": True, "response_text": "OK",
+            "response_text_source": "content",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            "http_status": 200, "elapsed_ms": 100,
+            "error_type": None, "error": None,
+            "network_call": True, "api_key_read": True,
+            "api_key_never_logged": True,
+        }
+    monkeypatch.setattr("deepseek_smoke_test._live_smoke_call", fake_live)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-placeholder")
+
+    r = run_smoke_test(model=FLASH_MODEL, budget=1, cloud_ok=True,
+                       real_run=True, manual_smoke_test=True,
+                       allow_live_smoke=True)
+    assert r["execution_decision"] == "manual_smoke_test_success"
+    assert r["response_text_preview"] == "OK"
