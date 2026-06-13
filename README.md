@@ -142,3 +142,11 @@ py -3 tools/local_llm_check.py
 py -3 tools/precommit_advisory.py --cloud-ok
 py -3 tools/claude_soft_gate.py --stage pre-task --task "<task>" --json
 ```
+
+## Dogfood actual labels
+
+High-risk / governance / manual-confirm tasks should be logged as `pro-review`.
+Low/medium ordinary tests and docs usually use `local-first`.
+Do not rewrite old shadow route records. Do not use `git add -A` during dogfood.
+
+```bash
