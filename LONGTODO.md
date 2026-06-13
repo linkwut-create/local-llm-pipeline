@@ -308,8 +308,25 @@ DeepSeek Flash output compatibility audit is complete.
 - 5 fix recommendations (design only, not implemented)
 
 **Pending**:
-- Third smoke test with max_tokens=128, stronger prompt (requires separate approval)
-- Broader real-run strategy (blocked until semantic smoke passes)
+- Flash limited real-run implementation skeleton (Stage 2)
+- Pro smoke design packet (Stage 5)
+
+---
+
+## 15. Broader Real-Run Strategy — Status (2026-06-13)
+
+Broader real-run strategy design is complete.
+
+**Done**:
+- `docs/broader_real_run_strategy_design.md` — 13-section strategy
+- 4-tier task classification: local-only, flash-limited, pro-review, cloud-blocked
+- 14-gate sequence for limited real-run
+- Context limits (4000 tokens input, 1024 output)
+- Budget strategy (0.5 CNY/call, 5 CNY/day)
+- 7 ledger event types for real-run lifecycle
+- 4-pilot sequence for gradual rollout
+- 8-stage implementation roadmap
+- Pro real-run blocked until separate smoke test passes
 
 ---
 
