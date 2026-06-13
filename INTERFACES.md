@@ -212,6 +212,15 @@
 - **Side Effects**: None (read-only, no file writing)
 - **Compatibility**: Rule set additive only; output fields additive only
 
+### Command: py -3 tools/deepseek_dry_run.py --task "<DESC>" --model <NAME> --input-tokens <N> --output-tokens <N> [--budget <CNY>] [--cloud-ok] [--json]
+- **Purpose**: DeepSeek dry-run execution contract — composes router_explain + privacy_gate + cost_ledger into a unified governance plan. Answers "if we were to call DeepSeek, would governance allow it?" without calling DeepSeek.
+- **Input**: `--task` (required), `--model` (default: deepseek-v4-flash), `--input-tokens`/`--output-tokens` (required), `--budget`, `--cloud-ok`, `--json`
+- **Output**: `{task, requested_model, recommended_model, router_task_type, router_risk_level, privacy_status, privacy_allowed, budget_allowed, estimated_cost, budget_remaining, cloud_allowed, decision: allow_dry_run|blocked_by_privacy|blocked_by_budget|needs_pro_review|defer|unknown_price, reason, dry_run_only: true, would_call_deepseek: false, advisory_only: true}`
+- **Exit Codes**: 0=success, 2=invalid args
+- **LLM Call**: None (composes existing heuristic tools)
+- **Side Effects**: None (read-only, no file writing)
+- **Compatibility**: decision values additive only; output fields additive only
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`
@@ -410,6 +419,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-009: deepseek_dry_run 新增 CLI tool
+- **Date**: 2026-06-13 (dry-run chain)
+- **What**: 新增 `tools/deepseek_dry_run.py` CLI tool — composable governance plan generator
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 22 mock tests in `tests/test_deepseek_dry_run.py`
 
 ### IFACE-CHANGE-008: privacy_gate 新增 CLI tool
 - **Date**: 2026-06-13 (privacy-gate chain)

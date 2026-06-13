@@ -201,13 +201,31 @@ Privacy gate hardening (`tools/privacy_gate.py`) is ready.
 - 44 mock tests
 
 **Pending**:
-- Budget guard integration (cost_ledger + privacy_gate → combined gate)
-- DeepSeek dry-run execution contract
+- Budget guard integration (privacy_gate + cost_ledger → combined gate at MCP/CLI level)
 - Real content scanning (file content, not just path)
 
 ---
 
-## 9. Advisory Workflow — Status
+## 9. DeepSeek Dry-Run — Status (2026-06-13)
+
+DeepSeek dry-run execution contract (`tools/deepseek_dry_run.py`) is ready.
+
+**Done**:
+- Composes router_explain + privacy_gate + cost_ledger → unified plan
+- 6 decision types: allow_dry_run, blocked_by_privacy, blocked_by_budget, needs_pro_review, defer, unknown_price
+- Privacy gate: needs_review → allow_dry_run with human-review note
+- Risk-based model recommendation (high/critical → Pro)
+- would_call_deepseek always false, dry_run_only always true
+- 22 mock tests
+
+**Pending**:
+- Real Flash/Pro API integration (after shadow routing accuracy confirmed)
+- Hook-based auto-invoke before cloud escalation
+- Combined governance gate at MCP server level
+
+---
+
+## 10. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 
