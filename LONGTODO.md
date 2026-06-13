@@ -26,6 +26,15 @@
 - Keep privacy_bypass=0, false_cloud_on_secret=0
 - Improve match_rate and unknown_rate naturally through new records
 
+### Cost Ledger Usage
+
+```bash
+py -3 tools/cost_ledger.py --summary          # current month
+py -3 tools/cost_ledger.py --budget 200 --summary  # monthly budget
+```
+Note: smoke test usage (prompt/completion tokens) now recorded in ledger.
+Historical ledger records are not rewritten. Summary may show old zero-token entries.
+
 ---
 
 ## 0. Long-Term Vision
