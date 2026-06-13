@@ -80,7 +80,36 @@ Both tasks remained within read-only boundaries.
 
 **Third task also successful.** All three external read-only tasks completed
 across different file types (schema, profile/API, preset/readiness) while
-maintaining zero external modification and zero secret access. The governance
-flow is now validated across three distinct task types.
+maintaining zero external modification and zero secret access.
 
-**Next milestone**: Expand to a second safe test file review, then consider broader structural analysis of the translator project.
+---
+
+## Fourth Task Summary (#86—#87: Provider Checker)
+
+| 指标 | 值 |
+|------|-----|
+| External files read | `tests/test_provider_checker.py` (649 lines, 25 tests), `services/provider_checker.py` (17 symbols) |
+| Test type | Fully mocked provider/API checks with `_safe_error` redaction |
+| Privacy risk | Low — redacts API keys by design; all mocked |
+| External repo modified | No (0 files) |
+| Secrets read | 0 |
+
+**Fourth task successful.** Most privacy-sensitive file reviewed so far.
+Boundary held: structure only, no config, no keys.
+
+## External Read-Only Pilot — Phase Conclusion
+
+4/4 external read-only tasks across diverse risk profiles:
+
+| # | File | Lines | Tests | Type |
+|---|------|-------|-------|------|
+| 1 | test_tm_schema.py | 207 | 19 | Schema/migration |
+| 2 | test_profiles.py | 77 | 2 | Profile/API |
+| 3 | test_preset_checker.py | 287 | 11 | Preset/readiness |
+| 4 | test_provider_checker.py | 649 | 25 | Provider/API key |
+
+**Phase verdict: External Read-Only Pilot — PASS_WITH_LIMITS.**
+Governance layer validated for next phase: Controlled Proposal Mode.
+
+**Next phase**: Select a real small issue, produce patch plan / risk report /
+test plan / files-to-touch list without modifying external repo.
