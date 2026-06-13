@@ -54,6 +54,40 @@ def test_classify_security_review():
     assert r == "high"
 
 
+def test_classify_api_execution_boundary_real_run():
+    t, r, c = TaskClassifier.classify("implement guarded real-run adapter skeleton")
+    assert t == "api-execution-boundary", f"Expected api-execution-boundary, got {t}"
+    assert r == "high"
+
+
+def test_classify_api_execution_boundary_deepseek_adapter():
+    t, r, c = TaskClassifier.classify("design DeepSeek API execution adapter")
+    assert t == "api-execution-boundary", f"Expected api-execution-boundary, got {t}"
+    assert r == "high"
+
+
+def test_classify_api_execution_boundary_key_handling():
+    t, r, c = TaskClassifier.classify("add API key handling for DeepSeek provider call")
+    assert t == "api-execution-boundary", f"Expected api-execution-boundary, got {t}"
+    assert r == "high"
+
+
+def test_classify_api_execution_boundary_call_seam():
+    t, r, c = TaskClassifier.classify("wire real API call seam behind --real-run")
+    assert t == "api-execution-boundary", f"Expected api-execution-boundary, got {t}"
+    assert r == "high"
+
+
+def test_no_false_positive_on_governance_tools():
+    """Normal governance tools should NOT be classified as api-execution-boundary."""
+    t1, r1, _ = TaskClassifier.classify("update cost ledger summary docs")
+    assert t1 != "api-execution-boundary"
+    assert r1 != "high"
+    t2, r2, _ = TaskClassifier.classify("add privacy gate documentation")
+    assert t2 != "api-execution-boundary"
+    assert r2 != "high"
+
+
 def test_classify_interface_change():
     t, r, c = TaskClassifier.classify("change the API interface for user creation")
     assert t == "interface-review", f"Expected interface-review, got {t}"

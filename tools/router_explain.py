@@ -110,6 +110,9 @@ class TaskClassifier:
         # IMPORTANT: more-specific patterns first, generic fallback later
         ("release-risk-review", r"\brelease\b|\bdeploy\b|\bpublish\b|\bship\b|\bhotfix\b|\bproduction\b", "high"),
         ("security-review", r"\bsecurity\b|\bvulnerab\b|\bexploit\b|\binjection\b|\bxss\b|\bcsrf\b|\bcve\b|\baudit\b.*\bsecurity\b", "high"),
+        # API execution boundary: DeepSeek adapter, real-run, API key handling, provider call
+        # Must come BEFORE interface-review and draft-feature to correctly escalate to high-risk
+        ("api-execution-boundary", r"\bdeepseek\b.*\b(?:adapter|execution|api.call|real)\b|\b(?:real[\s-]run|guarded[\s-]real[\s-]run|execution[\s-]adapter|api[\s-]execution[\s-]boundary|api[\s-]call[\s-]boundary|cloud[\s-]execution[\s-]adapter|provider[\s-]api[\s-]call|api[\s-]call[\s-]seam)\b|\bapi[\s-]key[\s-](?:handling|reading|lookup|access)\b", "high"),
         # interface change: bidirectional — "change X interface" OR "interface X change"
         ("interface-review", r"\binterface\b.*\b(chang|break|review)|\b(chang|break).*\binterface\b|\bapi\b.*\b(chang|break)|\b(chang|break).*\bapi\b|\bschema\b.*\b(chang|migrat)|\b(chang|migrat).*\bschema\b|\bbackward\b.*\bcompat\b|\bdeprecat\b|\brouter\b.*\bconfig\b|\bprovider\b.*\b(chang|config|schema)|\b(config|schema).*\brefactor\b|\bddl\b|\balter\b.*\btable\b|\bcolumn\b.*\b(add|drop|modif|alter)|\b(add|drop|modif).*\bcolumn\b|\bmigrat.*\b(database|db|column|table|schema)|\b(database|schema).*\bmigrat", "high"),
         # review-diff BEFORE architecture-review (more specific)
