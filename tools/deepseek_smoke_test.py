@@ -55,6 +55,7 @@ def run_smoke_test(
     cloud_ok: bool = False,
     real_run: bool = False,
     manual_smoke_test: bool = False,
+    allow_live_smoke: bool = False,
     record_ledger: bool = False,
 ) -> dict:
     """Run the manual smoke test gate sequence. Mock-only.
@@ -148,10 +149,101 @@ def run_smoke_test(
                       real_run=True, timestamp=timestamp,
                       estimated_cost=cost["estimated_cost"])
 
-    # ── All gates passed — enter stub seam ──
-    stub = _manual_smoke_call_stub()
+    # ── All gates passed — enter stub seam or live seam ──
+    if not allow_live_smoke:
+        # Stub seam (default)
+        stub = _manual_smoke_call_stub()
+        result = {
+            "execution_decision": "manual_smoke_test_stubbed",
+            "model": model,
+            "fixed_prompt_id": FIXED_PROMPT_ID,
+            "fixed_prompt_preview": FIXED_PROMPT_PREVIEW,
+            "estimated_input_tokens": ESTIMATED_INPUT_TOKENS,
+            "estimated_output_tokens": ESTIMATED_OUTPUT_TOKENS,
+            "budget_limit": budget,
+            "estimated_cost": cost["estimated_cost"],
+            "privacy_status": privacy["privacy_status"],
+            "router_task_type": route.task_type,
+            "router_risk_level": route.risk_level,
+            "cloud_ok": True,
+            "real_run": True,
+            "manual_smoke_test": True,
+            "live_smoke_enabled": False,
+            "would_call_deepseek": False,
+            "network_call": False,
+            "api_key_lookup_attempted": False,
+            "api_key_read": False,
+            "api_key_value_logged": False,
+            "stub_only": True,
+            "smoke_call_attempted": True,
+            "smoke_call_result": stub,
+            "http_status": None,
+            "response_text_preview": None,
+            "usage": None,
+            "ledger_event_type": "manual_smoke_test_stubbed" if record_ledger else None,
+            "cost_recorded": record_ledger,
+            "reason": (
+                f"all smoke test gates passed — reached stub seam. "
+                f"Use --allow-live-smoke for real API call. "
+                f"Stub: {stub['redacted_error']}"
+            ),
+            "advisory_only": True,
+            "generated_at": timestamp,
+        }
+        _maybe_record_smoke(result, record_ledger)
+        return result
+
+    # ── Live smoke seam ──
+    # Read API key (only after all gates pass)
+    import os
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key_lookup_attempted = True
+
+    if not api_key:
+        result = {
+            "execution_decision": "missing_api_key",
+            "model": model,
+            "fixed_prompt_id": FIXED_PROMPT_ID,
+            "fixed_prompt_preview": FIXED_PROMPT_PREVIEW,
+            "estimated_input_tokens": ESTIMATED_INPUT_TOKENS,
+            "estimated_output_tokens": ESTIMATED_OUTPUT_TOKENS,
+            "budget_limit": budget,
+            "estimated_cost": cost["estimated_cost"],
+            "privacy_status": privacy["privacy_status"],
+            "router_task_type": route.task_type,
+            "router_risk_level": route.risk_level,
+            "cloud_ok": True,
+            "real_run": True,
+            "manual_smoke_test": True,
+            "live_smoke_enabled": True,
+            "would_call_deepseek": False,
+            "network_call": False,
+            "api_key_lookup_attempted": True,
+            "api_key_read": False,
+            "api_key_value_logged": False,
+            "stub_only": False,
+            "smoke_call_attempted": False,
+            "smoke_call_result": None,
+            "http_status": None,
+            "response_text_preview": None,
+            "usage": None,
+            "ledger_event_type": "smoke_test_failed" if record_ledger else None,
+            "cost_recorded": record_ledger,
+            "reason": "DEEPSEEK_API_KEY environment variable not set",
+            "advisory_only": True,
+            "generated_at": timestamp,
+        }
+        _maybe_record_smoke(result, record_ledger)
+        return result
+
+    # Enter live call seam
+    live_result = _live_smoke_call(api_key=api_key)
+    ledger_event = ("smoke_test_success" if live_result["success"]
+                    else "smoke_test_failed")
+
     result = {
-        "execution_decision": "manual_smoke_test_stubbed",
+        "execution_decision": ("manual_smoke_test_success" if live_result["success"]
+                               else "manual_smoke_test_failed"),
         "model": model,
         "fixed_prompt_id": FIXED_PROMPT_ID,
         "fixed_prompt_preview": FIXED_PROMPT_PREVIEW,
@@ -165,25 +257,105 @@ def run_smoke_test(
         "cloud_ok": True,
         "real_run": True,
         "manual_smoke_test": True,
-        "would_call_deepseek": False,
-        "network_call": False,
-        "api_key_read": False,
-        "api_key_lookup_attempted": False,
+        "live_smoke_enabled": True,
+        "would_call_deepseek": True,
+        "network_call": True,
+        "api_key_lookup_attempted": True,
+        "api_key_read": True,
         "api_key_value_logged": False,
-        "stub_only": True,
+        "stub_only": False,
         "smoke_call_attempted": True,
-        "smoke_call_result": stub,
-        "ledger_event_type": "manual_smoke_test_stubbed" if record_ledger else None,
+        "smoke_call_result": live_result,
+        "http_status": live_result.get("http_status"),
+        "response_text_preview": _safe_preview(live_result.get("response_text", "")),
+        "usage": live_result.get("usage"),
+        "ledger_event_type": ledger_event if record_ledger else None,
         "cost_recorded": record_ledger,
         "reason": (
-            f"all smoke test gates passed — reached stub seam. "
-            f"Stub: {stub['redacted_error']}"
+            f"live smoke test {'succeeded' if live_result['success'] else 'failed'}. "
+            f"Prompt: '{FIXED_PROMPT_PREVIEW}'"
         ),
-        "advisory_only": True,
+        "advisory_only": False,
         "generated_at": timestamp,
     }
     _maybe_record_smoke(result, record_ledger)
     return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# Live call seam
+# ═══════════════════════════════════════════════════════════════
+
+def _live_smoke_call(api_key: str) -> dict:
+    """Make a real DeepSeek API call with the fixed smoke test prompt.
+
+    Only called after all gates pass and DEEPSEEK_API_KEY is verified.
+    Uses deepseek_client.call_deepseek() for the actual API call.
+
+    Args:
+        api_key: DEEPSEEK_API_KEY value (never logged).
+
+    Returns:
+        Dict with success, response_text, usage, http_status, error fields.
+    """
+    from deepseek_client import call_deepseek
+
+    # API key is intentionally NOT included in any return value or log
+    result = call_deepseek(
+        prompt=FIXED_PROMPT,
+        model=FLASH_MODEL,
+        thinking=False,
+        max_tokens=20,
+        api_key=api_key,
+        timeout=30,
+    )
+
+    return {
+        "success": result["ok"],
+        "response_text": result.get("content", ""),
+        "usage": result.get("usage"),
+        "http_status": None,  # call_deepseek doesn't expose raw HTTP status
+        "elapsed_ms": int(result.get("elapsed_seconds", 0) * 1000),
+        "error_type": None if result["ok"] else _classify_error(result.get("error", "")),
+        "error": None if result["ok"] else _redact_error(result.get("error", "")),
+        "network_call": True,
+        "api_key_read": True,
+        "api_key_never_logged": True,
+    }
+
+
+def _classify_error(error: str) -> str:
+    """Classify error type without exposing key values."""
+    el = error.lower()
+    if "401" in el or "403" in el or "unauthorized" in el or "forbidden" in el:
+        return "auth_error"
+    if "429" in el or "rate" in el:
+        return "rate_limit"
+    if "timeout" in el or "timed out" in el:
+        return "timeout"
+    if "500" in el or "502" in el or "503" in el:
+        return "server_error"
+    if "400" in el:
+        return "bad_request"
+    return "unknown_error"
+
+
+def _redact_error(error: str) -> str:
+    """Redact sensitive content from error messages."""
+    import re
+    # Remove sk-... patterns
+    redacted = re.sub(r'sk-[a-zA-Z0-9\-_]{8,}', '[REDACTED_KEY]', error)
+    # Truncate
+    if len(redacted) > 300:
+        redacted = redacted[:300] + "..."
+    return redacted
+
+
+def _safe_preview(text: str, max_len: int = 100) -> str | None:
+    """Safe preview of response text — no API key, bounded length."""
+    if not text:
+        return None
+    return text[:max_len]
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -245,14 +417,18 @@ def _abort(
         "cloud_ok": cloud_ok,
         "real_run": real_run,
         "manual_smoke_test": execution_decision != "missing_manual_smoke_test",
+        "live_smoke_enabled": False,
         "would_call_deepseek": False,
         "network_call": False,
-        "api_key_read": False,
         "api_key_lookup_attempted": False,
+        "api_key_read": False,
         "api_key_value_logged": False,
         "stub_only": False,
         "smoke_call_attempted": False,
         "smoke_call_result": None,
+        "http_status": None,
+        "response_text_preview": None,
+        "usage": None,
         "ledger_event_type": None,
         "cost_recorded": False,
         "reason": reason,
@@ -299,6 +475,8 @@ def main():
                         help="Request real API call")
     parser.add_argument("--manual-smoke-test", action="store_true",
                         help="Enable manual smoke test mode")
+    parser.add_argument("--allow-live-smoke", action="store_true",
+                        help="Allow real API call (requires DEEPSEEK_API_KEY)")
     parser.add_argument("--record-ledger", action="store_true",
                         help="Write stub event to cost ledger")
     parser.add_argument("--json", action="store_true",
@@ -326,6 +504,7 @@ def main():
         cloud_ok=args.cloud_ok,
         real_run=args.real_run,
         manual_smoke_test=args.manual_smoke_test,
+        allow_live_smoke=args.allow_live_smoke,
         record_ledger=args.record_ledger,
     )
 
