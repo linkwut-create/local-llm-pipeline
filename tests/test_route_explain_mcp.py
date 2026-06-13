@@ -1,0 +1,131 @@
+"""Mock tests for local_route_explain MCP tool — no API calls, no profile changes."""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
+from local_llm_mcp_server import call_route_explain
+
+
+# ── Basic invocation ──
+
+def test_docs_review():
+    r = call_route_explain({"task": "summarize PROBLEMS.md and suggest missing issues"})
+    assert r["ok"] is True
+    assert r["task_type"] == "governance-docs"
+    assert r["risk_level"] == "low"
+    assert r["privacy_status"] == "safe"
+    assert r["recommended_local_profile"] == "docs_agent"
+    assert r["advisory_only"] is True
+
+
+def test_release_gate():
+    r = call_route_explain({"task": "prepare release gate for v0.13.0"})
+    assert r["ok"] is True
+    assert r["task_type"] == "release-risk-review"
+    assert r["risk_level"] == "high"
+    assert r["recommended_local_profile"] is None
+    assert "Pro" in r["pro_escalation_condition"]
+    assert r["cloud_allowed"] is False  # cloud_ok not set
+    assert r["escalate_to_pro"] is False  # cloud_ok not set
+
+
+def test_interface_change():
+    r = call_route_explain({"task": "review interface change in provider config schema"})
+    assert r["ok"] is True
+    assert r["task_type"] == "interface-review"
+    assert r["risk_level"] == "high"
+    assert r["recommended_local_profile"] is None
+    assert "Pro" in r["pro_escalation_condition"]
+
+
+def test_env_secret_blocked():
+    r = call_route_explain({"task": "check this .env file for secret configuration"})
+    assert r["ok"] is True
+    assert r["privacy_status"] == "blocked"
+    assert r["cloud_allowed"] is False
+    assert r["flash_escalation_condition"] is None
+    assert r["pro_escalation_condition"] is None
+
+
+def test_diff_review():
+    r = call_route_explain({"task": "review current diff before commit"})
+    assert r["ok"] is True
+    assert r["task_type"] == "review-diff"
+    assert r["risk_level"] == "medium"
+    assert r["recommended_local_profile"] == "commit_reviewer"
+    assert r["flash_escalation_condition"] is not None
+
+
+# ── Escalation context flags ──
+
+def test_cloud_ok_enables_cloud():
+    r = call_route_explain({"task": "review current diff", "cloud_ok": True})
+    assert r["cloud_allowed"] is True
+
+
+def test_local_failures_flash_escalation():
+    r = call_route_explain({
+        "task": "review current diff for bugs",
+        "local_failures": 2,
+        "cloud_ok": True,
+    })
+    assert r["escalate_to_flash"] is True
+
+
+def test_local_failures_not_enough():
+    r = call_route_explain({
+        "task": "review current diff for bugs",
+        "local_failures": 1,
+        "cloud_ok": True,
+    })
+    assert r["escalate_to_flash"] is False
+
+
+def test_high_risk_escalate_to_pro():
+    r = call_route_explain({
+        "task": "prepare release v2.3 for production deployment",
+        "cloud_ok": True,
+    })
+    assert r["escalate_to_pro"] is True
+
+
+# ── Output contract ──
+
+def test_all_output_fields():
+    r = call_route_explain({"task": "review current diff"})
+    required = [
+        "task_type", "risk_level", "privacy_status",
+        "recommended_local_profile", "flash_escalation_condition",
+        "pro_escalation_condition", "cloud_allowed", "reason",
+    ]
+    for field in required:
+        assert field in r, f"Missing output field: {field}"
+
+
+def test_advisory_only_always():
+    r = call_route_explain({"task": "anything"})
+    assert r["advisory_only"] is True
+
+
+# ── Edge cases ──
+
+def test_empty_task():
+    r = call_route_explain({"task": ""})
+    assert r["ok"] is False
+    assert r["error_type"] == "invalid_input"
+
+
+def test_missing_task():
+    r = call_route_explain({})
+    assert r["ok"] is False
+    assert r["error_type"] == "invalid_input"
+
+
+def test_unknown_task_still_ok():
+    r = call_route_explain({"task": "xyzzy flurbo gronk"})
+    assert r["ok"] is True
+    assert r["task_type"] == "unknown"
+    assert r["risk_level"] == "low"

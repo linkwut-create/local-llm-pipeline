@@ -270,14 +270,15 @@ Validated on local-translator-agent and local-durable-agent.
 
 ### MCP Integration (v0.7.0+)
 
-The pipeline exposes 12 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
+The pipeline exposes 13 source-non-mutating MCP tools via `tools/local_llm_mcp_server.py`:
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
 `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
-`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`.
+`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`,
+`local_route_explain`.
 
 Claude Code auto-starts the MCP server from `.mcp.json` when entering the project.
-Verify with `/mcp` — should show `local-llm connected 12 tools`.
+Verify with `/mcp` — should show `local-llm connected 13 tools`.
 
 ### Auto-Invocation (Phase 2.0)
 

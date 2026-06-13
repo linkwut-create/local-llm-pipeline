@@ -48,7 +48,7 @@ local-llm-pipeline is a **local AI development control layer** — not a tool co
 
 | Module | Path | Responsibility | Does NOT |
 |--------|------|---------------|----------|
-| **MCP Server** | `tools/local_llm_mcp_server.py` | 12 tools over stdio JSON-RPC | 不修改源文件，不部署 |
+| **MCP Server** | `tools/local_llm_mcp_server.py` | 13 tools over stdio JSON-RPC | 不修改源文件，不部署 |
 | **Router** | `tools/local_llm_router.py` | Task → profile → model routing | 不执行任务（delegate to worker） |
 | **Worker** | `tools/local_llm_worker.py` | Model invocation, retry, structured output | 不做 routing 决策 |
 | **Debate** | `tools/local_llm_debate.py` | Multi-model cross-review (2-3 rounds) | 不在 commit gate 中使用 |
@@ -440,7 +440,8 @@ The pipeline exposes **12** source-non-mutating MCP tools via
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
 `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
-`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`.
+`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`,
+`local_route_explain`.
 
 MCP tools are source-non-mutating:
 - Never modify source files directly.

@@ -112,6 +112,14 @@
 - **LLM Call**: 无（纯启发式）
 - **Compatibility**: output 只能增字段；workflow_type enum 只能增
 
+### Tool: local_route_explain
+- **Purpose**: 解释 DeepSeek V4 Flash/Pro 路由决策（纯启发式，无 LLM，无 API 调用）。Mock-only，advisory-only。
+- **Input**: `{task: str (required), cloud_ok?: bool, local_failures?: int}`
+- **Output**: `{ok: bool, task_type: str, risk_level: str, privacy_status: str, recommended_local_profile: str|null, flash_escalation_condition: str|null, pro_escalation_condition: str|null, cloud_allowed: bool, reason: str, escalate_to_flash: bool, escalate_to_pro: bool, advisory_only: true, ...}`
+- **Side Effects**: 无
+- **LLM Call**: 无（纯启发式，in-process via RouterEngine）
+- **Compatibility**: output 字段只能增；task_type 值只能增
+
 ---
 
 ## 2. CLI Contract
@@ -340,6 +348,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-006: local_route_explain 新增为 13th MCP tool
+- **Date**: 2026-06-13 (route-explain-mcp chain)
+- **What**: MCP tool 数量 12 → 13；新增 `local_route_explain` — heuristic route explanation
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 14 mock tests in `tests/test_route_explain_mcp.py`
 
 ### IFACE-CHANGE-005: router_explain 新增 CLI tool
 - **Date**: 2026-06-13 (router-explain chain)

@@ -1136,6 +1136,35 @@ TOOLS = {
             "required": [],
         },
     },
+
+    "local_route_explain": {
+        "description": (
+            "Route explain tool — heuristic, no LLM calls, advisory-only. "
+            "Analyzes a task description and outputs a structured routing "
+            "decision: task_type, risk_level, privacy_status, recommended "
+            "local profile, flash/pro escalation conditions, cloud_allowed "
+            "verdict, and human-readable reason. Mock-only, never calls "
+            "DeepSeek API or modifies profiles. Controller makes final routing decision."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Task description to analyze (e.g., 'review current diff for bugs').",
+                },
+                "cloud_ok": {
+                    "type": "boolean",
+                    "description": "Set to true if cloud escalation is permitted. Default false (local-first).",
+                },
+                "local_failures": {
+                    "type": "integer",
+                    "description": "Number of consecutive local model failures. Used to evaluate Flash escalation. Default 0.",
+                },
+            },
+            "required": ["task"],
+        },
+    },
 }
 
 
@@ -3475,6 +3504,64 @@ def call_classify_test_failure(params: dict) -> dict:
 
 
 
+def call_route_explain(params: dict) -> dict:
+    """Route explain tool — heuristic, advisory-only, no LLM, no API calls."""
+    request_id = _make_request_id()
+
+    try:
+        from router_explain import RouterEngine
+    except ImportError:
+        return {
+            "tool": "local_route_explain",
+            "ok": False,
+            "error": "router_explain module not available",
+            "error_type": "import_error",
+            "request_id": request_id,
+            "advisory_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    task = str(params.get("task", "") or "")
+    if not task.strip():
+        return {
+            "tool": "local_route_explain",
+            "ok": False,
+            "error": "task parameter is required",
+            "error_type": "invalid_input",
+            "request_id": request_id,
+            "advisory_only": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    engine = RouterEngine()
+    decision = engine.analyze(task)
+
+    # Evaluate escalation with optional context flags
+    local_failures = int(params.get("local_failures", 0) or 0)
+    cloud_ok = bool(params.get("cloud_ok", False))
+
+    return {
+        "tool": "local_route_explain",
+        "ok": True,
+        "task_type": decision.task_type,
+        "risk_level": decision.risk_level,
+        "privacy_status": decision.privacy_status,
+        "recommended_local_profile": decision.recommended_local_profile,
+        "flash_escalation_condition": decision.flash_escalation_condition,
+        "pro_escalation_condition": decision.pro_escalation_condition,
+        "cloud_allowed": decision.cloud_allowed and cloud_ok,
+        "reason": decision.reason,
+        "signals": decision.signals,
+        "confidence": decision.confidence,
+        "local_failures": local_failures,
+        "escalate_to_flash": local_failures >= 2 and decision.cloud_allowed and cloud_ok,
+        "escalate_to_pro": decision.risk_level in ("high", "critical") and decision.cloud_allowed and cloud_ok,
+        "advisory_only": True,
+        "request_id": request_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 TOOL_HANDLERS = {
     "local_check": call_local_check,
     "local_summarize_file": call_summarize_file,
@@ -3488,6 +3575,7 @@ TOOL_HANDLERS = {
     "local_repo_map": call_repo_map,
     "local_classify_test_failure": call_classify_test_failure,
     "local_workflow_plan": call_workflow_plan,
+    "local_route_explain": call_route_explain,
 }
 
 
