@@ -554,3 +554,10 @@ def test_report_has_recommendation_field():
     r = compute_report()
     assert "recommendation" in r
     assert isinstance(r["recommendation"], str)
+
+
+def test_critical_count_stable():
+    """Multiple runs should produce stable critical_misrouting count."""
+    r1 = compute_report()
+    r2 = compute_report()
+    assert r1["critical_misrouting_count"] == r2["critical_misrouting_count"]
