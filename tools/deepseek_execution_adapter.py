@@ -48,6 +48,20 @@ PRO_MODEL = "deepseek-v4-pro"
 FLASH_MODEL = "deepseek-v4-flash"
 ALLOWED_MODELS = {FLASH_MODEL, PRO_MODEL}
 
+# Flash limited real-run constraints
+FLASH_LIMITED_MAX_BUDGET = 0.5   # CNY per call
+FLASH_LIMITED_MAX_INPUT = 4000   # tokens
+FLASH_LIMITED_MAX_OUTPUT = 1024  # tokens
+FLASH_LIMITED_ALLOWED_TASKS = {
+    "review-diff", "summarize-file", "suggest-improvements",
+    "draft-fix", "generate-test-plan", "translate-text",
+    "rewrite-text", "deep-code-review",
+}
+FLASH_LIMITED_BLOCKED_TASKS = {
+    "release-risk-review", "security-review", "interface-review",
+    "api-execution-boundary", "architecture-review",
+}
+
 
 # ═══════════════════════════════════════════════════════════════
 # Core engine
@@ -61,6 +75,9 @@ def execute(
     budget: float | None = None,
     cloud_ok: bool = False,
     real_run: bool = False,
+    flash_limited: bool = False,
+    manual_confirm: bool = False,
+    input_text: str = "",
     record_ledger: bool = False,
 ) -> dict:
     """Run the full execution adapter gate sequence. Mock-only.
@@ -82,6 +99,18 @@ def execute(
         Full execution plan dict.
     """
     timestamp = datetime.now(timezone.utc).isoformat()
+
+    # ═══════════════════════════════════════════════════════════════
+    # Flash limited real-run path
+    # ═══════════════════════════════════════════════════════════════
+    if flash_limited:
+        return _execute_flash_limited(
+            task=task, model=model,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            budget=budget, cloud_ok=cloud_ok, real_run=real_run,
+            manual_confirm=manual_confirm, input_text=input_text,
+            record_ledger=record_ledger, timestamp=timestamp,
+        )
 
     # ── Gate [1]: cloud_ok ──
     if not cloud_ok:
@@ -332,6 +361,154 @@ def _guarded_api_call_stub(
 
 
 # ═══════════════════════════════════════════════════════════════
+# Flash limited real-run
+# ═══════════════════════════════════════════════════════════════
+
+def _fl_abort(decision: str, reason: str, **kw) -> dict:
+    """Shortcut for flash-limited abort with mode preset."""
+    return _abort(
+        task=kw.pop("task", ""), model=kw.pop("model", FLASH_MODEL),
+        execution_decision=decision, reason=reason, **kw,
+    )
+
+
+def _execute_flash_limited(
+    task: str, model: str,
+    input_tokens: int, output_tokens: int,
+    budget: float | None, cloud_ok: bool, real_run: bool,
+    manual_confirm: bool, input_text: str,
+    record_ledger: bool, timestamp: str,
+) -> dict:
+    """Execute the flash-limited gate sequence. Stub only."""
+    fl = {"task": task, "model": model, "mode": "flash_limited",
+          "real_run": real_run, "timestamp": timestamp}
+    co = {**fl, "cloud_ok": cloud_ok, "budget": budget}
+
+    if not manual_confirm:
+        return _fl_abort("missing_manual_confirm",
+                         "manual confirmation required", **co)
+    if not cloud_ok:
+        return _fl_abort("cloud_ok_required",
+                         "cloud escalation not enabled (use --cloud-ok)",
+                         **{**co, "cloud_ok": False})
+    if not real_run:
+        return _fl_abort("mock_plan_ready",
+                         "real_run not requested", **co)
+    if model != FLASH_MODEL:
+        return _fl_abort("model_not_allowed_for_flash_limited",
+                         f"model '{model}' not allowed", **co)
+
+    privacy = privacy_check(text=task)
+    if privacy["privacy_status"] in ("blocked", "needs_review"):
+        return _fl_abort("blocked_by_privacy",
+                         f"task: {privacy['reason']}",
+                         privacy_status=privacy["privacy_status"], **co)
+
+    input_privacy_status = "safe"
+    if input_text:
+        ip = privacy_check(text=input_text)
+        input_privacy_status = ip["privacy_status"]
+        if input_privacy_status in ("blocked", "needs_review"):
+            return _fl_abort("blocked_by_privacy",
+                             f"input: {ip['reason']}",
+                             privacy_status=privacy["privacy_status"],
+                             input_privacy_status=input_privacy_status, **co)
+
+    route = _engine.analyze(task)
+    if route.risk_level in ("high", "critical"):
+        return _fl_abort("needs_pro_review",
+                         f"risk={route.risk_level}",
+                         router_task_type=route.task_type,
+                         router_risk_level=route.risk_level,
+                         privacy_status=privacy["privacy_status"], **co)
+    if route.task_type == "unknown":
+        return _fl_abort("blocked_by_router",
+                         "router cannot classify task",
+                         router_task_type=route.task_type,
+                         router_risk_level=route.risk_level,
+                         privacy_status=privacy["privacy_status"], **co)
+    if route.task_type in FLASH_LIMITED_BLOCKED_TASKS:
+        return _fl_abort("blocked_by_router",
+                         f"task type '{route.task_type}' blocked",
+                         router_task_type=route.task_type,
+                         router_risk_level=route.risk_level,
+                         privacy_status=privacy["privacy_status"], **co)
+
+    context_ok = (input_tokens <= FLASH_LIMITED_MAX_INPUT and
+                  output_tokens <= FLASH_LIMITED_MAX_OUTPUT)
+    if not context_ok:
+        return _fl_abort("context_limit_exceeded",
+                         f"in:{input_tokens}/{FLASH_LIMITED_MAX_INPUT} "
+                         f"out:{output_tokens}/{FLASH_LIMITED_MAX_OUTPUT}",
+                         router_task_type=route.task_type,
+                         router_risk_level=route.risk_level,
+                         privacy_status=privacy["privacy_status"], **co)
+
+    if budget is None:
+        return _fl_abort("missing_budget",
+                         "flash-limited requires --budget", **co)
+    if budget > FLASH_LIMITED_MAX_BUDGET:
+        return _fl_abort("budget_limit_too_high_for_flash_limited",
+                         f"{budget} > {FLASH_LIMITED_MAX_BUDGET}", **co)
+
+    cost = cost_estimate(task=task, model=model,
+                         input_tokens=input_tokens, output_tokens=output_tokens,
+                         budget_limit=budget)
+    if not cost["price_known"]:
+        return _fl_abort("unknown_price", f"no pricing for '{model}'", **co)
+    if not cost["allowed"]:
+        return _fl_abort("blocked_by_budget",
+                         f"est {cost['estimated_cost']} CNY",
+                         estimated_cost=cost["estimated_cost"], **co)
+
+    # ── All gates passed — stub seam ──
+    result = {
+        "execution_decision": "flash_limited_stubbed",
+        "mode": "flash_limited",
+        "model": model,
+        "task": task,
+        "router_task_type": route.task_type,
+        "router_risk_level": route.risk_level,
+        "privacy_status": privacy["privacy_status"],
+        "input_privacy_status": input_privacy_status,
+        "budget_limit": budget,
+        "estimated_cost": cost["estimated_cost"],
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "max_input_tokens": FLASH_LIMITED_MAX_INPUT,
+        "max_output_tokens": FLASH_LIMITED_MAX_OUTPUT,
+        "context_limit_pass": True,
+        "cloud_ok": True,
+        "real_run": True,
+        "flash_limited": True,
+        "manual_confirm": True,
+        "would_call_deepseek": False,
+        "network_call": False,
+        "api_key_lookup_attempted": False,
+        "api_key_read": False,
+        "stub_only": True,
+        "api_call_attempted": False,
+        "api_call_result": None,
+        "error_type": None,
+        "redacted_error": None,
+        "ledger_event_type": "flash_limited_stubbed" if record_ledger else None,
+        "cost_recorded": record_ledger,
+        "reason": (
+            f"all flash-limited gates passed — reached stub seam. "
+            f"Privacy: task={privacy['privacy_status']}, input={input_privacy_status}. "
+            f"Router: {route.task_type}/{route.risk_level}. "
+            f"Cost: {cost['estimated_cost']} CNY. "
+            f"Context: {input_tokens}/{FLASH_LIMITED_MAX_INPUT} in, "
+            f"{output_tokens}/{FLASH_LIMITED_MAX_OUTPUT} out."
+        ),
+        "advisory_only": True,
+        "generated_at": timestamp,
+    }
+    _maybe_record(result, record_ledger)
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
 
@@ -487,6 +664,12 @@ def main():
                         help="Allow cloud escalation (required)")
     parser.add_argument("--real-run", action="store_true",
                         help="Request real API call (ALWAYS blocked in mock)")
+    parser.add_argument("--flash-limited", action="store_true",
+                        help="Enable Flash limited real-run mode")
+    parser.add_argument("--manual-confirm", action="store_true",
+                        help="Manual confirmation for real-run (required)")
+    parser.add_argument("--input-text", default="",
+                        help="Input text for flash-limited tasks")
     parser.add_argument("--record-ledger", action="store_true",
                         help="Write mock event to cost ledger (default: off)")
     parser.add_argument("--json", action="store_true",
@@ -505,6 +688,9 @@ def main():
         budget=args.budget,
         cloud_ok=args.cloud_ok,
         real_run=args.real_run,
+        flash_limited=args.flash_limited,
+        manual_confirm=args.manual_confirm,
+        input_text=args.input_text,
         record_ledger=args.record_ledger,
     )
 

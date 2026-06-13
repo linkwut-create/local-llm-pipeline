@@ -557,3 +557,135 @@ def test_json_schema_has_stub_fields():
     ]
     for field in stub_fields:
         assert field in result, f"Missing stub field: {field}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 16. Flash limited real-run tests
+# ═══════════════════════════════════════════════════════════════
+
+FL_ARGS = dict(flash_limited=True, manual_confirm=True, cloud_ok=True,
+               real_run=True, budget=0.5, input_text="safe text")
+
+
+def test_fl_no_manual_confirm():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200, **{**FL_ARGS, "manual_confirm": False})
+    assert r["execution_decision"] == "missing_manual_confirm"
+
+
+def test_fl_no_cloud_ok():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200, **{**FL_ARGS, "cloud_ok": False})
+    assert r["execution_decision"] == "cloud_ok_required"
+
+
+def test_fl_pro_blocked():
+    r = execute(task="review diff", model=PRO_MODEL,
+                input_tokens=100, output_tokens=200, **FL_ARGS)
+    assert r["execution_decision"] == "model_not_allowed_for_flash_limited"
+
+
+def test_fl_unknown_model():
+    r = execute(task="review diff", model="unknown-model",
+                input_tokens=100, output_tokens=200, **FL_ARGS)
+    assert r["execution_decision"] == "model_not_allowed_for_flash_limited"
+
+
+def test_fl_privacy_blocked_task():
+    r = execute(task="check .env.production for credentials",
+                model=FLASH_MODEL, input_tokens=100, output_tokens=200, **FL_ARGS)
+    assert r["execution_decision"] == "blocked_by_privacy"
+
+
+def test_fl_privacy_blocked_input():
+    r = execute(task="summarize text", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200,
+                **{**FL_ARGS, "input_text": "sk-abc123def456ghijklmnopqrstuvwxyz"})
+    assert r["execution_decision"] == "blocked_by_privacy"
+
+
+def test_fl_budget_missing():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200,
+                **{**FL_ARGS, "budget": None})
+    assert r["execution_decision"] == "missing_budget"
+
+
+def test_fl_budget_too_high():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200,
+                **{**FL_ARGS, "budget": 1.0})
+    assert r["execution_decision"] == "budget_limit_too_high_for_flash_limited"
+
+
+def test_fl_release_needs_pro():
+    r = execute(task="prepare release gate v0.13.0", model=FLASH_MODEL,
+                input_tokens=500, output_tokens=500, **FL_ARGS)
+    assert r["execution_decision"] == "needs_pro_review"
+
+
+def test_fl_unknown_task():
+    r = execute(task="xyzzy flurbo unknown", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=200, **FL_ARGS)
+    assert r["execution_decision"] == "blocked_by_router"
+
+
+def test_fl_context_limit_exceeded():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=5000, output_tokens=200, **FL_ARGS)
+    assert r["execution_decision"] == "context_limit_exceeded"
+
+
+def test_fl_output_limit_exceeded():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=2000, **FL_ARGS)
+    assert r["execution_decision"] == "context_limit_exceeded"
+
+
+def test_fl_valid_stubbed():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=500, output_tokens=500, **FL_ARGS)
+    assert r["execution_decision"] == "flash_limited_stubbed"
+    assert r["mode"] == "flash_limited"
+    assert r["would_call_deepseek"] is False
+    assert r["network_call"] is False
+    assert r["api_key_read"] is False
+    assert r["stub_only"] is True
+    assert r["context_limit_pass"] is True
+
+
+def test_fl_valid_no_api_key():
+    r = execute(task="summarize file", model=FLASH_MODEL,
+                input_tokens=200, output_tokens=100, **FL_ARGS)
+    import deepseek_execution_adapter as da
+    source = Path(da.__file__).read_text(encoding="utf-8")
+    in_doc = False; code = []
+    for ln in source.split("\n"):
+        s = ln.strip()
+        if s.startswith('"""') or s.startswith("'''"):
+            in_doc = not in_doc; continue
+        if in_doc: continue
+        if s.startswith("#"): continue
+        code.append(ln)
+    # Flash limited stub must not access API key
+    assert "DEEPSEEK_API_KEY" not in "\n".join(code)
+
+
+def test_fl_ledger_default_off(tmp_path, monkeypatch):
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", tmp_path / "cl_fl")
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=100, output_tokens=100,
+                **{**FL_ARGS, "record_ledger": False})
+    assert r["cost_recorded"] is False
+
+
+def test_fl_json_schema():
+    r = execute(task="review diff", model=FLASH_MODEL,
+                input_tokens=500, output_tokens=500, **FL_ARGS)
+    fl_fields = [
+        "mode", "flash_limited", "manual_confirm",
+        "input_privacy_status", "context_limit_pass",
+        "max_input_tokens", "max_output_tokens",
+    ]
+    for field in fl_fields:
+        assert field in r, f"Missing flash-limited field: {field}"
