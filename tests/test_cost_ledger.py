@@ -827,3 +827,55 @@ def test_zero_token_does_not_break_totals(tmp_path, monkeypatch):
     flash = s["by_model"].get("deepseek-v4-flash", {})
     assert flash.get("total_input", 0) == 100
     assert flash.get("total_output", 0) == 50
+
+
+# ═══════════════════════════════════════════════════════════════
+# No-secret output regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_summary_excludes_api_key_env():
+    """Summary output must not contain DEEPSEEK_API_KEY name or value."""
+    s = summary()
+    text = json.dumps(s)
+    assert "DEEPSEEK_API_KEY" not in text
+    assert "deepseek_api_key" not in text.lower()
+
+
+def test_estimate_excludes_raw_prompt():
+    """Estimate output must not contain raw prompt text field."""
+    r = estimate(task="check secrets", model="deepseek-v4-flash",
+                 input_tokens=100, output_tokens=50)
+    assert "prompt" not in r
+    assert "raw_prompt" not in r
+
+
+def test_recorded_jsonl_excludes_reasoning(tmp_path, monkeypatch):
+    """Recorded JSONL line must not contain reasoning or raw text."""
+    test_dir = tmp_path / "cl_nosecret"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="no secret", model="deepseek-v4-flash",
+           input_tokens=10, output_tokens=5)
+    month_file = _month_file()
+    with open(month_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            assert "reasoning" not in data
+            assert "raw_text" not in data
+
+
+def test_summary_json_parseable():
+    """Summary output is valid JSON."""
+    s = summary()
+    text = json.dumps(s)
+    parsed = json.loads(text)
+    assert parsed["total_calls"] >= 0
+
+
+def test_unknown_model_explicit_in_summary():
+    """Unknown model records counted explicitly in summary."""
+    s = summary()
+    assert "unknown_price" in s
+    assert isinstance(s["unknown_price"], int)
