@@ -352,6 +352,24 @@ Claude Code soft gate integration design is complete.
 
 ---
 
+## 17. Claude Code Soft Gate Convergence Audit — Status (2026-06-13)
+
+Convergence audit complete. Decision: PASS_WITH_LIMITS.
+
+**Done**:
+- `docs/claude_code_soft_gate_convergence_audit.md`
+- Static audit: 9/9 OK (no keys, no network, no file reads)
+- CLI audit: 5/5 cases correct (allow/warn/defer/cloud_blocked/manual_confirm)
+- Schema audit: all fields present, would_block always false
+- Shadow route: 158 records, privacy_bypass=0, false_cloud_on_secret=0
+
+**Pending**:
+- CLAUDE.md default soft-gate usage draft
+- Warning gate (blocked: shadow route match_rate < 85%)
+- Stop hook (blocked: critical_misrouting > 0)
+
+---
+
 ## 14. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
