@@ -545,18 +545,34 @@ def _abort(
 
 
 def _maybe_record_smoke(result: dict, record_ledger: bool) -> None:
-    """Optionally write a mock smoke test record to cost ledger."""
+    """Optionally write a smoke test record to cost ledger.
+
+    Uses actual token usage from the smoke result when available.
+    Historical records are not rewritten.
+    """
     if not record_ledger:
         return
     try:
         from cost_ledger import record as ledger_record
+
+        usage = result.get("usage") or {}
+        input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
+        output_tokens = usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
+        is_live = result.get("live_smoke_enabled", False)
+        event_type = result.get("ledger_event_type", "unknown")
+        is_stub = result.get("stub_only", True)
+
         ledger_record(
             task="manual DeepSeek API smoke test",
             model=result.get("model", FLASH_MODEL),
-            input_tokens=0,
-            output_tokens=0,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             budget_limit=result.get("budget_limit"),
-            notes=f"mock: {result.get('ledger_event_type', 'unknown')}",
+            notes=(
+                f"{'live' if is_live else 'mock'}: {event_type} — "
+                f"tokens: {input_tokens}in/{output_tokens}out, "
+                f"stub={is_stub}"
+            ),
         )
     except Exception:
         pass
