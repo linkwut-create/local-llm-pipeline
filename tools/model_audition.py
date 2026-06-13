@@ -26,7 +26,9 @@ RESULTS_DIR = EVALS_DIR / "results"
 REPORTS_DIR = EVALS_DIR / "reports"
 RUBRIC_PATH = EVALS_DIR / "rubric.yaml"
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "193.168.2.2:11434")
+_raw_host = os.environ.get("OLLAMA_HOST", "193.168.2.2:11434")
+# Strip protocol prefix if present (env var may include http:// or https://)
+OLLAMA_HOST = _raw_host.replace("https://", "").replace("http://", "")
 OLLAMA_API = f"http://{OLLAMA_HOST}/api/generate"
 
 
@@ -54,8 +56,9 @@ def list_cases() -> list[str]:
     return sorted([f.stem for f in CASES_DIR.glob("*.md")])
 
 
-# Pre-flight token limits to try, from small to large
-PREFLIGHT_TOKEN_LIMITS = [50, 200, 400, 800]
+# Pre-flight token limits to try, from small to large.
+# Start at 200 — "Say OK." always succeeds at 50 but actual cases need headroom.
+PREFLIGHT_TOKEN_LIMITS = [200, 400, 800]
 
 
 def warmup_model(model: str, warmup_timeout: int = 1800) -> bool:
@@ -71,11 +74,13 @@ def warmup_model(model: str, warmup_timeout: int = 1800) -> bool:
 
 
 def preflight_check(model: str, timeout: int = 180) -> int:
-    """Run a quick warmup to find the optimal num_predict for this model.
-    Returns the recommended num_predict value. Assumes model is already loaded."""
+    """Run a quick test to find the optimal num_predict for this model.
+    Uses a short but real prompt (not just "Say OK.") to ensure the model
+    can produce multi-sentence output. Returns the recommended num_predict."""
+    test_prompt = "Explain what a JSON schema validator does in 2-3 sentences."
     for np in PREFLIGHT_TOKEN_LIMITS:
-        r = call_ollama(model, "Say OK.", timeout=timeout, num_predict=np)
-        if r["ok"] and r["response"].strip():
+        r = call_ollama(model, test_prompt, timeout=timeout, num_predict=np)
+        if r["ok"] and len(r["response"].strip()) > 50:
             return np
     return PREFLIGHT_TOKEN_LIMITS[0]
 
@@ -243,7 +248,8 @@ def main():
         print(f"\nDone. {len(all_saved)} result files saved.")
         for p in all_saved:
             print(f"  {p}")
-        print(f"\nScore with: py -3 tools/score_model_audition.py {all_saved[-1]}")
+        if all_saved:
+            print(f"\nScore with: py -3 tools/score_model_audition.py {all_saved[-1]}")
 
 
 if __name__ == "__main__":
