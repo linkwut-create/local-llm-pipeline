@@ -383,3 +383,10 @@ def test_doc_mention_api_key_safe():
     """Documentation about API configuration is safe."""
     result = check(text="configure the API authentication settings in config")
     assert result["privacy_status"] == "safe"
+
+
+def test_env_path_blocked_explicit():
+    assert check(path="config/production/.env").get("privacy_status") == "blocked"
+
+def test_normal_md_path_safe():
+    assert check(path="docs/architecture.md").get("privacy_status") == "safe"
