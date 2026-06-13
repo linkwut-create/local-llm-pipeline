@@ -65,3 +65,50 @@
 - Translation history is in `history.db` — never read
 - Browser extension has its own manifest — safe to review structurally
 - Templates dir contains governance templates — safe, reusable
+
+## Test Entrypoint Review
+
+### Safe Test Candidates (no audio/model/user data needed)
+
+| Test file | Category | Safe for read-only? |
+|-----------|----------|---------------------|
+| `test_agent.py` | agent logic | ✓ structural review |
+| `test_atomic_write.py` | file I/O | ✓ code path review |
+| `test_fast.py` | fast/smoke | ✓ |
+| `test_glossary_unification.py` | glossary | ✓ if not reading glossary.json |
+| `test_llm_provider.py` | LLM config | ✓ config review |
+| `test_profiles.py` | profiles | ✓ config review |
+| `test_preset_checker.py` | presets | ✓ |
+| `test_provider_checker.py` | provider check | ✓ |
+| `test_tm_schema.py` | TM schema | ✓ schema review |
+| `test_tm_prompt_injection.py` | TM security | ✓ |
+| `test_cancel_safety.py` | cancel safety | ✓ |
+| `test_shutdown.py` | shutdown | ✓ |
+| `test_stop_all_script.py` | stop script | ✓ |
+| `test_system_health.py` | health check | ✓ |
+| `test_mobile_pwa.py` | mobile PWA | ✓ static |
+| `test_pdf_reader_static.py` | PDF reader | ✓ static |
+| `test_immersive_local_extension.py` | extension | ✓ manifest review |
+| `test_tm_confirmation_ui_static.py` | TM UI | ✓ static |
+
+### Risky Test Candidates (may need audio/model/image/user data)
+
+| Test file | Concern |
+|-----------|---------|
+| `test_audio.py` | may load audio fixtures |
+| `test_voice.py`, `test_voice_hotkey.py` | may load voice .mp3 |
+| `test_realtime_*.py` (8 files) | may access realtime sessions |
+| `test_subtitle*.py` (5 files) | may load subtitle content |
+| `test_tm_embedding_live_smoke.py` | requires live Ollama |
+| `test_followup_api.py` | may call API |
+| `test_api_fallback.py` | may call API |
+| `test_selection_api.py` | may call API |
+| `test_tm_api.py`, `test_tm_fts_api.py`, `test_tm_semantic_search_api.py` | may call API |
+| `test_g3a_prompt_unification.py`, `test_g3d_ocr_audio_prompt_unification.py` | may load media |
+| `test_overlay_smoke.py` | smoke test, may need GUI |
+
+### Recommended First Real Read-Only Task
+
+**Review `test_tm_schema.py` test structure** — purely structural code review,
+no audio/model/user data, no API calls, no OCR. Verify test coverage patterns
+for translation memory schema.
