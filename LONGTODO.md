@@ -370,6 +370,24 @@ Convergence audit complete. Decision: PASS_WITH_LIMITS.
 
 ---
 
+## 18. Soft Gate Dogfood Calibration Plan — Status (2026-06-13)
+
+Calibration plan complete. Router changes NOT yet implemented.
+
+**Done**:
+- `docs/soft_gate_dogfood_calibration_plan.md`
+- 5 mismatch types classified
+- 5 router calibration candidates (C1-C5)
+- Soft gate test gaps identified
+- Next calibration round scoped with targets
+- Block conditions maintained
+
+**Pending**:
+- Router calibration round for soft gate governance tasks (implement C1-C5)
+- Target: critical_misrouting=0, unknown_rate < 35%, match_rate > 75%
+
+---
+
 ## 14. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
