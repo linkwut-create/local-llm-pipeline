@@ -18,9 +18,11 @@ Design constraints:
   - Never calls DeepSeek API or any LLM.
   - Never reads API keys or secrets.
   - Never modifies profiles, hooks, MCP server, or deepseek_client.
-  - would_call_deepseek is ALWAYS false (mock skeleton).
-  - api_key_read is ALWAYS false (mock skeleton).
-  - mock_only is ALWAYS true.
+  - would_call_deepseek is ALWAYS false.
+  - api_key_read is ALWAYS false.
+  - network_call is ALWAYS false.
+  - --real-run with all gates passed → reaches guarded API call stub seam
+    (real_run_stubbed), but the stub never makes network calls.
 
 Usage:
   py -3 tools/deepseek_execution_adapter.py --task "review diff" --model deepseek-v4-flash --input-tokens 10000 --output-tokens 2000 --budget 200 --cloud-ok
@@ -205,20 +207,47 @@ def execute(
 
     # ── Gate [6]: real_run check ──
     if real_run:
-        # Mock skeleton: ALWAYS block real-run
+        # Privacy needs_review → hard block for real-run (v1)
+        if privacy_needs_review:
+            result = _abort(
+                task=task, model=model,
+                execution_decision="blocked_by_privacy",
+                reason=(
+                    f"real_run blocked: privacy status is needs_review — "
+                    f"human review required before real API call. "
+                    f"Privacy: {privacy['reason']}"
+                ),
+                router_task_type=route.task_type,
+                router_risk_level=route.risk_level,
+                privacy_status=privacy["privacy_status"],
+                estimated_cost=cost["estimated_cost"],
+                budget_limit=budget,
+                budget_remaining=cost.get("budget_remaining"),
+                input_tokens=input_tokens, output_tokens=output_tokens,
+                timestamp=timestamp,
+                recommended_model=dry.get("recommended_model", model),
+            )
+            _maybe_record(result, record_ledger)
+            return result
+
+        # All gates passed — enter guarded API call stub seam
+        stub = _guarded_api_call_stub(
+            task=task, model=model,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+        )
         result = _result_base(
             task=task, model=model,
-            execution_decision="real_run_not_implemented",
+            execution_decision="real_run_stubbed",
             dry_run_decision=dry["decision"],
             reason=(
-                "real_run requested but this is a mock skeleton — "
-                "real DeepSeek API calls are not yet implemented. "
-                "Dry-run plan: " + dry["reason"]
+                f"all governance gates passed — reached guarded API call seam. "
+                f"Stub response: {stub['redacted_error']}. "
+                f"Dry-run: {dry['reason']}"
             ),
             router_task_type=route.task_type,
             router_risk_level=route.risk_level,
             privacy_status=privacy["privacy_status"],
-            privacy_needs_review=privacy_needs_review,
+            privacy_needs_review=False,
             estimated_cost=cost["estimated_cost"],
             budget_limit=budget,
             budget_remaining=cost.get("budget_remaining"),
@@ -226,7 +255,11 @@ def execute(
             input_tokens=input_tokens, output_tokens=output_tokens,
             timestamp=timestamp,
             recommended_model=dry.get("recommended_model", model),
-            ledger_event_type="real_run_not_implemented",
+            ledger_event_type="real_run_stubbed",
+            stub_only=True,
+            network_call=False,
+            api_call_attempted=True,
+            api_call_result=stub,
         )
         _maybe_record(result, record_ledger)
         return result
@@ -264,6 +297,41 @@ def execute(
 
 
 # ═══════════════════════════════════════════════════════════════
+# Guarded API call stub seam
+# ═══════════════════════════════════════════════════════════════
+
+def _guarded_api_call_stub(
+    task: str,
+    model: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+) -> dict:
+    """Stub that represents the API call seam without making real calls.
+
+    NEVER imports requests/httpx. NEVER reads DEEPSEEK_API_KEY.
+    NEVER accesses os.environ. NEVER makes network calls.
+
+    Returns a stub result dict that the real-run path can embed.
+    """
+    # Deliberately NOT importing: requests, httpx, urllib, os.environ
+    return {
+        "success": False,
+        "stub_only": True,
+        "response_text": None,
+        "usage": None,
+        "elapsed_ms": 0,
+        "network_call": False,
+        "api_key_read": False,
+        "http_status": None,
+        "error_type": "stubbed_real_run",
+        "redacted_error": (
+            "real API call seam reached but external call is disabled "
+            "in this skeleton. No network request was made."
+        ),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
 
@@ -286,6 +354,10 @@ def _result_base(
     output_tokens: int = 0,
     timestamp: str = "",
     ledger_event_type: str | None = None,
+    stub_only: bool = False,
+    network_call: bool = False,
+    api_call_attempted: bool = False,
+    api_call_result: dict | None = None,
 ) -> dict:
     """Build the standard output dict."""
     return {
@@ -308,8 +380,14 @@ def _result_base(
         "real_run": real_run,
         "dry_run_only": not real_run,
         "mock_only": True,
+        "stub_only": stub_only,
+        "network_call": network_call,
         "would_call_deepseek": False,
         "api_key_read": False,
+        "api_call_attempted": api_call_attempted,
+        "api_call_result": api_call_result,
+        "error_type": api_call_result.get("error_type") if api_call_result else None,
+        "redacted_error": api_call_result.get("redacted_error") if api_call_result else None,
         "cost_recorded": ledger_event_type is not None,
         "ledger_event_type": ledger_event_type,
         "reason": reason,
@@ -347,8 +425,14 @@ def _abort(
         "real_run": False,
         "dry_run_only": True,
         "mock_only": True,
+        "stub_only": False,
+        "network_call": False,
         "would_call_deepseek": False,
         "api_key_read": False,
+        "api_call_attempted": False,
+        "api_call_result": None,
+        "error_type": None,
+        "redacted_error": None,
         "cost_recorded": False,
         "ledger_event_type": None,
         "reason": reason,
