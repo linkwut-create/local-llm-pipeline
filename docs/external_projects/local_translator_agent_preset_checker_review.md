@@ -69,3 +69,11 @@
 ## Recommended Next Read-Only Task
 
 `tests/test_fast.py` or `tests/test_provider_checker.py` — both fast/smoke/config tests.
+
+---
+
+## Import Target Review (#82)
+
+Confirmed: `services/preset_checker.py` import target already documented in #81.
+`check_local_first_preset()` returns `PresetStatus` dataclass. All tests fully mocked.
+No secrets, no network, no user data. External repo unmodified.
