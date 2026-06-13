@@ -372,3 +372,14 @@ def test_windows_mixed_slashes_env():
 def test_windows_credentials_json_blocked():
     result = check(path=r"D:\config\credentials.json")
     assert result["privacy_status"] == "blocked"
+
+
+def test_doc_mention_env_safe():
+    """Documentation mentioning .env is needs_review not blocked."""
+    result = check(text="Copy .env.example to .env and configure")
+    assert result["privacy_status"] != "blocked"
+
+def test_doc_mention_api_key_safe():
+    """Documentation mentioning API_KEY in context is not blocked."""
+    result = check(text="Set YOUR_API_KEY in the environment")
+    assert result["privacy_status"] == "safe"

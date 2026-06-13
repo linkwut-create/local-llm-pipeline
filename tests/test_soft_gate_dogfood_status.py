@@ -231,3 +231,15 @@ def test_router_type_distribution_keys():
     assert isinstance(r["router_type_distribution"], dict)
     # With real data, should have entries
     assert "records_total" in r
+
+
+def test_cli_text_output_no_traceback():
+    import subprocess
+    r = subprocess.run(["py","-3","tools/soft_gate_dogfood_status.py","--since","2026-06-13","--target","30"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    assert "Traceback" not in r.stdout
+
+def test_cli_json_warning_gate_false():
+    import subprocess, json
+    r = subprocess.run(["py","-3","tools/soft_gate_dogfood_status.py","--since","2026-06-13","--target","30","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    data = json.loads(r.stdout.strip())
+    assert data["warning_gate_candidate"] is False

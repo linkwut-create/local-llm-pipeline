@@ -384,3 +384,16 @@ class TestExistingTaskResolutionStillWorks:
         """J-K2: find-related-files must resolve to code_worker."""
         p, m, r = resolve_profile("find-related-files", None, None)
         assert p == "code_worker"
+
+
+def test_cli_no_traceback():
+    import subprocess
+    r = subprocess.run(["py","-3","tools/router_explain.py","review diff","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    assert "Traceback" not in r.stdout
+
+
+def test_cli_json_parseable():
+    import subprocess, json
+    r = subprocess.run(["py","-3","tools/router_explain.py","review diff","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    data = json.loads(r.stdout.strip())
+    assert "task_type" in data

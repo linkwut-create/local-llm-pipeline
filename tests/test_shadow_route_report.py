@@ -540,3 +540,14 @@ def test_recommendation_stays_accurate_with_critical(tmp_path, monkeypatch):
            "critical" in r.get("recommendation", "").lower()
     # Should NOT say "ready for Stop hook"
     assert "ready" not in r.get("recommendation", "").lower()
+
+
+def test_since_filter_edge():
+    """Since filter with far future date returns empty but not error."""
+    r = compute_report(since="2099-01-01")
+    assert r["total_records"] == 0
+
+def test_report_has_recommendation_field():
+    r = compute_report()
+    assert "recommendation" in r
+    assert isinstance(r["recommendation"], str)
