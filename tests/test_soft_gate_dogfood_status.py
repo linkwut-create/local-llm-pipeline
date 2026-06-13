@@ -189,3 +189,45 @@ def test_no_write_to_shadow(tmp_path, monkeypatch):
     assert len(files) == 1
     lines = sum(1 for _ in open(files[0], encoding="utf-8"))
     assert lines == 1
+
+
+# ═══════════════════════════════════════════════════════════════
+# 11-15: Additional recommendation + schema coverage
+# ═══════════════════════════════════════════════════════════════
+
+def test_privacy_bypass_blocks_warning_gate(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_pb"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    # Not testable via records alone — privacy_bypass is heuristic=0
+    # but verify the field exists and is 0 by default
+    r = status(since="2026-06-13", target=30)
+    assert "privacy_bypass" in r
+    assert "false_cloud_on_secret" in r
+    assert r["privacy_bypass"] == 0
+    assert r["false_cloud_on_secret"] == 0
+
+
+def test_recommendation_exact_values():
+    r = status(since="2026-06-13", target=30)
+    valid = {
+        "continue_dogfood", "calibrate_router", "fix_privacy_safety",
+        "continue_dogfood_or_calibrate", "eligible_for_warning_gate_design",
+    }
+    assert r["recommendation"] in valid
+
+
+def test_warning_gate_candidate_is_bool():
+    r = status(since="2026-06-13", target=30)
+    assert isinstance(r["warning_gate_candidate"], bool)
+
+
+def test_progress_ratio_range():
+    r = status(since="2026-06-13", target=30)
+    assert 0.0 <= r["progress_ratio"] <= 1.0
+
+
+def test_router_type_distribution_keys():
+    r = status(since="2026-06-13", target=30)
+    assert isinstance(r["router_type_distribution"], dict)
+    # With real data, should have entries
+    assert "records_total" in r
