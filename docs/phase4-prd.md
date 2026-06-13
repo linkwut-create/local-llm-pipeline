@@ -16,6 +16,9 @@ milestones:
   - mock-skeleton
   - mock-skeleton-convergence-audit
   - guarded-real-run-design
+  - guarded-real-run-stub-seam
+  - guarded-real-run-stub-convergence-audit
+  - real-api-smoke-test-design
 ---
 
 # Phase 4 PRD: Local-to-Cloud Routing Pipeline
@@ -49,6 +52,8 @@ milestones:
 | **Design** | `docs/guarded_real_run_adapter_design.md` | 12-section guarded real-run design packet | N/A |
 | **Mock** | `tools/deepseek_execution_adapter.py` | 6-gate mock skeleton (real-run blocked) | No |
 | **Future** | `tools/deepseek_execution_adapter.py` gate [6] | guarded_api_call (next phase) | **Yes** (future) |
+| **Design** | `docs/real_api_smoke_test_design.md` | 10-section smoke test design packet | N/A |
+| **Future** | `tools/deepseek_smoke_test.py` | manual smoke test script (next phase) | **Yes** (future) |
 
 ---
 

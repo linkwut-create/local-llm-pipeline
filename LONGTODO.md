@@ -277,7 +277,27 @@ Guarded real-run adapter design packet is complete.
 
 ---
 
-## 13. Advisory Workflow — Status
+## 13. Real API Smoke Test Design — Status (2026-06-13)
+
+Real API smoke test design packet is complete.
+
+**Done**:
+- `docs/real_api_smoke_test_design.md` — 10-section design
+- Fixed prompt: "Reply with exactly: OK" (5 tokens, no sensitive content)
+- 10 manual trigger conditions (cloud_ok + real_run + manual_smoke_test + budget)
+- Flash-only v1, budget max 1 CNY, tokens <= 100 in / 20 out
+- API key: env-only, read after all gates, never logged
+- 5 ledger event types for smoke test lifecycle
+- 8 rollback conditions, conservative retry rules
+- 18-test plan for implementation phase
+
+**Pending**:
+- `tools/deepseek_smoke_test.py` standalone smoke test script
+- Manual real API smoke test execution (single, human-supervised)
+
+---
+
+## 14. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 

@@ -422,6 +422,12 @@
 
 ## 8. Interface Change Log
 
+### IFACE-CHANGE-013: real API smoke test design packet
+- **Date**: 2026-06-13 (smoke-test-design chain)
+- **What**: 新增 `docs/real_api_smoke_test_design.md` — 10-section 首次真实 API smoke test 设计包
+- **Breaking**: 否（纯文档新增）
+- **Migration**: 无
+
 ### IFACE-CHANGE-012: guarded real-run adapter design packet
 - **Date**: 2026-06-13 (guarded-real-run chain)
 - **What**: 新增 `docs/guarded_real_run_adapter_design.md` — 12-section guarded real-run 设计包（入口条件、privacy/budget 强制规则、API key 处理、重试规则、CLI 草案、测试计划）
