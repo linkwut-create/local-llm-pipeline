@@ -422,6 +422,12 @@
 
 ## 8. Interface Change Log
 
+### IFACE-CHANGE-012: guarded real-run adapter design packet
+- **Date**: 2026-06-13 (guarded-real-run chain)
+- **What**: 新增 `docs/guarded_real_run_adapter_design.md` — 12-section guarded real-run 设计包（入口条件、privacy/budget 强制规则、API key 处理、重试规则、CLI 草案、测试计划）
+- **Breaking**: 否（纯文档新增）
+- **Migration**: 无
+
 ### IFACE-CHANGE-011: deepseek_execution_adapter mock skeleton
 - **Date**: 2026-06-13 (mock-skeleton chain)
 - **What**: 新增 `tools/deepseek_execution_adapter.py` — 真实调用适配器 mock skeleton，所有 gate 已实现但 --real-run 返回 real_run_not_implemented

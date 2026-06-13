@@ -257,12 +257,27 @@ DeepSeek execution adapter mock skeleton (`tools/deepseek_execution_adapter.py`)
 - 25 mock tests
 
 **Pending**:
-- Mock skeleton convergence audit
-- Guarded real-run adapter (gate [6] → actual API call)
+- Real API integration after all graduation criteria met
 
 ---
 
-## 12. Advisory Workflow — Status
+## 12. Guarded Real-Run Design — Status (2026-06-13)
+
+Guarded real-run adapter design packet is complete.
+
+**Done**:
+- `docs/guarded_real_run_adapter_design.md` — 12-section design
+- 10 entry conditions, privacy v1 hard block, budget enforcement
+- API key rules, model allowlist, request body boundaries
+- Response redaction, retry rules, 15-test plan
+- Decision matrix: all gate combinations specified
+
+**Pending**:
+- Guarded real-run adapter implementation skeleton (stub API seam)
+
+---
+
+## 13. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 

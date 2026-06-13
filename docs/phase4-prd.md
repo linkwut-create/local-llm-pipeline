@@ -6,6 +6,16 @@ updated: 2026-06-13
 phase: 4
 freeze: true
 audit: needed-for-real-call
+milestones:
+  - route-advisory
+  - cost-ledger
+  - privacy-gate
+  - dry-run-contract
+  - dry-run-convergence-audit
+  - api-execution-adapter-design
+  - mock-skeleton
+  - mock-skeleton-convergence-audit
+  - guarded-real-run-design
 ---
 
 # Phase 4 PRD: Local-to-Cloud Routing Pipeline
@@ -36,7 +46,9 @@ audit: needed-for-real-call
 | Privacy governance | `deepseek_client.py` | Real API client with built-in `_check_privacy()` | **Yes** |
 | Execution contract | `deepseek_dry_run.py` | Composes router + privacy + cost into governance plan | No |
 | **Design** | `docs/deepseek_api_execution_adapter_design.md` | 10-section execution adapter design contract | N/A |
-| **Future** | `tools/deepseek_execution_adapter.py` | Real-run adapter (next phase, mock skeleton first) | **Yes** (future) |
+| **Design** | `docs/guarded_real_run_adapter_design.md` | 12-section guarded real-run design packet | N/A |
+| **Mock** | `tools/deepseek_execution_adapter.py` | 6-gate mock skeleton (real-run blocked) | No |
+| **Future** | `tools/deepseek_execution_adapter.py` gate [6] | guarded_api_call (next phase) | **Yes** (future) |
 
 ---
 
