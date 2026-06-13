@@ -123,3 +123,35 @@ def test_decision_only_allowed_values():
         r = recommend_decision(task, cloud_ok=True)
         assert r["recommended_controller_decision"] in allowed, \
             f"Bad decision {r['recommended_controller_decision']} for {task}"
+
+
+def test_cli_runs_no_crash():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/advisory_workflow.py", "review diff", "--cloud-ok"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0
+
+
+def test_cli_json_output():
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/advisory_workflow.py", "review diff", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(r.stdout.strip())
+    assert "advisory_only" in data
+    assert data["advisory_only"] is True
+
+
+def test_cli_no_traceback():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/advisory_workflow.py", "review diff"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
