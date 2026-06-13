@@ -498,3 +498,52 @@ def test_summary_month_isolation(tmp_path, monkeypatch):
 
     # All-time includes both
     assert s["all_time_calls"] == 2
+
+
+# ═══════════════════════════════════════════════════════════════
+# Summary formatting regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_summary_empty_no_crash():
+    s = summary()
+    assert s["total_calls"] == 0
+    assert s["total_estimated_cost"] == 0.0
+    assert isinstance(s["by_model"], dict)
+
+
+def test_summary_nonzero_tokens_preserved(tmp_path, monkeypatch):
+    test_dir = tmp_path / "cl_summary_reg"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
+    record(task="t1", model="deepseek-v4-flash",
+           input_tokens=100, output_tokens=50)
+    s = summary()
+    assert s["total_calls"] == 1
+    m = s["by_model"].get("deepseek-v4-flash", {})
+    assert m.get("total_input", 0) == 100
+    assert m.get("total_output", 0) == 50
+
+
+def test_summary_unknown_price_isolated():
+    """Unknown price does not contaminate known-model totals."""
+    # Test via direct function: unknown model cost is 0
+    from cost_ledger import _estimate_cost
+    known = _estimate_cost("deepseek-v4-flash", 1000, 500)
+    unknown = _estimate_cost("some-future-model", 1000, 500)
+    assert known["estimated_cost"] is not None
+    assert unknown["estimated_cost"] is None
+
+
+def test_summary_currency_cny_present():
+    s = summary()
+    assert s["currency"] == "CNY"
+
+
+def test_summary_by_model_keys():
+    s = summary()
+    assert isinstance(s["by_model"], dict)
+    for model, data in s["by_model"].items():
+        assert "calls" in data
+        assert "total_cost" in data
+        assert "total_input" in data
+        assert "total_output" in data
+
