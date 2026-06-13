@@ -461,6 +461,103 @@ parameter.
 - All draft tasks: `may_modify_code=false`, `controller_must_verify=true`.
 - All MCP output is advisory only — Claude Code must verify important claims.
 
+## Claude Code Soft Gate Protocol (PASS_WITH_LIMITS, 2026-06-13)
+
+Soft gate is **advisory-only**. It never blocks Claude Code, never calls
+DeepSeek, never reads API keys, never reads file contents. It exists to surface
+governance risk before key actions. See `docs/claude_code_soft_gate_design.md`
+and `docs/claude_code_soft_gate_convergence_audit.md` for full design and audit.
+
+**Current status**: PASS_WITH_LIMITS. Allowed: advisory usage guidance.
+Blocked: warning gate, Stop hook, hard block (match_rate < 85%, critical_misrouting > 0).
+
+### Default Call Points
+
+**1. Pre-task soft gate** — before non-trivial tasks (multi-file, new tool, governance, model path, privacy/budget/API boundary, release/security/interface):
+
+```bash
+py -3 tools/claude_soft_gate.py --stage pre-task --task "<task>" --json
+```
+
+**2. Pre-commit advisory** — before every commit (already established):
+
+```bash
+py -3 tools/precommit_advisory.py --cloud-ok
+py -3 tools/shadow_route_log.py "precommit review for <task>" --actual "<actual>"
+```
+
+**3. Pre-cloud soft gate** — before any cloud model call:
+
+```bash
+py -3 tools/claude_soft_gate.py --stage pre-cloud --task "<intent>" --cloud-ok --json
+# If file paths are relevant, pass names only (no content read):
+py -3 tools/claude_soft_gate.py --stage pre-cloud --task "<intent>" \
+    --files "path1,path2" --cloud-ok --json
+```
+
+### Decision Handling
+
+| decision | Claude Code action |
+|----------|--------------------|
+| `allow` | Proceed. Normal test workflow. |
+| `warn` | Proceed. Note risk in execution report. |
+| `defer` | Pause scope expansion. Clarify task or reduce context. |
+| `manual_confirm_recommended` | Do NOT auto-escalate to cloud. Report to user, wait for confirmation. |
+| `cloud_blocked` | Do NOT send to any cloud API. Report and use local models. |
+
+**Invariant**: `would_block=false` and `advisory_only=true` in ALL soft gate
+outputs. This is intentional — soft gate is an advisor, not an enforcer.
+
+### Actual Decision Enum & Rules
+
+```
+local        — fully local execution
+local-first  — local first, consider upgrade only if needed
+flash-fallback — medium complexity, Flash as fallback (broader real-run paused)
+pro-review   — release/security/interface/API boundary/governance boundary
+cloud-blocked — secret/.env/API key/private data/cloud-forbidden
+defer        — insufficient info, unclear task, can't assess risk
+```
+
+### Dogfood Protocol
+
+```bash
+# Task start
+py -3 tools/advisory_workflow.py --task "<task>" --cloud-ok
+py -3 tools/shadow_route_log.py "<task>" --actual "<decision>"
+
+# After development, before commit
+py -3 tools/precommit_advisory.py --cloud-ok
+py -3 tools/shadow_route_log.py "precommit review for <task>" --actual "<decision>"
+
+# Periodic review
+py -3 tools/shadow_route_report.py --since 2026-06-13 --json
+```
+
+### Paused Items
+
+```
+- warning gate (blocked: match_rate < 85%)
+- Stop hook (blocked: critical_misrouting > 0)
+- hard block (blocked: requires warning gate first)
+- broader DeepSeek real-run
+- Flash limited real pilot
+- Pro smoke chain
+- llm-proxy
+- automatic worker execution
+```
+
+### Upgrade Criteria (soft gate → warning gate)
+
+```
+- shadow route match_rate >= 85%
+- critical_misrouting = 0
+- privacy_bypass = 0
+- false_cloud_on_secret = 0
+- >= 30 additional soft gate dogfood records
+- user confirms noise level acceptable
+```
+
 ### MCP Docs
 
 - [Code Drafting Guide](docs/local-llm-code-drafting.md) — draft-fix/feature/refactor usage
