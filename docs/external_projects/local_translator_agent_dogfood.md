@@ -167,3 +167,26 @@ When choosing the next read-only dogfood task for this project:
 5. **Do not modify external repo** — all output stays in governance repo.
 6. **If a file's content is uncertain**, read only the filename and
    line count, then ask controller before reading further.
+
+## Read-Only Task Queue
+
+### Completed (3/3 successful)
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1 | TM schema | test_tm_schema.py | ✓ |
+| 2 | Profiles | test_profiles.py | ✓ |
+| 3 | Preset checker | test_preset_checker.py | ✓ |
+
+### Safe Next Candidates
+- `tests/test_fast.py` — fast/smoke, likely no heavy dependencies
+- `tests/test_provider_checker.py` — provider cache/config checks
+- `tests/test_tm_schema.py` follow-up — CRUD coverage gaps
+- `tests/test_llm_provider.py` — LLM provider config review
+
+### Blocked or Manual-Confirm
+- Audio tests (test_audio.py, test_voice*.py, test_realtime*.py)
+- OCR/image tests (test_ocr, test_g3d)
+- Subtitle content tests (test_subtitle*.py)
+- Live API tests (test_api*.py, test_followup_api.py)
+- Embedding/live Ollama smoke (test_tm_embedding_live_smoke.py)
+- GUI/overlay tests (test_overlay_smoke.py, test_realtime_overlay_mode.py)
