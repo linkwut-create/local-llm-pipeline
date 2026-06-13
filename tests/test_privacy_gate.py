@@ -503,3 +503,32 @@ def test_private_key_phrase_needs_review_or_blocked():
     """Phrase 'PRIVATE KEY' in text triggers review or block per policy."""
     r = check(text="add your PRIVATE KEY here")
     assert r["privacy_status"] in ("blocked", "needs_review")
+
+
+# ── local-translator-agent privacy boundaries ──
+
+def test_translator_subtitle_filename_safe():
+    """Ordinary subtitle filename is safe."""
+    assert check(path="ep12_subtitle.srt").get("privacy_status") == "safe"
+
+
+def test_translator_ocr_screenshot_path_safe_or_needs_review():
+    """OCR screenshot path is not blocked."""
+    r = check(path="screenshots/ocr_capture.png")
+    assert r["privacy_status"] != "blocked"
+
+
+def test_translator_env_path_blocked():
+    """.env path in translator context still blocked."""
+    assert check(path="config/.env").get("privacy_status") == "blocked"
+
+
+def test_translator_audio_key_like_string_needs_review_or_blocked():
+    """Audio history containing key-like string triggers review."""
+    r = check(text="audio history stored with api_key=abc123")
+    assert r["privacy_status"] in ("blocked", "needs_review")
+
+
+def test_translator_nishida_markdown_safe():
+    """Nishida terminology markdown file is safe."""
+    assert check(path="nishida_terms.md").get("privacy_status") == "safe"
