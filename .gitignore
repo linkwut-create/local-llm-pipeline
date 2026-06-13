@@ -2,8 +2,11 @@
 .local_llm_out/
 .mcp_audit/
 
-# Model audition raw results (large, may contain sensitive context)
+# Model audition raw/generated outputs; may contain sensitive context.
 evals/model_audition/results/*.jsonl
+evals/model_audition/reports/*
+!evals/model_audition/reports/.gitkeep
+!evals/model_audition/reports/profile_suggestions.md
 
 # Python
 __pycache__/
