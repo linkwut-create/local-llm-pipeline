@@ -478,3 +478,24 @@ Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 - Hook integration (auto-invoke preflight on certain task triggers)
 - Controller comparison dashboard
 - Decision accuracy tracking over time
+
+---
+
+## 20. Dogfood Checkpoint #40 Preparation — Status (2026-06-14)
+
+Checkpoint #40 preparation requirements (separated from #36 per 1-task-1-commit rule):
+
+**Checkpoint #40 must verify**:
+- Separate total critical_misrouting (5, from historical data) from new critical_misrouting (0)
+- Verify safety invariants: privacy_bypass=0, false_cloud_on_secret=0
+- Verify 1-task-1-commit restoration (#36/#37/#39 each independently committed)
+- Warning gate remains blocked: match_rate 70.7% < 85%, critical_misrouting not yet 0
+- Router calibration pending but not yet warranted (no new misroutings)
+
+**Decision**: PASS_WITH_LIMITS
+- Safety invariants pass
+- No router/soft gate changes
+- No DeepSeek calls
+- Warning gate / Stop hook / hard block still blocked
+- Process deviation: #37 initially had record without new implementation commit
+- Process deviation: #39 was initially merged into #36
