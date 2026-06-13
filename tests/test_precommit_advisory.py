@@ -155,3 +155,8 @@ def test_cli_no_traceback():
         cwd=str(Path(__file__).parent.parent),
     )
     assert "Traceback" not in r.stdout
+
+
+def test_output_advisory_only_true():
+    r = _recommend("review diff: main.py")
+    assert r["advisory_only"] is True
