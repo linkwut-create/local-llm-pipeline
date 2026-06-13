@@ -149,4 +149,11 @@ High-risk / governance / manual-confirm tasks should be logged as `pro-review`.
 Low/medium ordinary tests and docs usually use `local-first`.
 Do not rewrite old shadow route records. Do not use `git add -A` during dogfood.
 
+## Dogfood checkpoints
+
+Checkpoints must report total critical_misrouting and new critical_misrouting
+separately. Actual labels follow the #45 correction rule. Warning gate remains
+blocked until match_rate >= 85% and safety invariants hold (privacy_bypass=0,
+false_cloud_on_secret=0).
+
 ```bash
