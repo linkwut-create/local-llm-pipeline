@@ -339,3 +339,30 @@ def test_secret_like_external_task_routes_safely():
         r = evaluate(task=task, stage="pre-task")
         assert r["advisory_only"] is True
         assert "decision" in r  # Always produces a decision, never throws
+
+
+# ── local-translator-agent wording smoke ──
+
+def test_translator_subtitle_regression_advisory_only():
+    r = evaluate(task="local-translator-agent: test subtitle timing regression", stage="pre-task")
+    assert r["advisory_only"] is True
+
+
+def test_translator_ocr_fallback_advisory_only():
+    r = evaluate(task="local-translator-agent: triage OCR fallback crash", stage="pre-task")
+    assert r["advisory_only"] is True
+
+
+def test_translator_nishida_terminology_advisory_only():
+    r = evaluate(task="local-translator-agent: review Nishida terminology table format", stage="pre-task")
+    assert r["advisory_only"] is True
+
+
+def test_translator_audio_history_privacy_no_would_block():
+    r = evaluate(task="local-translator-agent: audit audio history storage for privacy", stage="pre-task")
+    assert r["would_block"] is False
+
+
+def test_translator_release_checklist_advisory_only():
+    r = evaluate(task="local-translator-agent: review release checklist for v2.1.0", stage="pre-task")
+    assert r["advisory_only"] is True
