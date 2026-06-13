@@ -129,3 +129,24 @@ def test_unknown_task_still_ok():
     assert r["ok"] is True
     assert r["task_type"] == "unknown"
     assert r["risk_level"] == "low"
+
+
+def test_cli_json_parseable():
+    import subprocess, json
+    r = subprocess.run(
+        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(r.stdout.strip())
+    assert "advisory_only" in data
+
+
+def test_cli_no_traceback():
+    import subprocess
+    r = subprocess.run(
+        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert "Traceback" not in r.stdout
