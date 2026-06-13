@@ -225,7 +225,26 @@ DeepSeek dry-run execution contract (`tools/deepseek_dry_run.py`) is ready.
 
 ---
 
-## 10. Advisory Workflow — Status
+## 10. Execution Adapter Design — Status (2026-06-13)
+
+DeepSeek API execution adapter design audit is complete.
+
+**Done**:
+- `docs/deepseek_api_execution_adapter_design.md` — 10-section design contract:
+  gate sequence, privacy enforcement, budget enforcement, dual-switch (cloud_ok + real_run),
+  API key handling, model allowlist, retry rules, ledger schema, dry-run/real-run boundary,
+  minimum implementation plan
+- `docs/phase4-prd.md` — Phase 4 product requirements document (convergence)
+- Design review confirms: privacy needs_review ≠ auto real-run; budget unknown/exceeded ≠ real-run;
+  dual switch required; API key env-only; dry-run forever separated from real-run
+
+**Pending**:
+- `tools/deepseek_execution_adapter.py` mock skeleton (--real-run disabled by default)
+- Real API integration after mock skeleton audit
+
+---
+
+## 11. Advisory Workflow — Status
 
 Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
 

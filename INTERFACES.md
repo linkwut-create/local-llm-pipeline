@@ -6,6 +6,8 @@
 
 **任何修改 API / CLI / config / storage schema / MCP tool / provider contract 的任务，都必须先读本文件。**
 
+**Phase 4 设计契约**: 参见 `docs/deepseek_api_execution_adapter_design.md`（真实 API 调用适配层设计）和 `docs/phase4-prd.md`（Phase 4 产品需求文档）。
+
 ---
 
 ## 1. MCP Tool Contract
@@ -419,6 +421,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-010: DeepSeek API execution adapter design audit
+- **Date**: 2026-06-13 (design-audit chain)
+- **What**: 新增 `docs/deepseek_api_execution_adapter_design.md` — 10-section 执行适配器设计契约；`docs/phase4-prd.md` — Phase 4 产品需求文档收敛
+- **Breaking**: 否（纯文档新增）
+- **Migration**: 无
+- **Tests**: 无新增测试（设计审计）；278 已有测试仍全部通过
 
 ### IFACE-CHANGE-009: deepseek_dry_run 新增 CLI tool
 - **Date**: 2026-06-13 (dry-run chain)
