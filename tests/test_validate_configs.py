@@ -189,3 +189,9 @@ def test_cli_no_traceback_in_output():
         cwd=str(Path(__file__).parent.parent),
     )
     assert "Traceback" not in r.stdout
+
+
+def test_cli_help_no_traceback():
+    import subprocess
+    r = subprocess.run(["py","-3","tools/validate_configs.py","--help"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    assert "Traceback" not in r.stderr
