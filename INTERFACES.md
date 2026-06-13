@@ -140,6 +140,16 @@
 - **LLM Call**: 无
 - **Compatibility**: 输出格式只增字段
 
+### Command: py -3 tools/router_explain.py "<task>" [--explain|--json|--demo]
+- **Purpose**: Explain DeepSeek V4 Flash/Pro routing decisions. Mock-only.
+- **Input**: task description (positional args)
+- **Output**: stdout — structured RouteDecision (human-readable with `--explain`, JSON with `--json`, demo with `--demo`)
+- **Output Fields**: `task_type`, `risk_level`, `privacy_status`, `recommended_local_profile`, `flash_escalation_condition`, `pro_escalation_condition`, `cloud_allowed`, `reason`
+- **Exit Codes**: 0=success
+- **LLM Call**: 无（纯启发式）
+- **Side Effects**: 无
+- **Compatibility**: output 字段只能增；task_type 值只能增
+
 ### Command: py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>"
 - **Purpose**: 结构化项目上下文初始化
 - **Output**: `.local_llm_out/*_bootstrap.md` + `*_bootstrap.json`
@@ -330,6 +340,13 @@
 ---
 
 ## 8. Interface Change Log
+
+### IFACE-CHANGE-005: router_explain 新增 CLI tool
+- **Date**: 2026-06-13 (router-explain chain)
+- **What**: 新增 `tools/router_explain.py` CLI tool — DeepSeek V4 Flash/Pro 路由解释
+- **Breaking**: 否（纯新增）
+- **Migration**: 无
+- **Tests**: 49 mock tests in `tests/test_router_explain.py`
 
 ### IFACE-CHANGE-001: local_workflow_plan 新增为 12th MCP tool
 - **Date**: 2026-05-26 (S-chain)

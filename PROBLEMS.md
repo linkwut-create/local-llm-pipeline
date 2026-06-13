@@ -76,6 +76,16 @@
 - **Mitigation**: 翻译结果必须由 controller 审查，术语一致性由 controller 检查
 - **Do Not**: 对翻译任务完全自动化
 
+### PROB-009: router_explain docs review 被误分类为 medium/high risk
+
+- **Date**: 2026-06-13 (observed during router_explain convergence)
+- **Status**: known / observed
+- **Severity**: low — classification is advisory-only, controller makes final decision
+- **Symptom**: `contextual_analyze` 曾将 docs review / documentation review 任务误分类为 high-risk。普通文档总结、治理文档审查、README/LONGTODO/PROBLEMS 更新建议不应默认 high-risk。
+- **Root cause**: 早期路由逻辑缺少 docs/documentation 专用 task type，导致 "review PROBLEMS.md" 等输入被归入 `unknown` 或错误匹配到含 "review" 的高风险类别。
+- **Mitigation**: router_explain 已加入 `rewrite-text` 分类模式（覆盖 document/readme/comment/docstring/changelog），普通文档任务自动归入 low risk。控制器仍可使用 `--explain` 审查分类结果。
+- **Do Not**: 不修改现有 profile 分配。不新增 MCP tool。不改变控制器最终决策权。
+
 ---
 
 ## 2. Forbidden Patterns

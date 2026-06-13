@@ -387,6 +387,7 @@ Codex or Claude Code.
 
 - `tools/local_llm_router.py` — automatic task routing.
 - `tools/local_llm_worker.py` — task execution against local models.
+- `tools/router_explain.py` — explain DeepSeek V4 Flash/Pro routing decisions (mock-only).
 - Backend: Ollama or llama.cpp (OpenAI-compatible).
 
 ### Allowed Worker Tasks

@@ -12,6 +12,7 @@ Claude-specific slash commands, auto-invocation hooks, and subagent references).
 | **PROBLEMS.md** | 累计问题、禁令、已知坑 | 每次代码修改前 |
 | **LONGTODO.md** | 长期路线图、需求、延期项 | 触及 roadmap 时 |
 | **INTERFACES.md** | MCP/CLI/Config/Provider 接口契约 | 涉及接口变更时 |
+| **docs/local-cloud-routing-architecture.md** | 三层路由架构 (Local→Router→Cloud) | 涉及路由/升级/云端决策时 |
 | **GRILLME.md** | 新项目初始化访谈模板 | 新项目初始化时 |
 
 ## Controller Delegation Contract (U-1)
@@ -226,6 +227,14 @@ Claude Code is the controller. The local worker is advisory only.
   command sequence for the current task based on change type:
   `git diff --name-only | py -3 tools/local_workflow_plan.py --stdin --task "description"`
   (advisory-only, stdout or JSON, controller decides final workflow)
+
+- `router_explain` — explain DeepSeek V4 Flash/Pro routing decisions. Outputs
+  task_type, risk_level, privacy_status, recommended local profile, escalation
+  conditions, and cloud_allowed verdict. Mock-only, no real API calls:
+  `py -3 tools/router_explain.py "review current diff" --explain`
+  `py -3 tools/router_explain.py "prepare release v2.3" --json`
+  `py -3 tools/router_explain.py --demo`
+  (advisory-only, controller decides final routing)
 
 ### Available Subagent
 

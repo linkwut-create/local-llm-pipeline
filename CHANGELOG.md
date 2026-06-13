@@ -1,5 +1,23 @@
 # Changelog
 
+## Post-v0.12.0 (router-explain, 2026-06-13)
+
+- **Router Explain Mode** (`tools/router_explain.py`): New CLI tool for explaining
+  DeepSeek V4 Flash/Pro routing decisions.  Mock-only — no real API calls.
+  - TaskClassifier: 14 task types via regex pattern matching
+  - RiskAssessor: low/medium/high/critical risk levels
+  - PrivacyGate: delegates to `deepseek_client._check_privacy` + full-repo detection
+  - ProfileMapper: maps task_type → local profile from `local_llm_tasks.json` + `local_llm_profiles.json`
+  - EscalationPolicy: local-first → Flash (2+ failures, medium tasks) → Pro (release/interface/security)
+  - Output: structured RouteDecision with 8 fields (`task_type`, `risk_level`,
+    `privacy_status`, `recommended_local_profile`, `flash_escalation_condition`,
+    `pro_escalation_condition`, `cloud_allowed`, `reason`)
+  - CLI: `py -3 tools/router_explain.py "<task>" --explain|--json|--demo`
+  - Tests: `tests/test_router_explain.py` — 49 mock tests (classification, risk,
+    privacy, profile, escalation, end-to-end, edge cases).  All pass.
+  - No profile modifications.  No real API calls.  Advisory-only.  Follows
+    INTERFACES.md compatibility policy.
+
 ## v0.12.0 - 2026-05-27 (local, not pushed, not tagged)
 
 Productivity + governance + quality verification release.  50 commits since
