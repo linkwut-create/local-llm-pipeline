@@ -97,7 +97,7 @@ def test_no_api_call():
 def test_list_returns_records(tmp_path, monkeypatch):
     monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
     log("task one", actual="local")
-    log("task two", actual="flash")
+    log("task two", actual="flash-fallback")
 
     records = list_records(days=1)
     assert len(records) == 2
@@ -130,3 +130,36 @@ def test_stats_empty():
             assert s == {"total": 0}
         finally:
             shadow_route_log.SHADOW_DIR = old
+
+
+# ═══════════════════════════════════════════════════════════════
+# Actual enum validation tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_valid_actual_local():
+    r = log(task="test local", actual="local")
+    assert "error" not in r
+
+
+def test_valid_actual_pro_review():
+    r = log(task="test pro", actual="pro-review")
+    assert "error" not in r
+
+
+def test_invalid_actual_rejected():
+    r = log(task="test bad", actual="invalid-value")
+    assert "error" in r
+    assert r["written"] is False
+
+
+def test_empty_actual_allowed():
+    r = log(task="test empty", actual="")
+    assert "error" not in r
+
+
+def test_invalid_not_written_to_jsonl(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_val"
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", sd)
+    log(task="test bad write", actual="garbage-actual")
+    # Verify no file was created
+    assert not sd.exists() or not list(sd.glob("*.jsonl"))

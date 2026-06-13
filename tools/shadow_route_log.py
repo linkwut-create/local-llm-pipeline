@@ -31,6 +31,8 @@ from router_explain import RouterEngine
 
 _engine = RouterEngine()
 
+VALID_ACTUALS = {"local", "local-first", "local-only", "flash-fallback", "pro-review", "cloud-blocked", "defer"}
+
 
 def _ensure_dir():
     SHADOW_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,6 +63,11 @@ def log(task: str, actual: str = "", notes: str = "", cloud_ok: bool = False) ->
     decision = _engine.analyze(task)
 
     actual_clean = actual.strip() if actual else ""
+    if actual_clean and actual_clean not in VALID_ACTUALS:
+        return {
+            "error": f"invalid actual '{actual_clean}'. Valid: {', '.join(sorted(VALID_ACTUALS))}",
+            "written": False,
+        }
     match = _auto_match(decision.risk_level, decision.cloud_allowed, actual_clean) if actual_clean else None
 
     record = {
