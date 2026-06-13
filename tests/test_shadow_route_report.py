@@ -467,3 +467,76 @@ def test_meta_field(tmp_path, monkeypatch):
     assert "generated_at" in report["_meta"]
     assert report["_meta"]["since"] == "2026-06-01"
     assert "source_dir" in report["_meta"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# Safety invariant regression tests
+# ═══════════════════════════════════════════════════════════════
+
+def test_safety_privacy_bypass_zero(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_inv_pb"
+    monkeypatch.setattr("shadow_route_report.SHADOW_DIR", sd)
+    _write_jsonl(sd, "20260613.jsonl", [
+        {"task": "t1", "router_task_type": "review-diff",
+         "router_risk_level": "medium", "router_privacy_status": "safe",
+         "router_cloud_allowed": True, "actual_decision": "local-first",
+         "match": True, "notes": ""},
+    ])
+    r = compute_report()
+    assert r["privacy_bypass_count"] == 0
+
+
+def test_safety_false_cloud_zero(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_inv_fc"
+    monkeypatch.setattr("shadow_route_report.SHADOW_DIR", sd)
+    _write_jsonl(sd, "20260613.jsonl", [
+        {"task": "t1", "router_task_type": "review-diff",
+         "router_risk_level": "low", "router_privacy_status": "safe",
+         "router_cloud_allowed": True, "actual_decision": "local",
+         "match": True, "notes": ""},
+    ])
+    r = compute_report()
+    assert r["false_cloud_on_secret_count"] == 0
+
+
+def test_critical_misrouting_with_high_risk_local_actual(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_inv_crit"
+    monkeypatch.setattr("shadow_route_report.SHADOW_DIR", sd)
+    _write_jsonl(sd, "20260613.jsonl", [
+        {"task": "t1", "router_task_type": "release-risk-review",
+         "router_risk_level": "high", "router_privacy_status": "safe",
+         "router_cloud_allowed": True, "actual_decision": "local",
+         "match": False, "notes": ""},
+    ])
+    r = compute_report()
+    assert r["critical_misrouting_count"] > 0
+
+
+def test_malformed_record_not_crash(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_inv_mal"
+    monkeypatch.setattr("shadow_route_report.SHADOW_DIR", sd)
+    sd.mkdir(parents=True, exist_ok=True)
+    with open(sd / "20260613.jsonl", "w", encoding="utf-8") as f:
+        f.write(json.dumps({"task": "good", "router_task_type": "review-diff",
+                            "router_risk_level": "low", "router_privacy_status": "safe",
+                            "router_cloud_allowed": True, "actual_decision": "local",
+                            "match": True}) + "\n")
+        f.write("this is not valid json\n")
+    r = compute_report()
+    assert r["total_records"] == 1  # malformed skipped
+
+
+def test_recommendation_stays_accurate_with_critical(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_inv_rec"
+    monkeypatch.setattr("shadow_route_report.SHADOW_DIR", sd)
+    _write_jsonl(sd, "20260613.jsonl", [
+        {"task": "t1", "router_task_type": "release-risk-review",
+         "router_risk_level": "high", "router_privacy_status": "safe",
+         "router_cloud_allowed": True, "actual_decision": "local",
+         "match": False, "notes": ""},
+    ])
+    r = compute_report()
+    assert "calibration" in r.get("recommendation", "").lower() or \
+           "critical" in r.get("recommendation", "").lower()
+    # Should NOT say "ready for Stop hook"
+    assert "ready" not in r.get("recommendation", "").lower()
