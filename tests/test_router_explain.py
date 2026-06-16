@@ -1,7 +1,7 @@
 """
 Mock-based tests for tools/router_explain.py.
 
-All tests are mock — no real API calls, no file system writes.
+All tests are mock — no real API calls, no local model calls.
 Tests cover:
   - Task type classification (all 14 types)
   - Risk level assessment
@@ -16,6 +16,9 @@ import json
 import sys
 import os
 from pathlib import Path
+
+# Disable SmartClassifier model calls during tests (use regex-only path)
+os.environ["SMART_CLASSIFIER_NO_MODEL"] = "1"
 
 # Ensure tools/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))

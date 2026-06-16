@@ -241,6 +241,11 @@ WHY: <one-line reason>"""
 
         Returns (task_type, risk_contribution, confidence).
         """
+        # Guard: model calls disabled via env var (for testing)
+        import os as _os
+        if _os.environ.get("SMART_CLASSIFIER_NO_MODEL", "") == "1":
+            return TaskClassifier.classify(text)
+
         # Guard: empty/short/gibberish → unknown (don't waste model calls)
         if not text or len(text.strip()) < 20:
             return ("unknown", "low", 0.0)

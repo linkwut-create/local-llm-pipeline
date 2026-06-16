@@ -1,7 +1,11 @@
 """Mock tests for local_route_explain MCP tool — no API calls, no profile changes."""
 
+import os
 import sys
 from pathlib import Path
+
+# Disable SmartClassifier model calls during tests
+os.environ["SMART_CLASSIFIER_NO_MODEL"] = "1"
 
 import pytest
 
