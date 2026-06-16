@@ -215,8 +215,8 @@ def dispatch(route_path: str | Path, task: str = "",
             result.escalation_reason = f"budget exceeded: {result.total_cost:.4f} CNY > {max_budget}"
             break
 
-        # Escalate on failure
-        if not ok and phase_route == "flash_subagent":
+        # Escalate on any cloud failure (flash_direct, flash_subagent)
+        if not ok and cloud_ok and phase_route.startswith("flash_"):
             result.escalated = True
             result.escalation_reason = "Flash failed — escalate to Pro"
             # Try Pro as fallback

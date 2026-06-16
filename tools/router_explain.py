@@ -184,7 +184,7 @@ class SmartClassifier:
     _agreements: int = 0
 
     MODEL_A = "qwen3.6:27b"    # primary local
-    MODEL_B = "gemma4:31b"     # local debate partner
+    MODEL_B = "gemma4:31b-unsloth"     # local debate partner
     CLOUD_MODEL = "deepseek-v4-pro"  # final authority
 
     # Valid task types the model can return

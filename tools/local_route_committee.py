@@ -593,7 +593,7 @@ def convene(task_description: str,
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
         future_qwen = pool.submit(_call_model, "qwen3.6:27b", prompt, 60)
-        future_gemma = pool.submit(_call_model, "gemma4:31b", prompt, 60)
+        future_gemma = pool.submit(_call_model, "gemma4:31b-unsloth", prompt, 60)
         try:
             raw_qwen = future_qwen.result(timeout=70)
         except Exception:
@@ -604,7 +604,7 @@ def convene(task_description: str,
             raw_gemma = ""
 
     qwen = _parse_judgement(raw_qwen, "qwen3.6:27b")
-    gemma = _parse_judgement(raw_gemma, "gemma4:31b")
+    gemma = _parse_judgement(raw_gemma, "gemma4:31b-unsloth")
 
     # Fallback: if one model failed, use the other alone
     qwen_failed = qwen.recommended_route == "ask_user" and "unparseable" in qwen.reason
