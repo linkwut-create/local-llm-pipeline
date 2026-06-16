@@ -149,6 +149,20 @@ _RELEASE_PATTERNS = [
     (r'\bpython\s+-m\s+twine\s+upload\b', "python -m twine upload (publishes to PyPI)"),
 ]
 
+# Phase 2D: MCP tools that mutate git state, files, or GitHub state.
+# These are blocked regardless of arguments because the underlying backend
+# can perform destructive operations outside the hook's visibility.
+_BLOCKED_MCP_TOOLS = [
+    ("mcp__git__git_reset", "git reset via MCP"),
+    ("mcp__git__git_push", "git push via MCP"),
+    ("mcp__git__git_clean", "git clean via MCP"),
+    ("mcp__git__git_merge", "git merge via MCP"),
+    ("mcp__git__git_rebase", "git rebase via MCP"),
+    ("mcp__filesystem__delete", "file deletion via MCP"),
+    ("mcp__github__merge_pull_request", "GitHub PR merge via MCP"),
+]
+
+
 _STATE_DEFAULTS = {
     "diff_reviewed": False,
     "dirty_since_review": False,
@@ -383,6 +397,18 @@ def is_release_command(payload: dict) -> tuple[bool, str]:
         for pattern, description in _RELEASE_PATTERNS:
             if re.search(pattern, sub):
                 return True, description
+    return False, ""
+
+
+def is_blocked_mcp_tool(payload: dict) -> tuple[bool, str]:
+    """Check if the tool is an MCP tool that performs destructive mutations.
+
+    Returns (is_blocked, description) or (False, "").
+    """
+    name = payload.get("tool_name", "")
+    for prefix, description in _BLOCKED_MCP_TOOLS:
+        if name == prefix or name.startswith(prefix + "__"):
+            return True, description
     return False, ""
 
 
@@ -1064,6 +1090,30 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
             ),
         }
 
+    # Phase 2D: destructive MCP tool guard
+    is_blocked_mcp, blocked_mcp_desc = is_blocked_mcp_tool(payload)
+    if is_blocked_mcp:
+        tool_name = payload.get("tool_name", "")
+        tool_input = payload.get("tool_input", {})
+        _try_audit_event({
+            "event_type": "mcp_tool_blocked",
+            "task_type": "gate_boundary_audit",
+            "tool_name": tool_name,
+            "tool_input": _redact_recursive(tool_input),
+            "description": blocked_mcp_desc,
+            "result_status": "blocked",
+            "blocking": True,
+            "severity": "high",
+        })
+        return {
+            "allow": False,
+            "reason": (
+                f"BLOCKED: {blocked_mcp_desc} is not allowed.\n"
+                f"Tool: {tool_name}\n"
+                "If you need this operation, ask the user to run it manually outside Claude Code."
+            ),
+        }
+
     # Phase 2C: release / tag / push guard (runs after dangerous, before commit gate)
     is_release, release_desc = is_release_command(payload)
     if is_release:
@@ -1280,6 +1330,18 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                 })
 
             return {"allow": False, "reason": "\n".join(parts)}
+    # Phase 3A: route enforcement via local committee
+    try:
+        from tools.claude_hooks.route_enforcer import on_pre_tool_use as route_check
+        route_result = route_check(payload)
+        if route_result.get("permissionDecision") == "deny":
+            return {
+                "allow": False,
+                "reason": route_result.get("reason", "Route enforcer denied this tool"),
+            }
+    except Exception:
+        pass
+
     return {"allow": True, "reason": ""}
 
 
@@ -1400,6 +1462,42 @@ def handle_stop(config_dir: str, payload: dict) -> list:
     return reminders
 
 
+def handle_permission_denied(config_dir: str, payload: dict) -> dict:
+    """PermissionDenied hook: log the denial and decide whether retry is appropriate.
+
+    Claude Code ignores exit codes for this event; the only control is
+    hookSpecificOutput.retry (True/False).
+    """
+    tool_name = payload.get("tool_name", "")
+    tool_input = payload.get("tool_input", {})
+    reason = payload.get("reason", "")
+
+    _try_audit_event({
+        "event_type": "permission_denied",
+        "task_type": "gate_boundary_audit",
+        "tool_name": tool_name,
+        "tool_input": _redact_recursive(tool_input),
+        "reason": reason,
+        "result_status": "denied",
+        "blocking": False,
+        "severity": "medium",
+    })
+
+    # Do not retry destructive operations; let the user explicitly re-authorize.
+    is_destructive = (
+        is_blocked_mcp_tool(payload)[0]
+        or is_dangerous_command(payload)[0]
+        or is_release_command(payload)[0]
+    )
+    retry = not is_destructive
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionDenied",
+            "retry": retry,
+        }
+    }
+
+
 def handle_session_start(config_dir: str, payload: dict):
     """Start a fresh session, clearing per-session MCP tracking.
 
@@ -1505,6 +1603,32 @@ def _redact_recursive(obj):
     return obj
 
 
+def _handle_user_prompt_submit(config_dir: str, payload: dict):
+    """UserPromptSubmit hook: create task session, inject plan-only context."""
+    try:
+        from tools.claude_hooks.route_enforcer import on_user_prompt_submit
+        result = on_user_prompt_submit(payload)
+        if result and result.get("additionalContext"):
+            sys.stdout.write(json.dumps(result))
+            sys.stdout.flush()
+    except Exception:
+        pass  # never block session start
+
+
+def _handle_subagent_stop(config_dir: str, payload: dict):
+    """SubagentStop hook: save subagent output as artifact."""
+    try:
+        from tools.claude_hooks.route_enforcer import get_active_task, save_artifact
+        task = get_active_task()
+        if task:
+            output = payload.get("result", "") or str(payload)[:5000]
+            save_artifact(task["task_id"],
+                          f"subagent_{datetime.now(timezone.utc).strftime('%H%M%S')}.txt",
+                          output)
+    except Exception:
+        pass
+
+
 def main(config_dir: str):
     """Main hook entry point. Reads payload from stdin, executes, writes result.
 
@@ -1529,6 +1653,12 @@ def main(config_dir: str):
     if event == "SessionStart":
         handle_session_start(config_dir, payload)
 
+    elif event == "UserPromptSubmit":
+        _handle_user_prompt_submit(config_dir, payload)
+
+    elif event == "SubagentStop":
+        _handle_subagent_stop(config_dir, payload)
+
     elif event == "PostToolUse":
         handle_post_tooluse(config_dir, payload)
 
@@ -1542,6 +1672,12 @@ def main(config_dir: str):
             }))
             sys.stdout.flush()
             sys.exit(1)
+
+    elif event == "PermissionDenied":
+        result = handle_permission_denied(config_dir, payload)
+        sys.stdout.write(json.dumps(result))
+        sys.stdout.flush()
+        sys.exit(0)
 
     elif event == "Stop":
         reminders = handle_stop(config_dir, payload)

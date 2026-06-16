@@ -384,7 +384,37 @@ def merge_judgements(qwen: RouteJudgement,
             escalated_reason="",
         )
 
-    # Rule 4: disagreement → escalate
+    # Rule 4: Both agree on non-executable route → use it
+    if qwen.recommended_route == gemma.recommended_route:
+        route = qwen.recommended_route
+        return RouteDecision(
+            delegability="low",
+            recommended_route=route,
+            local_preprocessing_required=(
+                qwen.local_preprocessing_required or gemma.local_preprocessing_required
+            ),
+            pro_should_execute=qwen.pro_should_execute or gemma.pro_should_execute,
+            pro_should_adjudicate=qwen.pro_should_adjudicate or gemma.pro_should_adjudicate,
+            risk_level=(
+                "high" if "high" in (qwen.risk_level, gemma.risk_level)
+                else "medium" if "medium" in (qwen.risk_level, gemma.risk_level)
+                else "low"
+            ),
+            privacy_status=(
+                "blocked" if "blocked" in (qwen.privacy_status, gemma.privacy_status)
+                else "needs_review" if "needs_review" in (qwen.privacy_status, gemma.privacy_status)
+                else "safe"
+            ),
+            reason=f"Consensus: {route} ({qwen.reason[:80]})",
+            required_artifacts=list(set(qwen.required_artifacts + gemma.required_artifacts)),
+            qwen_judgement=qwen.to_dict(),
+            gemma_judgement=gemma.to_dict(),
+            agreement=True,
+            escalated=(route in ("pro_decision", "ask_user", "blocked")),
+            escalated_reason=f"both models agreed: {route}",
+        )
+
+    # Rule 5: true disagreement → escalate
     return RouteDecision(
         delegability="low",
         recommended_route="ask_user",
@@ -568,7 +598,11 @@ def main():
 
     if args.json:
         output = decision.to_dict()
-        output["_enforcement"] = permissions
+        output["_enforcement"] = {
+            "allowed": list(permissions["allowed"]) if permissions["allowed"] else ["all"],
+            "denied": list(permissions["denied"]),
+            "cloud_ok": permissions["cloud_ok"],
+        }
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
         print(f"Task: {task[:80]}")
@@ -579,9 +613,11 @@ def main():
         print(f"Reason: {decision.reason}")
         print(f"Artifacts: {decision.required_artifacts}")
         print(f"\nENFORCEMENT:")
-        print(f"  Allowed: {permissions['allowed_tools'] or 'all'}")
-        print(f"  Forbidden: {permissions['forbidden_tools'] or 'none'}")
-        print(f"  Cloud: {permissions['cloud_allowed']}")
+        allowed = "all" if not permissions["allowed"] else ", ".join(sorted(permissions["allowed"]))
+        denied = "none" if not permissions["denied"] else ", ".join(sorted(permissions["denied"]))
+        print(f"  Allowed: {allowed}")
+        print(f"  Denied: {denied}")
+        print(f"  Cloud: {permissions['cloud_ok']}")
         if not decision.agreement:
             print(f"\nQwen: {decision.qwen_judgement.get('recommended_route')}")
             print(f"Gemma: {decision.gemma_judgement.get('recommended_route')}")
