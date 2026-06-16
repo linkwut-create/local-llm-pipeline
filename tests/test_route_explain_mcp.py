@@ -134,18 +134,19 @@ def test_unknown_task_still_ok():
 def test_cli_json_parseable():
     import subprocess, json
     r = subprocess.run(
-        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        ["py", "-3", "tools/router_explain.py", "review current diff", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
     )
     data = json.loads(r.stdout.strip())
-    assert "advisory_only" in data
+    assert "cloud_allowed" in data
+    assert "task_type" in data
 
 
 def test_cli_no_traceback():
     import subprocess
     r = subprocess.run(
-        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        ["py", "-3", "tools/router_explain.py", "review current diff", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
     )
@@ -232,7 +233,7 @@ def test_cli_malformed_input_no_traceback():
     """CLI with malformed input does not produce traceback."""
     import subprocess
     r = subprocess.run(
-        ["py", "-3", "tools/route_explain_mcp.py", "--json"],
+        ["py", "-3", "tools/router_explain.py", "review current diff", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
     )

@@ -124,13 +124,16 @@ def test_global_launcher_exposes_eleven_tools():
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = set(mcp.TOOLS.keys())
-    assert len(expected) == 12, f"Expected 12 tools, got {len(expected)}"
+    assert len(expected) == 13, f"Expected 13 tools, got {len(expected)}"
 
 
 def test_global_launcher_find_project_root_returns_none_outside_git(tmp_path, monkeypatch):
     """find_project_root must return None when CWD is not in a git repo."""
+    # Use a temp dir outside the project to avoid finding the project's .git
+    import tempfile as _tf
+    outside_dir = Path(_tf.mkdtemp())
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(outside_dir)
     result = launcher.find_project_root()
     assert result is None, (
         f"find_project_root should return None outside git, got {result}"

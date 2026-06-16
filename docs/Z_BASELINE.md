@@ -42,7 +42,7 @@ py -3 tools/run_checks.py
 py -3 tools/call_ledger_cli.py summary
 
 # MCP server verify (after restart)
-# /mcp → local-llm connected 12 tools
+# /mcp → local-llm connected 13 tools
 ```
 
 ---

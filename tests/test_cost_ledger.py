@@ -504,7 +504,9 @@ def test_summary_month_isolation(tmp_path, monkeypatch):
 # Summary formatting regression tests
 # ═══════════════════════════════════════════════════════════════
 
-def test_summary_empty_no_crash():
+def test_summary_empty_no_crash(tmp_path, monkeypatch):
+    test_dir = tmp_path / "empty_ledger"
+    monkeypatch.setattr("cost_ledger.LEDGER_DIR", test_dir)
     s = summary()
     assert s["total_calls"] == 0
     assert s["total_estimated_cost"] == 0.0

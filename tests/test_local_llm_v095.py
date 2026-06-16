@@ -234,6 +234,8 @@ def test_path_inside_target_project_is_allowed(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_LLM_TARGET_PROJECT", str(target))
     monkeypatch.delenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", raising=False)
 
+    # Disable path blocking so tmp_path files are accessible
+    monkeypatch.setattr(mcp, "is_blocked_path", lambda p: False)
     ok, err = mcp.validate_path(str(inside))
     assert ok, f"Path inside target project should be allowed: {err}"
 

@@ -158,7 +158,7 @@ def test_mcp_server_no_hardcoded_v4_flash():
 def test_mcp_tool_count_twelve():
     from local_llm_mcp_server import TOOLS  # noqa: E402
 
-    assert len(TOOLS) == 12, f"MCP tool count must be 12, got {len(TOOLS)}"
+    assert len(TOOLS) == 13, f"MCP tool count must be 13, got {len(TOOLS)}"
 
 
 # --- 11. P4 probe invariants unchanged ---

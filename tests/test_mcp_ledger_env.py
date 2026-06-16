@@ -252,6 +252,7 @@ def _patch_wrap_capture(monkeypatch):
 
 def test_call_summarize_file_stamps_mcp_tool_name(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
+    monkeypatch.setattr(mcp, "is_blocked_path", lambda p: False)
     src = tmp_path / "x.py"
     src.write_text("def f(): return 1\n", encoding="utf-8")
 
@@ -268,6 +269,7 @@ def test_call_summarize_file_stamps_mcp_tool_name(monkeypatch, tmp_path):
 
 def test_call_summarize_tree_stamps_mcp_tool_name(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
+    monkeypatch.setattr(mcp, "is_blocked_path", lambda p: False)
     (tmp_path / "a.py").write_text("def a(): pass\n", encoding="utf-8")
 
     captured = _patch_wrap_capture(monkeypatch)
@@ -282,6 +284,7 @@ def test_call_summarize_tree_stamps_mcp_tool_name(monkeypatch, tmp_path):
 
 def test_call_generate_test_plan_stamps_mcp_tool_name(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
+    monkeypatch.setattr(mcp, "is_blocked_path", lambda p: False)
     src = tmp_path / "x.py"
     src.write_text("def f(): return 1\n", encoding="utf-8")
 
@@ -296,6 +299,7 @@ def test_call_generate_test_plan_stamps_mcp_tool_name(monkeypatch, tmp_path):
 
 def test_call_contextual_analyze_stamps_mcp_tool_name(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_LLM_ALLOW_OUTSIDE_PROJECT", "1")
+    monkeypatch.setattr(mcp, "is_blocked_path", lambda p: False)
     src = tmp_path / "x.py"
     src.write_text("def f(): return 1\n", encoding="utf-8")
 

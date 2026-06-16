@@ -99,7 +99,7 @@ py -3 tools/soft_gate_dogfood_status.py --since 2026-06-13 --target 30 --json
 ## 2. Roadmap
 
 ### Phase 1: Stability (current — v0.12.0+)
-- [x] MCP server 12 tools, all source-non-mutating
+- [x] MCP server 13 tools, all source-non-mutating
 - [x] Controller delegation contract (U-1)
 - [x] Backend governance (J-chain)
 - [x] Call efficiency reporting (J-L chain)
@@ -216,14 +216,21 @@ py -3 tools/soft_gate_dogfood_status.py --since 2026-06-13 --target 30 --json
 
 ---
 
-## 6. Shadow Routing — Future Work
+## 6. Shadow Routing — Status
 
-Shadow routing log (`tools/shadow_route_log.py`) 已就绪，下一步工作：
+### Done
+
+- Shadow routing log (`tools/shadow_route_log.py`) — JSONL append-only logger
+- Advisory workflow preflight (`tools/advisory_workflow.py`) — wraps router_explain + shadow_route_log, outputs recommended_controller_decision, 13 mock tests
+
+### Future Work
 
 1. **Aggregate accuracy**: 累计 30—50 条 shadow log 后，输出准确率报告 (`--stats`)
 2. **Route decision dashboard**: 按 task_type / risk_level / match 分组查看
-3. **Advisory workflow integration**: controller/agent 执行任务前自动调用 `local_route_explain`，记录建议但不自动执行
-4. **DeepSeek auto-escalation**: 仅在 shadow routing 通过后启用 — 需要 privacy gate + budget guard + cost ledger + fallback/retry 规则
+3. **Hook integration**: auto-invoke preflight on certain task triggers
+4. **Controller comparison dashboard**
+5. **Decision accuracy tracking over time**
+6. **DeepSeek auto-escalation**: 仅在 shadow routing 通过后启用 — 需要 privacy gate + budget guard + cost ledger + fallback/retry 规则
 
 ---
 
@@ -461,23 +468,6 @@ Audit complete. Decision: PASS_WITH_LIMITS.
 **Pending**:
 - Dogfood accumulation: 30 additional labeled records
 - Second calibration round (only if new misroutings appear)
-
----
-
-## 14. Advisory Workflow — Status
-
-Advisory workflow preflight (`tools/advisory_workflow.py`) is ready.
-
-**Done**:
-- Preflight CLI: `py -3 tools/advisory_workflow.py "<task>"`
-- Outputs recommended_controller_decision + full router analysis
-- Writes shadow routing log automatically
-- 13 mock tests
-
-**Pending**:
-- Hook integration (auto-invoke preflight on certain task triggers)
-- Controller comparison dashboard
-- Decision accuracy tracking over time
 
 ---
 

@@ -202,8 +202,10 @@ def test_load_ledger_extra_does_not_mutate_environ(clean_env, monkeypatch):
 
 def test_worker_records_env_extras_in_ledger(
         tmp_path, clean_env, isolated_out_dir, monkeypatch):
-    project = tmp_path / "proj"
-    project.mkdir()
+    # Use tempfile to avoid .local_llm_out blocking in is_blocked_path
+    import tempfile as _tf
+    project = Path(_tf.mkdtemp()) / "proj"
+    project.mkdir(parents=True)
     (project / "alpha.py").write_text("def alpha(): return 1\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")
@@ -235,8 +237,9 @@ def test_worker_records_env_extras_in_ledger(
 
 def test_worker_records_top_level_profile_from_config(
         tmp_path, clean_env, isolated_out_dir, monkeypatch):
-    project = tmp_path / "proj"
-    project.mkdir()
+    import tempfile as _tf
+    project = Path(_tf.mkdtemp()) / "proj"
+    project.mkdir(parents=True)
     (project / "alpha.py").write_text("def alpha(): return 1\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")
@@ -261,8 +264,9 @@ def test_worker_records_with_unset_env_still_works(
         tmp_path, clean_env, isolated_out_dir, monkeypatch):
     """LOCAL_LLM_LEDGER_EXTRA unset → record still emitted; extra absent or
     empty; profile still populated from config."""
-    project = tmp_path / "proj"
-    project.mkdir()
+    import tempfile as _tf
+    project = Path(_tf.mkdtemp()) / "proj"
+    project.mkdir(parents=True)
     (project / "alpha.py").write_text("def alpha(): return 1\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")
@@ -290,8 +294,9 @@ def test_worker_drops_forbidden_keys_through_env_channel(
         tmp_path, clean_env, isolated_out_dir, monkeypatch):
     """Even if a caller smuggles a forbidden key into the env JSON, it must
     not appear in record extra (helper-level allowlist filter)."""
-    project = tmp_path / "proj"
-    project.mkdir()
+    import tempfile as _tf
+    project = Path(_tf.mkdtemp()) / "proj"
+    project.mkdir(parents=True)
     (project / "alpha.py").write_text("def alpha(): return 1\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")

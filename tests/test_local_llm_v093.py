@@ -85,6 +85,7 @@ def test_summarize_tree_happy_path_returns_tree_summary(tmp_path, isolated_out_d
     (project / "beta.py").write_text("def beta(): return 2\n", encoding="utf-8")
 
     worker = importlib.import_module("local_llm_worker")
+    monkeypatch.setattr(worker, "is_blocked_path", lambda p: False)
     monkeypatch.setattr(worker, "call_model",
                         lambda system, user, config: _mcr("DIRECTORY-SUMMARY-OK"))
 
@@ -252,6 +253,8 @@ def test_prompt_metadata_in_result_log_and_cache(tmp_path, isolated_out_dir, mon
     cache_mod = importlib.import_module("local_llm_cache")
     logging_mod = importlib.import_module("local_llm_logging")
 
+    # Disable path blocking so tmp_path files are accessible
+    monkeypatch.setattr(worker, "is_blocked_path", lambda p: False)
     monkeypatch.setattr(cache_mod, "_cache_root",
                         lambda: isolated_out_dir / "cache")
     monkeypatch.setattr(logging_mod, "LOG_DIR", isolated_out_dir / "logs")
@@ -297,6 +300,8 @@ def test_draft_code_writes_only_to_local_llm_out(tmp_path, isolated_out_dir, mon
     """Acceptance #8 — local_draft_code must only emit files under
     .local_llm_out/. Verify by snapshotting tmp_path before and after a run."""
     worker = importlib.import_module("local_llm_worker")
+    # Disable path blocking so tmp_path files are accessible
+    monkeypatch.setattr(worker, "is_blocked_path", lambda p: False)
     monkeypatch.setattr(worker, "call_model",
                         lambda *a, **kw: _mcr("## DRAFT FIX\nDo not modify source files."))
 
@@ -317,9 +322,9 @@ def test_draft_code_writes_only_to_local_llm_out(tmp_path, isolated_out_dir, mon
     assert any(isolated_out_dir.glob("*_draft-fix.json"))
 
 
-def test_mcp_tool_count_is_twelve():
+def test_mcp_tool_count_is_thirteen():
     """Acceptance #9 — adding/removing MCP tools is a contract change. Lock
-    the surface area at exactly twelve (S-1 added local_workflow_plan)."""
+    the surface area at thirteen (S-1 added local_workflow_plan, IFACE-CHANGE-006 added local_route_explain)."""
     mcp = importlib.import_module("local_llm_mcp_server")
     expected = {
         "local_check", "local_summarize_file", "local_summarize_tree",
@@ -327,9 +332,9 @@ def test_mcp_tool_count_is_twelve():
         "local_debate_review_diff", "local_parallel_review",
         "local_draft_code", "local_contextual_analyze",
         "local_repo_map", "local_classify_test_failure",
-        "local_workflow_plan",
+        "local_workflow_plan", "local_route_explain",
     }
     assert set(mcp.TOOLS.keys()) == expected
     assert set(mcp.TOOL_HANDLERS.keys()) == expected
-    assert len(mcp.TOOLS) == 12
-    assert len(mcp.TOOL_HANDLERS) == 12
+    assert len(mcp.TOOLS) == 13
+    assert len(mcp.TOOL_HANDLERS) == 13

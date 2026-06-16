@@ -185,12 +185,10 @@ def test_mcp_tool_exists_in_source():
 
 
 def test_mcp_tool_count_12():
-    """D-C: MCP TOOLS count is now 12."""
-    mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
-    text = mcp_path.read_text(encoding="utf-8")
-    import re
-    tool_names = re.findall(r'"local_\w+":\s*\{', text)
-    assert len(tool_names) == 12, f"expected 12 MCP tools, found {len(tool_names)}: {tool_names}"
+    """D-C: MCP TOOLS count is now 13 (12 + local_route_explain)."""
+    import importlib
+    mcp = importlib.import_module("local_llm_mcp_server")
+    assert len(mcp.TOOLS) == 13, f"expected 13 MCP tools, found {len(mcp.TOOLS)}"
 
 
 def test_call_ledger_has_test_failure_keys():

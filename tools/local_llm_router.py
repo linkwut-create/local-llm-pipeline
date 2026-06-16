@@ -360,6 +360,7 @@ def main():
     local_only = False
     cloud_ok = False
     privacy_strict = True  # default: strict privacy, no auto-upload
+    positional_target = None
     filtered_args = []
     i = 0
     while i < len(passthrough_args):
@@ -394,6 +395,12 @@ def main():
             elif passthrough_args[i + 1] == "relaxed":
                 privacy_strict = False
             i += 2
+            continue
+        elif not arg.startswith("-") and positional_target is None:
+            # The first bare positional argument is the target path and must be
+            # placed before option flags when invoking local_llm_worker.py.
+            positional_target = arg
+            i += 1
             continue
         else:
             filtered_args.append(arg)
@@ -547,9 +554,14 @@ def main():
     cmd = [
         sys.executable, str(WORKER_PATH),
         task,
+    ]
+    if positional_target is not None:
+        cmd.append(positional_target)
+    cmd.extend([
         "--profile", profile_name,
         "--model", model,
-    ] + filtered_args
+    ])
+    cmd.extend(filtered_args)
 
     import time
     started = time.time()

@@ -66,8 +66,8 @@ local-llm-pipeline is a **local AI development control layer** — not a tool co
 - **Task bootstrap**: structured project context before broad work.
 - **Review gates**: pre-commit and pre-release safety checks via local models.
 - **Call ledger**: token/cost observability across models and tasks.
-- **MCP server**: 12 source-non-mutating tools for summarization, review, test,
-  workflow planning, and repo mapping.
+- **MCP server**: 13 source-non-mutating tools for summarization, review, test,
+  workflow planning, route explanation, and repo mapping.
 
 Codex, Claude Code, and local LLMs are executors — the pipeline provides the
 control layer that gates commits and releases.

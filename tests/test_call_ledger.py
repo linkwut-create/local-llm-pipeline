@@ -87,7 +87,17 @@ def test_detect_phase_set(clean_env, monkeypatch):
 # git_state
 # ---------------------------------------------------------------------------
 
-def test_git_state_outside_repo(tmp_path):
+def test_git_state_outside_repo(tmp_path, monkeypatch):
+    # Simulate being outside a git repo by making git rev-parse fail
+    import subprocess as _sp
+    _orig_run = _sp.run
+    def _mock_run(cmd, **kwargs):
+        if isinstance(cmd, list) and cmd[0] == "git" and "rev-parse" in cmd:
+            # Return a CompletedProcess with non-zero returncode
+            result = _sp.CompletedProcess(cmd, 128, stdout="", stderr="")
+            return result
+        return _orig_run(cmd, **kwargs)
+    monkeypatch.setattr(_sp, "run", _mock_run)
     commit, dirty = call_ledger.git_state(tmp_path)
     assert commit is None
     assert dirty is None

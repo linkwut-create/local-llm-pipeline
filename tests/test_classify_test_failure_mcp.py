@@ -41,7 +41,7 @@ def test_tool_registered_in_HANDLERS():
 
 
 def test_tool_count_is_12():
-    assert len(mcp.TOOLS) == 12
+    assert len(mcp.TOOLS) == 13
 
 
 def test_original_10_tools_still_present():

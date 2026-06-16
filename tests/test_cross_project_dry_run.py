@@ -59,8 +59,9 @@ class TestCrossProjectDoctor:
                                   "state_readable"), \
                 f"Unexpected FAIL: {f['check']}"
 
-    def test_doctor_does_not_require_pipeline_name(self, tmp_path, monkeypatch):
+    def test_doctor_does_not_require_pipeline_name(self, monkeypatch):
         """Doctor must not hardcode 'local-llm-pipeline' as repo name."""
+        tmp_path = Path(tempfile.mkdtemp())
         repo = _make_external_repo(tmp_path)
         config = tmp_path / "cfg"
         config.mkdir()
@@ -106,7 +107,8 @@ class TestCrossProjectLifecycle:
         state = mcp_gate.load_state(str(config))
         assert str(big_file) in state["needs_summarize"]
 
-    def test_edit_ordinary_file_in_external_repo(self, tmp_path, monkeypatch):
+    def test_edit_ordinary_file_in_external_repo(self, monkeypatch):
+        tmp_path = Path(tempfile.mkdtemp())
         repo, config = self._setup(tmp_path, monkeypatch)
         mcp_gate._clear_session(str(config))
 
@@ -124,7 +126,8 @@ class TestCrossProjectLifecycle:
         assert state["needs_review"] is True
         assert "local_review_diff" in state["session_recommendations"]
 
-    def test_edit_test_file_in_external_repo(self, tmp_path, monkeypatch):
+    def test_edit_test_file_in_external_repo(self, monkeypatch):
+        tmp_path = Path(tempfile.mkdtemp())
         repo, config = self._setup(tmp_path, monkeypatch)
         mcp_gate._clear_session(str(config))
 

@@ -491,7 +491,14 @@ class TestGitInfo:
         assert "describe" in info
         assert "dirty" in info
 
-    def test_handles_non_git_directory(self, tmp_path):
+    def test_handles_non_git_directory(self, tmp_path, monkeypatch):
+        # Simulate being outside a git repo by making git rev-parse fail
+        import subprocess as _sp
+        def _mock_check_output(cmd, **kwargs):
+            if isinstance(cmd, list) and cmd[0] == "git" and "rev-parse" in cmd:
+                raise _sp.CalledProcessError(128, cmd)
+            return _sp.check_output(cmd, **kwargs)
+        monkeypatch.setattr(_sp, "check_output", _mock_check_output)
         info = TB._get_git_info(tmp_path)
         assert info["head"] == ""
         assert info["describe"] == ""
