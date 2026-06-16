@@ -283,6 +283,26 @@ Rules:
 # Deterministic merge rules
 # ═══════════════════════════════════════════════════════════════
 
+def _single_model_decision(j: RouteJudgement) -> RouteDecision:
+    """When only one model responds, use its judgement directly."""
+    return RouteDecision(
+        delegability=j.delegability,
+        recommended_route=j.recommended_route,
+        local_preprocessing_required=j.local_preprocessing_required,
+        pro_should_execute=j.pro_should_execute,
+        pro_should_adjudicate=j.pro_should_adjudicate,
+        risk_level=j.risk_level,
+        privacy_status=j.privacy_status,
+        reason=f"Single model ({j.model}): {j.reason}",
+        required_artifacts=j.required_artifacts,
+        qwen_judgement=j.to_dict() if "qwen" in j.model else {},
+        gemma_judgement=j.to_dict() if "gemma" in j.model else {},
+        agreement=True,
+        escalated=j.recommended_route in ("pro_decision", "blocked"),
+        escalated_reason="single model decision (partner unavailable)",
+    )
+
+
 def merge_judgements(qwen: RouteJudgement,
                      gemma: RouteJudgement) -> RouteDecision:
     """Deterministic merge of two route judgements. No third model needed.
@@ -441,25 +461,60 @@ def merge_judgements(qwen: RouteJudgement,
 # ═══════════════════════════════════════════════════════════════
 
 def _call_model(model: str, prompt: str, timeout: int = 30) -> str:
-    """Call Ollama model. Returns raw output or empty string."""
+    """Call Ollama model via API (not CLI) to avoid terminal artifacts."""
+    import urllib.request as _ur
+    import json as _json
+
+    body = _json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"num_predict": 256, "temperature": 0.0},
+    }).encode("utf-8")
+
+    base = os.environ.get("OLLAMA_HOST", "http://193.168.2.2:11434")
+    url = base.rstrip("/") + "/api/generate"
+
     try:
-        r = subprocess.run(
-            ["ollama", "run", model, prompt],
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace",
-            timeout=timeout,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        return (r.stdout or "").strip()
+        req = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
+        with _ur.urlopen(req, timeout=timeout) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        return data.get("response", "").strip()
     except Exception:
-        return ""
+        # Fallback to CLI
+        try:
+            r = subprocess.run(
+                ["ollama", "run", model, prompt],
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=timeout,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            return (r.stdout or "").strip()
+        except Exception:
+            return ""
 
 
 def _parse_judgement(raw: str, model: str) -> RouteJudgement:
     """Extract JSON from model output and parse into RouteJudgement."""
-    # Find JSON block
-    json_match = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
-    if not json_match:
+    # Strip ANSI escape sequences and terminal control chars
+    clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw)
+    clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
+    # Find the first complete JSON object
+    depth = 0; start = -1
+    for i, ch in enumerate(clean):
+        if ch == '{':
+            if depth == 0: start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start >= 0:
+                json_match = re.match(r'', '')  # dummy
+                json_str = clean[start:i+1]
+                break
+    else:
+        json_str = None
+    if not json_str:
         return RouteJudgement(
             delegability="low",
             recommended_route="ask_user",
@@ -475,7 +530,7 @@ def _parse_judgement(raw: str, model: str) -> RouteJudgement:
         )
 
     try:
-        data = json.loads(json_match.group(0))
+        data = json.loads(json_str)
     except json.JSONDecodeError:
         return RouteJudgement(
             delegability="low",
@@ -537,19 +592,28 @@ def convene(task_description: str,
     import concurrent.futures as _cf
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
-        future_qwen = pool.submit(_call_model, "qwen3.6:27b", prompt, 30)
-        future_gemma = pool.submit(_call_model, "gemma4:31b", prompt, 30)
+        future_qwen = pool.submit(_call_model, "qwen3.6:27b", prompt, 60)
+        future_gemma = pool.submit(_call_model, "gemma4:31b", prompt, 60)
         try:
-            raw_qwen = future_qwen.result(timeout=40)
+            raw_qwen = future_qwen.result(timeout=70)
         except Exception:
             raw_qwen = ""
         try:
-            raw_gemma = future_gemma.result(timeout=40)
+            raw_gemma = future_gemma.result(timeout=70)
         except Exception:
             raw_gemma = ""
 
     qwen = _parse_judgement(raw_qwen, "qwen3.6:27b")
     gemma = _parse_judgement(raw_gemma, "gemma4:31b")
+
+    # Fallback: if one model failed, use the other alone
+    qwen_failed = qwen.recommended_route == "ask_user" and "unparseable" in qwen.reason
+    gemma_failed = gemma.recommended_route == "ask_user" and "unparseable" in gemma.reason
+
+    if qwen_failed and not gemma_failed:
+        return _single_model_decision(gemma)
+    if gemma_failed and not qwen_failed:
+        return _single_model_decision(qwen)
 
     return merge_judgements(qwen, gemma)
 
@@ -599,9 +663,9 @@ def main():
     if args.json:
         output = decision.to_dict()
         output["_enforcement"] = {
-            "allowed": list(permissions["allowed"]) if permissions["allowed"] else ["all"],
-            "denied": list(permissions["denied"]),
-            "cloud_ok": permissions["cloud_ok"],
+            "allowed": list(permissions.get("allowed_tools", [])) or ["all"],
+            "denied": list(permissions.get("forbidden_tools", [])),
+            "cloud_ok": permissions.get("cloud_allowed", False),
         }
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
@@ -613,11 +677,11 @@ def main():
         print(f"Reason: {decision.reason}")
         print(f"Artifacts: {decision.required_artifacts}")
         print(f"\nENFORCEMENT:")
-        allowed = "all" if not permissions["allowed"] else ", ".join(sorted(permissions["allowed"]))
-        denied = "none" if not permissions["denied"] else ", ".join(sorted(permissions["denied"]))
+        allowed = "all" if not permissions.get("allowed_tools") else ", ".join(sorted(permissions["allowed_tools"]))
+        denied = "none" if not permissions.get("forbidden_tools") else ", ".join(sorted(permissions["forbidden_tools"]))
         print(f"  Allowed: {allowed}")
         print(f"  Denied: {denied}")
-        print(f"  Cloud: {permissions['cloud_ok']}")
+        print(f"  Cloud: {permissions.get('cloud_allowed', False)}")
         if not decision.agreement:
             print(f"\nQwen: {decision.qwen_judgement.get('recommended_route')}")
             print(f"Gemma: {decision.gemma_judgement.get('recommended_route')}")
