@@ -439,6 +439,40 @@ class TieringPolicy:
       - Mock-only: never calls DeepSeek API.
     """
 
+    # Cached model names from profiles (lazy-loaded, not hardcoded)
+    _flash_model: Optional[str] = None
+    _pro_model: Optional[str] = None
+
+    @classmethod
+    def _get_cloud_models(cls) -> tuple[str, str]:
+        """Resolve cloud model names from profiles.
+
+        Returns (flash_model, pro_model) — never hardcoded.
+        Defaults are fallback-only; actual names come from local_llm_profiles.json.
+        """
+        if cls._flash_model and cls._pro_model:
+            return cls._flash_model, cls._pro_model
+        flash_model = "flash"       # fallback
+        pro_model = "pro"           # fallback
+        try:
+            profiles = _load_json(PROFILES_PATH).get("profiles", {})
+            # Resolve from well-known profile names
+            flash_candidates = ["deepseek_v4_flash_worker", "deepseek_v4_flash_thinking"]
+            pro_candidates = ["deepseek_v4_pro_planner", "deepseek_v4_pro_reviewer"]
+            for name in flash_candidates:
+                if name in profiles and profiles[name].get("model"):
+                    flash_model = profiles[name]["model"]
+                    break
+            for name in pro_candidates:
+                if name in profiles and profiles[name].get("model"):
+                    pro_model = profiles[name]["model"]
+                    break
+        except Exception:
+            pass
+        cls._flash_model = flash_model
+        cls._pro_model = pro_model
+        return flash_model, pro_model
+
     # Task types that should use Flash direct (no subagent overhead)
     FLASH_DIRECT_TASKS = {
         "summarize-file",
@@ -497,6 +531,7 @@ class TieringPolicy:
 
         # Rule 2: Pro tasks → claude_code_pro
         if task_type in cls.PRO_TASKS:
+            _, pro_model = cls._get_cloud_models()
             return {
                 "recommended_execution_route": "claude_code_pro",
                 "recommended_model": "deepseek-v4-pro",
@@ -661,6 +696,17 @@ class RouterEngine:
             f"(cost: {tier['cost_tier']})"
         )
 
+        # Resolve actual cloud model names from profiles (never hardcoded)
+        resolved_model = tier["recommended_model"]
+        try:
+            flash_model, pro_model = TieringPolicy._get_cloud_models()
+            if resolved_model == "deepseek-v4-flash":
+                resolved_model = flash_model
+            elif resolved_model == "deepseek-v4-pro":
+                resolved_model = pro_model
+        except Exception:
+            pass  # keep hardcoded fallback if profile loading fails
+
         return RouteDecision(
             task_type=task_type,
             risk_level=risk_level,
@@ -673,7 +719,7 @@ class RouterEngine:
             signals=signals,
             confidence=type_conf,
             recommended_execution_route=tier["recommended_execution_route"],
-            recommended_model=tier["recommended_model"],
+            recommended_model=resolved_model,
             cost_tier=tier["cost_tier"],
             context_overhead_warning=tier.get("context_overhead_warning"),
         )
