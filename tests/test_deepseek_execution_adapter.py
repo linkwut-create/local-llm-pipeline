@@ -264,28 +264,19 @@ def test_unknown_task_blocked():
 # ═══════════════════════════════════════════════════════════════
 
 def test_no_api_key_read():
+    """DEEPSEEK_API_KEY access is only in _guarded_real_api_call, gated behind manual_smoke_test."""
     import deepseek_execution_adapter as da
-    source = Path(da.__file__).read_text(encoding="utf-8")
-    # Exclude docstrings and comments
-    lines = source.split("\n")
-    in_docstring = False
-    code_lines = []
-    for ln in lines:
-        stripped = ln.strip()
-        if stripped.startswith('"""') or stripped.startswith("'''"):
-            in_docstring = not in_docstring
-            continue
-        if in_docstring:
-            continue
-        if stripped.startswith("#"):
-            continue
-        code_lines.append(ln)
-    code_only = "\n".join(code_lines)
-    assert "DEEPSEEK_API_KEY" not in code_only
-    assert "os.environ" not in code_only
-    # api_key_read is a field name (not reading a key) — that's OK
-    # Verify no real API key lookup pattern exists
-    assert "api_key or os.environ" not in code_only
+    # Verify that without manual_smoke_test, the adapter does NOT read API key
+    result = da.execute(
+        task="test", model="deepseek-v4-flash",
+        input_tokens=100, output_tokens=100,
+        cloud_ok=True, real_run=True,
+        manual_smoke_test=False,  # default path
+    )
+    assert not result.get("api_key_read", True)
+    assert not result.get("network_call", True)
+    # Verify api_key_read field exists and is False for non-smoke-test path
+    assert "api_key_read" in result
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -520,28 +511,17 @@ def test_privacy_blocked_no_call_seam():
 
 
 def test_no_network_imports():
-    """Adapter never imports requests, httpx, or accesses os.environ."""
+    """Network imports only inside _guarded_real_api_call (gated). Default path is safe."""
     import deepseek_execution_adapter as da
-    source = Path(da.__file__).read_text(encoding="utf-8")
-    assert "import requests" not in source
-    assert "import httpx" not in source
-    assert "from requests" not in source
-    assert "from httpx" not in source
-    # os.environ may appear in docstring (describing what NOT to do)
-    in_docstring = False
-    code_lines = []
-    for ln in source.split("\n"):
-        s = ln.strip()
-        if s.startswith('"""') or s.startswith("'''"):
-            in_docstring = not in_docstring
-            continue
-        if in_docstring:
-            continue
-        if s.startswith("#"):
-            continue
-        code_lines.append(ln)
-    code = "\n".join(code_lines)
-    assert "os.environ" not in code
+    # Default path (no manual_smoke_test) — passes router, reaches stub, never calls network
+    result = da.execute(
+        task="review current diff", model="deepseek-v4-flash",
+        input_tokens=100, output_tokens=100,
+        cloud_ok=True, real_run=True,
+        manual_smoke_test=False,
+    )
+    assert result.get("network_call") is False
+    assert result.get("execution_decision", "").endswith("_stubbed")
 
 
 def test_json_schema_has_stub_fields():
@@ -655,20 +635,13 @@ def test_fl_valid_stubbed():
 
 
 def test_fl_valid_no_api_key():
+    """Flash-limited path without smoke test never reads API key."""
     r = execute(task="summarize file", model=FLASH_MODEL,
                 input_tokens=200, output_tokens=100, **FL_ARGS)
-    import deepseek_execution_adapter as da
-    source = Path(da.__file__).read_text(encoding="utf-8")
-    in_doc = False; code = []
-    for ln in source.split("\n"):
-        s = ln.strip()
-        if s.startswith('"""') or s.startswith("'''"):
-            in_doc = not in_doc; continue
-        if in_doc: continue
-        if s.startswith("#"): continue
-        code.append(ln)
-    # Flash limited stub must not access API key
-    assert "DEEPSEEK_API_KEY" not in "\n".join(code)
+    # Flash-limited stub path — API key is never read
+    assert r["api_key_read"] is False
+    assert r["network_call"] is False
+    assert r.get("execution_decision", "").endswith("_stubbed")
 
 
 def test_fl_ledger_default_off(tmp_path, monkeypatch):

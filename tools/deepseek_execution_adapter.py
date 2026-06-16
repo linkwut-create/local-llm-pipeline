@@ -77,13 +77,14 @@ def execute(
     real_run: bool = False,
     flash_limited: bool = False,
     manual_confirm: bool = False,
+    manual_smoke_test: bool = False,
     input_text: str = "",
     record_ledger: bool = False,
 ) -> dict:
-    """Run the full execution adapter gate sequence. Mock-only.
+    """Run the full execution adapter gate sequence.
 
-    Runs gates [1]-[6]. Never calls DeepSeek. Never reads API keys.
-    With --real-run, gate [6] returns real_run_not_implemented.
+    Gates [1]-[6]. Default: mock-only (never calls DeepSeek).
+    With --real-run --cloud-ok --manual-smoke-test: guarded real API call.
 
     Args:
         task: Task description.
@@ -259,7 +260,55 @@ def execute(
             _maybe_record(result, record_ledger)
             return result
 
-        # All gates passed — enter guarded API call stub seam
+        # All gates passed — enter guarded API call seam
+        if manual_smoke_test and real_run and cloud_ok:
+            # Guarded real API call (manual smoke test only for now)
+            api_result = _guarded_real_api_call(
+                task=task, model=model,
+                prompt=input_text or task,
+                max_tokens=output_tokens,
+                budget_limit=budget,
+                budget_remaining=cost.get("budget_remaining", budget),
+            )
+            network_called = api_result.get("network_call", False)
+            result = _result_base(
+                task=task, model=model,
+                execution_decision=(
+                    "manual_smoke_test_success"
+                    if api_result["success"]
+                    else "manual_smoke_test_failed"
+                ),
+                dry_run_decision=dry["decision"],
+                reason=(
+                    f"manual smoke test: {'HTTP ' + str(api_result.get('http_status', '?')) + ' ' if api_result.get('http_status') else ''}"
+                    f"{'OK' if api_result['success'] else 'FAILED: ' + api_result.get('redacted_error', 'unknown error')}. "
+                    f"Dry-run: {dry['reason']}"
+                ),
+                router_task_type=route.task_type,
+                router_risk_level=route.risk_level,
+                privacy_status=privacy["privacy_status"],
+                privacy_needs_review=False,
+                estimated_cost=cost["estimated_cost"],
+                budget_limit=budget,
+                budget_remaining=cost.get("budget_remaining"),
+                cloud_ok=True, real_run=True,
+                input_tokens=input_tokens, output_tokens=output_tokens,
+                timestamp=timestamp,
+                recommended_model=dry.get("recommended_model", model),
+                ledger_event_type=(
+                    "manual_smoke_test_success"
+                    if api_result["success"]
+                    else "manual_smoke_test_failed"
+                ),
+                stub_only=not network_called,
+                network_call=network_called,
+                api_call_attempted=True,
+                api_call_result=api_result,
+            )
+            _maybe_record(result, record_ledger)
+            return result
+
+        # Stub path (default — no real API call)
         stub = _guarded_api_call_stub(
             task=task, model=model,
             input_tokens=input_tokens, output_tokens=output_tokens,
@@ -358,6 +407,140 @@ def _guarded_api_call_stub(
             "in this skeleton. No network request was made."
         ),
     }
+
+
+def _guarded_real_api_call(
+    task: str,
+    model: str,
+    prompt: str = "",
+    max_tokens: int = 256,
+    budget_limit: float | None = None,
+    budget_remaining: float | None = None,
+) -> dict:
+    """Guarded real DeepSeek API call — manual smoke test only.
+
+    Safety invariants:
+      - DEEPSEEK_API_KEY read from env only, immediately discarded after call
+      - Key NEVER appears in return value, logs, or error messages
+      - Budget guard: hard stop if estimated cost > remaining budget
+      - Response content limited to max_tokens
+      - Errors redacted: API key stripped, URL path only logged
+
+    Returns a dict with the same shape as _guarded_api_call_stub,
+    plus real response data when successful.
+    """
+    import os as _os
+
+    # Budget guard (hard stop)
+    estimated_cost = _estimate_cost(model, len(prompt) // 3, max_tokens)
+    if budget_limit is not None and budget_remaining is not None:
+        if estimated_cost > budget_remaining:
+            return {
+                "success": False,
+                "stub_only": False,
+                "response_text": None,
+                "usage": None,
+                "elapsed_ms": 0,
+                "network_call": False,
+                "api_key_read": False,
+                "http_status": None,
+                "error_type": "budget_exceeded",
+                "redacted_error": (
+                    f"estimated cost {estimated_cost:.6f} CNY exceeds "
+                    f"remaining budget {budget_remaining:.2f} CNY — "
+                    f"real API call blocked"
+                ),
+            }
+
+    # Read API key (env only, never from config)
+    api_key = _os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return {
+            "success": False,
+            "stub_only": False,
+            "response_text": None,
+            "usage": None,
+            "elapsed_ms": 0,
+            "network_call": False,
+            "api_key_read": False,
+            "http_status": None,
+            "error_type": "missing_api_key",
+            "redacted_error": "DEEPSEEK_API_KEY not set in environment",
+        }
+
+    # Guarded call
+    import time as _time
+    try:
+        from deepseek_client import call_deepseek as _call
+    except ImportError:
+        return {
+            "success": False,
+            "stub_only": False,
+            "response_text": None,
+            "usage": None,
+            "elapsed_ms": 0,
+            "network_call": False,
+            "api_key_read": False,
+            "http_status": None,
+            "error_type": "import_error",
+            "redacted_error": "deepseek_client module not importable",
+        }
+
+    started = _time.monotonic()
+    try:
+        result = _call(
+            prompt=prompt or task,
+            model=model,
+            max_tokens=max_tokens,
+            api_key=api_key,
+            timeout=180,
+        )
+    except Exception as exc:
+        elapsed = int((_time.monotonic() - started) * 1000)
+        # Redact: strip API key from any error message
+        err_msg = str(exc).replace(api_key, "[REDACTED]")
+        return {
+            "success": False,
+            "stub_only": False,
+            "response_text": None,
+            "usage": None,
+            "elapsed_ms": elapsed,
+            "network_call": True,
+            "api_key_read": True,
+            "http_status": None,
+            "error_type": "api_exception",
+            "redacted_error": f"DeepSeek API call failed: {err_msg[:300]}",
+        }
+    finally:
+        # Discard key immediately
+        api_key = ""
+        del api_key
+
+    elapsed = int((_time.monotonic() - started) * 1000)
+    return {
+        "success": result.get("ok", False),
+        "stub_only": False,
+        "response_text": result.get("content", ""),
+        "usage": result.get("usage"),
+        "elapsed_ms": elapsed,
+        "network_call": True,
+        "api_key_read": True,
+        "http_status": 200 if result.get("ok") else None,
+        "error_type": None if result.get("ok") else "api_error",
+        "redacted_error": (
+            None if result.get("ok")
+            else f"DeepSeek API error: {result.get('error', 'unknown')[:300]}"
+        ),
+    }
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Quick cost estimate for a DeepSeek call (advisory)."""
+    if "flash" in model.lower():
+        return round((input_tokens * 0.14 + output_tokens * 0.28) / 1_000_000, 8)
+    if "pro" in model.lower():
+        return round((input_tokens * 0.55 + output_tokens * 2.19) / 1_000_000, 8)
+    return 0.001  # unknown model, conservative small estimate
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -663,7 +846,9 @@ def main():
     parser.add_argument("--cloud-ok", action="store_true",
                         help="Allow cloud escalation (required)")
     parser.add_argument("--real-run", action="store_true",
-                        help="Request real API call (ALWAYS blocked in mock)")
+                        help="Request real API call")
+    parser.add_argument("--manual-smoke-test", action="store_true",
+                        help="Manual smoke test — enables guarded real API call (requires --cloud-ok --real-run)")
     parser.add_argument("--flash-limited", action="store_true",
                         help="Enable Flash limited real-run mode")
     parser.add_argument("--manual-confirm", action="store_true",
@@ -690,6 +875,7 @@ def main():
         real_run=args.real_run,
         flash_limited=args.flash_limited,
         manual_confirm=args.manual_confirm,
+        manual_smoke_test=args.manual_smoke_test,
         input_text=args.input_text,
         record_ledger=args.record_ledger,
     )

@@ -161,6 +161,270 @@ class TaskClassifier:
 
 
 # ═══════════════════════════════════════════════════════════════
+# Smart Classifier — local model intelligence layer
+# ═══════════════════════════════════════════════════════════════
+
+class SmartClassifier:
+    """Three-tier classification: regex → local debate → cloud confirmation.
+
+    Tier 1: Regex patterns (free, <1ms, deterministic)
+    Tier 2: Dual local model debate — qwen3.6:27b + gemma4:31b (free, ~30s)
+            Both classify independently. Agreement → high confidence.
+    Tier 3: DeepSeek Pro confirmation (paid, ~2s, final authority)
+            Runs when: (a) local models disagree, OR (b) risk=high/critical.
+            The cloud model's verdict overrides local consensus.
+
+    Cache: in-memory, session-scoped. Same task text → same result.
+    """
+
+    _cache: dict[str, Tuple[str, str, float]] = {}
+    _model_calls: int = 0
+    _cloud_confirmations: int = 0
+    _debates: int = 0
+    _agreements: int = 0
+
+    MODEL_A = "qwen3.6:27b"    # primary local
+    MODEL_B = "gemma4:31b"     # local debate partner
+    CLOUD_MODEL = "deepseek-v4-pro"  # final authority
+
+    # Valid task types the model can return
+    VALID_TYPES = {
+        "summarize-file", "summarize-tree", "generate-test-plan",
+        "review-diff", "deep-code-review", "architecture-review",
+        "draft-fix", "draft-feature", "draft-refactor",
+        "rewrite-text", "translate-text", "find-related-files",
+        "governance-docs", "governance-integration",
+        "interface-review", "security-review", "release-risk-review",
+        "api-execution-boundary", "control-plane-boundary",
+        "suggest-improvements",
+    }
+
+    CLASSIFY_PROMPT = """Classify this development task into exactly one category.
+
+Task: {task}
+
+Categories:
+- summarize-file: reading/understanding a specific file
+- summarize-tree: understanding a directory structure
+- review-diff: reviewing code changes or git diff
+- deep-code-review: in-depth code quality review
+- architecture-review: reviewing architecture or design
+- draft-fix: fixing a bug or error
+- draft-feature: implementing a new feature or capability
+- draft-refactor: refactoring or restructuring code
+- generate-test-plan: writing or planning tests
+- rewrite-text: writing documentation, README, comments
+- translate-text: translating text between languages
+- find-related-files: searching or locating files
+- governance-docs: updating project governance documents
+- governance-integration: building/implementing governance components (gate, hook, budget, privacy)
+- interface-review: reviewing API/CLI/config interfaces for breaking changes
+- security-review: security audit or vulnerability assessment
+- release-risk-review: pre-release risk assessment
+- api-execution-boundary: working on API adapters, cloud integration, real-run
+- control-plane-boundary: working on hooks, gates, blocking, MCP proxy
+- suggest-improvements: suggesting improvements or optimizations
+
+Reply with ONLY one line in this exact format:
+TYPE: <category>
+RISK: low|medium|high|critical
+WHY: <one-line reason>"""
+
+    @classmethod
+    def classify(cls, text: str, cloud_ok: bool = False) -> Tuple[str, str, float]:
+        """Three-tier classification.
+
+        Args:
+            text: Task description.
+            cloud_ok: If True, DeepSeek Pro confirms when local models
+                      disagree or risk is high/critical.
+
+        Returns (task_type, risk_contribution, confidence).
+        """
+        # Guard: empty or very short input → unknown (don't waste model calls)
+        if not text or len(text.strip()) < 10:
+            return ("unknown", "low", 0.0)
+
+        # Tier 1: regex (fast path)
+        task_type, risk, confidence = TaskClassifier.classify(text)
+        if task_type != "unknown" and confidence >= 0.5:
+            return (task_type, risk, confidence)
+
+        # Cache check
+        cache_key = text.strip().lower()[:200]
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+
+        # Tier 2: local dual-model debate
+        try:
+            result = cls._debate(text)
+        except Exception:
+            result = (task_type, risk, confidence)
+
+        # Tier 3: cloud confirmation (when needed)
+        tt, rk, cf = result
+        needs_cloud = (
+            cloud_ok
+            and (cf < 0.85 or rk in ("high", "critical"))
+        )
+        if needs_cloud:
+            try:
+                result = cls._cloud_confirm(text, tt, rk)
+                cls._cloud_confirmations += 1
+            except Exception:
+                pass  # cloud unavailable → keep local result
+
+        cls._cache[cache_key] = result
+        return result
+
+    @classmethod
+    def _debate(cls, text: str) -> Tuple[str, str, float]:
+        """Run both models and resolve consensus.
+
+        Both models see the same prompt. If they agree on task_type,
+        confidence is high. If they disagree, the result includes both
+        opinions with reduced confidence.
+        """
+        import concurrent.futures as _cf
+
+        prompt = cls.CLASSIFY_PROMPT.format(task=text[:2000])
+
+        def _ask(model: str) -> Tuple[str, str, str]:
+            return cls._call_single_model(model, prompt)
+
+        cls._debates += 1
+
+        # Run both models in parallel
+        with _cf.ThreadPoolExecutor(max_workers=2) as pool:
+            future_a = pool.submit(_ask, cls.MODEL_A)
+            future_b = pool.submit(_ask, cls.MODEL_B)
+            try:
+                type_a, risk_a, why_a = future_a.result(timeout=35)
+            except Exception:
+                type_a, risk_a, why_a = "unknown", "low", ""
+            try:
+                type_b, risk_b, why_b = future_b.result(timeout=35)
+            except Exception:
+                type_b, risk_b, why_b = "unknown", "low", ""
+
+        cls._model_calls += 2
+
+        # Consensus
+        if type_a == type_b and type_a != "unknown":
+            cls._agreements += 1
+            risk = risk_a if risk_a == risk_b else (
+                "high" if "high" in (risk_a, risk_b)
+                else "medium" if "medium" in (risk_a, risk_b)
+                else "low"
+            )
+            return (type_a, risk, 0.85)
+
+        # Disagreement — prefer the non-unknown model, higher confidence if either is good
+        if type_a != "unknown":
+            return (type_a, risk_a, 0.55)
+        if type_b != "unknown":
+            return (type_b, risk_b, 0.55)
+
+        # Both failed
+        return ("unknown", "low", 0.2)
+
+    @classmethod
+    def _call_single_model(cls, model: str, prompt: str) -> Tuple[str, str, str]:
+        """Call one model. Returns (task_type, risk, reason). Never raises."""
+        import subprocess as _sp
+
+        cmd = ["ollama", "run", model, prompt]
+        try:
+            r = _sp.run(
+                cmd, capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=30, cwd=str(SCRIPT_DIR.parent),
+            )
+            output = (r.stdout or "").strip()
+            return cls._parse_model_output(output)
+        except Exception:
+            return ("unknown", "low", "")
+
+    @classmethod
+    def _parse_model_output(cls, output: str) -> Tuple[str, str, str]:
+        """Parse the model's one-line response."""
+        import re as _re
+        type_match = _re.search(r"TYPE:\s*(\S+)", output, _re.IGNORECASE)
+        risk_match = _re.search(r"RISK:\s*(low|medium|high|critical)", output, _re.IGNORECASE)
+        why_match = _re.search(r"WHY:\s*(.+?)$", output, _re.IGNORECASE | _re.MULTILINE)
+
+        task_type = "unknown"
+        risk = "low"
+        reason = ""
+        if type_match:
+            candidate = type_match.group(1).strip().lower()
+            if candidate in cls.VALID_TYPES:
+                task_type = candidate
+        if risk_match:
+            risk = risk_match.group(1).strip().lower()
+        if why_match:
+            reason = why_match.group(1).strip()
+
+        return (task_type, risk, reason)
+
+    @classmethod
+    def _cloud_confirm(cls, text: str, local_type: str,
+                       local_risk: str) -> Tuple[str, str, float]:
+        """DeepSeek Pro confirms or overrides local classification.
+
+        Only called when: cloud_ok=True AND (low confidence OR high risk).
+        The cloud model is the final authority.
+        """
+        import os as _os
+        api_key = _os.environ.get("DEEPSEEK_API_KEY", "")
+        if not api_key:
+            return (local_type, local_risk, 0.6)
+
+        prompt = (
+            f"Local models classified this task as TYPE={local_type} "
+            f"RISK={local_risk}.\n\n"
+            + cls.CLASSIFY_PROMPT.format(task=text[:2000])
+            + "\n\nConfirm or override the local classification. "
+            "Reply with: TYPE: <category> RISK: <level> WHY: <reason>"
+        )
+
+        try:
+            from deepseek_client import call_deepseek as _call
+            result = _call(
+                prompt=prompt,
+                model=cls.CLOUD_MODEL,
+                max_tokens=128,
+                api_key=api_key,
+                timeout=30,
+            )
+            if result.get("ok"):
+                cloud_type, cloud_risk, _ = cls._parse_model_output(
+                    result.get("content", ""))
+                if cloud_type != "unknown":
+                    return (cloud_type, cloud_risk, 0.95)
+        except Exception:
+            pass
+
+        # Cloud unavailable or failed → keep local result with adjusted confidence
+        return (local_type, local_risk, 0.6)
+
+    @classmethod
+    def stats(cls) -> dict:
+        """Return cache/model/debate statistics."""
+        return {
+            "cache_size": len(cls._cache),
+            "model_calls": cls._model_calls,
+            "cloud_confirmations": cls._cloud_confirmations,
+            "debates": cls._debates,
+            "agreements": cls._agreements,
+            "agreement_rate": (
+                round(cls._agreements / cls._debates, 2)
+                if cls._debates > 0 else 0
+            ),
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
 # Risk Assessor
 # ═══════════════════════════════════════════════════════════════
 
@@ -637,9 +901,16 @@ class RouterEngine:
 
         signals = {}
 
-        # Step 1: Classify
-        task_type, base_risk, type_conf = TaskClassifier.classify(text)
+        # Step 1: Classify (regex first, dual-model debate fallback)
+        task_type, base_risk, type_conf = SmartClassifier.classify(text)
         signals["classification"] = [f"type={task_type}", f"confidence={type_conf:.2f}"]
+        # Report debate stats when model was used
+        if type_conf > 0.5 and task_type != "unknown":
+            stats = SmartClassifier.stats()
+            if stats["debates"] > 0:
+                signals["classification"].append(
+                    f"debate_agree={stats['agreement_rate']} "
+                    f"({stats['agreements']}/{stats['debates']})")
 
         # Step 2: Assess risk
         risk_level, risk_signals = RiskAssessor.assess(text, base_risk)
