@@ -117,10 +117,11 @@
 ### Tool: local_route_explain
 - **Purpose**: 解释 DeepSeek V4 Flash/Pro 路由决策（纯启发式，无 LLM，无 API 调用）。Mock-only，advisory-only。
 - **Input**: `{task: str (required), cloud_ok?: bool, local_failures?: int}`
-- **Output**: `{task_type: str, risk_level: str, privacy_status: str, recommended_local_profile: str|null, flash_escalation_condition: str|null, pro_escalation_condition: str|null, cloud_allowed: bool, reason: str, signals: {str: [str]}, confidence: float, recommended_execution_route: str, recommended_model: str|null, cost_tier: str, context_overhead_warning: str|null, ...}`
+- **Output**: `{tool: str, ok: bool, task_type: str, risk_level: str, privacy_status: str, recommended_local_profile: str|null, flash_escalation_condition: str|null, pro_escalation_condition: str|null, cloud_allowed: bool, reason: str, signals: {str: [str]}, confidence: float, local_failures: int, escalate_to_flash: bool, escalate_to_pro: bool, advisory_only: true, request_id: str, created_at: str}`
+- **CLI equivalent**: `py -3 tools/router_explain.py "<task>" --json` (outputs RouteDecision fields only, without MCP wrapper fields)
 - **Side Effects**: 无
 - **LLM Call**: 无（纯启发式，in-process via RouterEngine）
-- **Compatibility**: output 字段只能增；task_type 值只能增；所有输出均为 advisory-only（隐式契约）
+- **Compatibility**: output 字段只能增；task_type 值只能增
 
 ---
 
