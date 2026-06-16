@@ -241,9 +241,13 @@ WHY: <one-line reason>"""
 
         Returns (task_type, risk_contribution, confidence).
         """
-        # Guard: empty or very short input → unknown (don't waste model calls)
-        if not text or len(text.strip()) < 10:
+        # Guard: empty/short/gibberish → unknown (don't waste model calls)
+        if not text or len(text.strip()) < 20:
             return ("unknown", "low", 0.0)
+        # Heuristic: if text has very low word-to-length ratio, it's likely gibberish
+        words = text.strip().split()
+        if len(text.strip()) < 30 and len(words) <= 3:
+            return TaskClassifier.classify(text)
 
         # Tier 1: regex (fast path)
         task_type, risk, confidence = TaskClassifier.classify(text)
