@@ -102,7 +102,9 @@ def test_pre_cloud_send_to_deepseek():
                  cloud_ok=True)
     # ".env" in text → needs_review (medium), not blocked
     # Unknown task + needs_review → defer with orange severity
-    assert r["decision"] in ("defer", "cloud_blocked")
+    # Router now classifies DeepSeek tasks as api-execution-boundary (high risk)
+    # → manual_confirm_recommended is the correct advisory
+    assert r["decision"] in ("defer", "cloud_blocked", "manual_confirm_recommended")
     assert r["severity"] in ("yellow", "orange", "red")
     assert r["would_block"] is False
 

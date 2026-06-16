@@ -126,16 +126,20 @@ class TaskClassifier:
         ("control-plane-boundary", r"\b(?:warning[\s-]gate|stop[\s-]hook|hard[\s-]block|selective[\s-]blocking|automatic[\s-]blocking|blocking[\s-]gate|pre[\s-]tool[\s-]use[\s-]hook|post[\s-]tool[\s-]use[\s-]hook)\b|\b(?:mcp[\s-]gate|llm[\s-]proxy|worker[\s-]auto[\s-]execution|automatic[\s-]worker|automatic[\s-]cloud[\s-]escalation|automatic[\s-]model[\s-]routing|agent[\s-]runtime|controlled[\s-]agent)\b|\bhook[\s-]integration\b|\bexecution[\s-]enforcement\b", "high"),
         # interface change: bidirectional — "change X interface" OR "interface X change"
         ("interface-review", r"\binterface\b.*\b(chang|break|review)|\b(chang|break).*\binterface\b|\bapi\b.*\b(chang|break)|\b(chang|break).*\bapi\b|\bschema\b.*\b(chang|migrat)|\b(chang|migrat).*\bschema\b|\bbackward\b.*\bcompat\b|\bdeprecat\b|\brouter\b.*\bconfig\b|\bprovider\b.*\b(chang|config|schema)|\b(config|schema).*\brefactor\b|\bddl\b|\balter\b.*\btable\b|\bcolumn\b.*\b(add|drop|modif|alter)|\b(add|drop|modif).*\bcolumn\b|\bmigrat.*\b(database|db|column|table|schema)|\b(database|schema).*\bmigrat", "high"),
+        # API execution boundary — DeepSeek integration, adapters, real-run, smoke tests
+        ("api-execution-boundary", r"\bdeepseek\b(?!.*\bsmoke\b.*\btest\b)|\bapi\b.*\b(adapter|execution|call|real|integration)|\b(?:adapter|execution|real[\s-]run|dry[\s-]run)\b|\bskeleton\b.*\b(?:adapter|execution)|\b(?:adapter|execution).*\bskeleton\b", "high"),
+        # governance-docs BEFORE governance-integration (docs about governance = low risk)
+        ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bchangelog\.md\b|\brelease_notes\.md\b|\bgovernance\b|\baudit\b", "low"),
+        # Governance integration — implementing/hardening/building governance components
+        ("governance-integration", r"\b(?:enable|disable|implement|add|build|integrate|wire|connect|harden|upgrade)\b.*\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b|\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b.*\b(?:implementation|integration|harden|build|setup|enable|deploy)\b|\bdogfood\b|\bcheckpoint\b.*\b(preparation|report|status)|\bcalibrat\b.*\brouter\b|\brouter\b.*\bcalibrat\b", "high"),
         # review-diff BEFORE architecture-review (more specific)
-        ("review-diff", r"\breview\b.*\bdiff\b|\bdiff\b.*\breview\b|\bcommit\b.*\breview\b|\bpr\b.*\breview\b", "medium"),
+        ("review-diff", r"\breview\b.*\bdiff\b|\bdiff\b.*\breview\b|\bcommit\b.*\breview\b|\bpr\b.*\breview\b|\bprecommit\b|\bpre-commit\b", "medium"),
         ("deep-code-review", r"\bcode review\b|\bdeep\b.*\breview\b|\breview\b.*\bdeep\b|\breview\b.*\bchange\b|\breview\b.*\bcode\b|\b审查\b.*\b代码\b", "medium"),
         ("architecture-review", r"\barchitect\b|\brefactor\b|\brestructur\b|\bredesign\b|\bdesign pattern\b", "medium"),
         ("draft-refactor", r"\brefactor\b|\brestructur\b|\bclean\b.*\bup\b|\bsimplify\b", "medium-high"),
         ("draft-fix", r"\bfix\b|\bbug\b|\bpatch\b|\bhotfix\b|\berror\b|\bcrash\b|\bexception\b|\bstack.*trace\b|\bnull\b.*\bpointer\b", "medium"),
-        ("generate-test-plan", r"\btest\b.*\bfail|\bfail.*\btest\b|\bflaky\b|\bassertion\b|\btest\b.*\berror\b|\btest\b.*\bplan\b|\btest\b.*\banaly\b", "medium"),
-        ("draft-feature", r"\bfeature\b|\bimplement\b|\badd\b.*\b(new|column|service|api|gateway|module|endpoint|handler|support)\b|\bbuild\b|\bacross\b.*\bservice", "medium"),
-        # governance-docs BEFORE suggest-improvements and summarize-file (more specific)
-        ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bchangelog\.md\b|\brelease_notes\.md\b|\bgovernance\b", "low"),
+        ("generate-test-plan", r"\btests?\b.*\bfail|\bfail.*\btests?\b|\bflaky\b|\bassertion\b|\btests?\b.*\berror\b|\btests?\b.*\bplan\b|\btests?\b.*\banaly\b|\btests?\b.*\bsuite\b|\btests?\b.*\bmock\b|\bmock\b.*\btests?\b|\btests?\b.*\brun\b|\bregression\b|\bwrite\b.*\btests?\b", "medium"),
+        ("draft-feature", r"\bfeature\b|\bimplement\b|\badd\b.*\b(new|column|service|api|gateway|module|endpoint|handler|support|tool|cli|script|report|exporter)\b|\bbuild\b|\bacross\b.*\bservice\b", "medium"),
         ("suggest-improvements", r"\bimprov\b|\boptimiz\b|\bperformance\b|\bbottleneck\b|\bsuggest\b", "low"),
         ("summarize-file", r"\bsummar(y|ize)\b|\bexplain\b.*\bfile\b|\bwhat\b.*\bdoes\b|\bhow\b.*\bwork\b", "low"),
         ("rewrite-text", r"\bdocument\b|\breadme\b|\bcomment\b|\bdocstring\b|\bchangelog\b", "low"),
