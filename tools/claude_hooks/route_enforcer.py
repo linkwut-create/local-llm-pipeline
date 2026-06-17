@@ -155,6 +155,17 @@ def save_plan(task_id: str, plan: dict) -> Path:
     return plan_file
 
 
+def _mark_plan_written(task_id: str) -> None:
+    """Update session state to reflect that plan.json exists on disk.
+
+    Called from on_post_tool_use when a Write tool writes plan.json.
+    Does NOT re-write plan.json — only updates the session metadata.
+    """
+    plan_file = _tasks_dir() / task_id / "plan.json"
+    if plan_file.exists():
+        _update_session(task_id, {"plan_json_exists": True, "phase": "routing"})
+
+
 def save_artifact(task_id: str, name: str, content: str) -> Path:
     """Save an artifact file and update the artifact index."""
     art_file = _tasks_dir() / task_id / "artifacts" / name
@@ -327,6 +338,8 @@ def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
     if perms["allowed"] and tool_name not in perms["allowed"]:
         # Special message for flash_direct: forced model switch
         if route_type == "flash_direct" and tool_name in ("Edit", "Write", "NotebookEdit"):
+            if _is_flash_session():
+                return True, ""  # Already on Flash — allow direct editing
             return False, (
                 f"Route '{route_type}' FORCES execution on DeepSeek v4 Flash. "
                 f"You cannot {tool_name} directly — the main session model must switch. "
@@ -404,12 +417,14 @@ def on_pre_tool_use(payload: dict) -> dict:
             "reason": reason,
         }
 
-    # Flash cloud authorization — ask user, then force model switch enforcement
+    # Flash cloud authorization — skip if already on Flash session
     route = load_route(task_id)
     if route is not None:
         route_type = route.get("recommended_route", "")
         perms = ROUTE_PERMISSIONS.get(route_type, {})
         if perms.get("cloud_ok") and route_type.startswith("flash_"):
+            if _is_flash_session():
+                return {}  # Already on Flash — cloud auth implicit
             if not is_flash_authorized(task_id):
                 return {
                     "permissionDecision": "ask",
@@ -444,6 +459,13 @@ def on_post_tool_use(payload: dict):
         return
 
     task_id = task["task_id"]
+
+    # --- Detect plan.json writes and update session state ---
+    if tool_name == "Write":
+        file_path = str(tool_input.get("file_path", "") or "")
+        if "plan.json" in file_path and str(task_id) in file_path:
+            _mark_plan_written(task_id)
+
     ts = datetime.now(timezone.utc).strftime("%H%M%S")
 
     # --- 1. Always save tool call metadata ---
@@ -586,6 +608,24 @@ def _run_route_committee(task_id: str, user_task: str) -> bool:
         return False
 
 
+def _is_flash_session() -> bool:
+    """Check if the current session is already running on Flash.
+    
+    Reads .claude/settings.local.json to check if model is set to Flash.
+    Settings are loaded at session start, so this reflects the session's
+    starting model.
+    """
+    try:
+        sf = Path('.claude/settings.local.json')
+        if sf.exists():
+            settings = json.loads(sf.read_text(encoding='utf-8'))
+            if isinstance(settings, dict):
+                return settings.get('model', '') == 'deepseek-v4-flash'
+    except Exception:
+        pass
+    return False
+
+
 def _apply_model_switch(route_type: str) -> None:
     """Switch the main session model in Claude Code settings.
     
@@ -595,43 +635,38 @@ def _apply_model_switch(route_type: str) -> None:
     Only switches for flash routes that require a different model than
     the default Pro/Opus tier.
     """
-    # Map route types to Claude Code model identifiers
     _ROUTE_MODEL_MAP = {
-        "flash_direct": "deepseek-v4-flash",
-        "flash_subagent": "deepseek-v4-flash",
+        'flash_direct': 'deepseek-v4-flash',
+        'flash_subagent': 'deepseek-v4-flash',
     }
     target_model = _ROUTE_MODEL_MAP.get(route_type)
     if target_model is None:
         return
 
-    settings_file = Path(".claude/settings.local.json")
+    settings_file = Path('.claude/settings.local.json')
     try:
         if settings_file.exists():
-            settings = json.loads(settings_file.read_text(encoding="utf-8"))
+            settings = json.loads(settings_file.read_text(encoding='utf-8'))
         else:
             settings = {}
         if not isinstance(settings, dict):
             settings = {}
 
-        current = settings.get("model", "")
+        current = settings.get('model', '')
         if current == target_model:
             return  # already set
 
-        settings["model"] = target_model
+        settings['model'] = target_model
         settings_file.write_text(
-            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+            json.dumps(settings, ensure_ascii=False, indent=2) + '\n',
+            encoding='utf-8',
         )
     except Exception:
         pass  # never crash the hook
 
 
 def on_stop(payload: dict) -> dict:
-    """Stop hook: trigger route committee if plan exists but no route yet.
-    
-    If route.json recommends flash_*, automatically switch the session
-    model to DeepSeek v4 Flash for the next session.
-    """
+
     task = get_active_task()
     if task is None:
         return {}
@@ -659,7 +694,7 @@ def on_stop(payload: dict) -> dict:
             ),
         }
 
-    # Auto-switch main model if route recommends Flash
+    # Flash route: auto-switch model for next session
     route = load_route(task_id)
     if route is not None:
         route_type = route.get("recommended_route", "")
@@ -668,8 +703,8 @@ def on_stop(payload: dict) -> dict:
             return {
                 "decision": "allow",
                 "reason": (
-                    f"Route '{route_type}' → main model set to deepseek-v4-flash. "
-                    f"Next session will use Flash for execution. "
+                    f"Route '{route_type}' → model set to deepseek-v4-flash. "
+                    f"Next session will start on Flash. "
                     f"Pro remains available for planning/adjudication via /model."
                 ),
             }
