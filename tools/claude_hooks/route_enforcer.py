@@ -400,3 +400,60 @@ def on_stop(payload: dict) -> dict:
         }
 
     return {}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Main: stdin JSON dispatcher for Claude Code hook integration
+# ═══════════════════════════════════════════════════════════════
+
+# Canonical Claude Code hook event names.
+_HOOK_DISPATCH = {
+    "UserPromptSubmit": on_user_prompt_submit,
+    "PreToolUse": on_pre_tool_use,
+    "PostToolUse": on_post_tool_use,
+    "Stop": on_stop,
+}
+
+
+def main():
+    """Read a Claude Code hook payload from stdin, dispatch to the
+    correct handler, and write the JSON result to stdout.
+
+    Never raises — invalid payloads, unknown events, and internal
+    errors all produce ``{}`` so the hook never crashes Claude Code.
+    """
+    try:
+        raw = sys.stdin.read()
+        if not raw or not raw.strip():
+            json.dump({}, sys.stdout)
+            sys.stdout.flush()
+            return
+
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            json.dump({}, sys.stdout)
+            sys.stdout.flush()
+            return
+
+        # Resolve hook event name — Claude Code uses ``hook_event_name``.
+        hook_event = (
+            payload.get("hook_event_name")
+            or payload.get("event")
+            or ""
+        )
+
+        handler = _HOOK_DISPATCH.get(hook_event)
+        if handler is not None:
+            result = handler(payload) or {}
+        else:
+            result = {}
+
+        json.dump(result, sys.stdout, ensure_ascii=False)
+        sys.stdout.flush()
+    except Exception:
+        json.dump({}, sys.stdout)
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

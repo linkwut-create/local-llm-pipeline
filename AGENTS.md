@@ -29,6 +29,8 @@ local-llm-pipeline is a **local AI development control layer** — not a tool co
 | **LONGTODO.md** | 长期路线图、需求、延期项、决策队列 | 触及 roadmap 时 |
 | **INTERFACES.md** | MCP/CLI/Config/Provider 接口契约 | 涉及 API/CLI/config 变更时 |
 | **GRILLME.md** | 新项目初始化访谈模板 | 新项目或新团队成员加入时 |
+| **docs/PIPELINE_MODE_ROADMAP.md** | v2 pipeline mode 总路线图 | 涉及 v2 架构/阶段/成功标准时 |
+| **docs/PIPELINE_MODE_STATUS.md** | v2 模块完成度跟踪 | 每次 v2 任务完成后更新 |
 
 ## 1. Core Design Principles
 

@@ -60,7 +60,18 @@ py -3 tools/soft_gate_dogfood_status.py --since 2026-06-13 --target 30 --json
 
 ---
 
-## 0. Long-Term Vision
+## 0. v2 Pipeline Mode
+
+v2 路线图已独立成文：
+
+- **[docs/PIPELINE_MODE_ROADMAP.md](docs/PIPELINE_MODE_ROADMAP.md)** — v2 总路线图：架构、6 阶段、成功标准
+- **[docs/PIPELINE_MODE_STATUS.md](docs/PIPELINE_MODE_STATUS.md)** — v2 17 模块完成度跟踪
+
+当前 pipeline mode 可用完成度：~22%。Phase A (Hook Closure) 60%，Phase B (Route Committee) 50%。
+
+---
+
+## 1. Long-Term Vision
 
 **一句话目标**: local-llm-pipeline 是本地 AI 开发控制层 — 让小模型跑重活，大模型做审核，降低 token 成本，接入 Claude Code / Codex / MCP。
 

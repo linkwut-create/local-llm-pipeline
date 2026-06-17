@@ -226,3 +226,113 @@ def test_auth_command_format(tmp_path):
         assert "route.json" in cmd
     finally:
         monkeypatch.undo()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Subprocess-level tests — verify the script runs as a real
+# Claude Code hook (stdin JSON → stdout JSON).
+# ═══════════════════════════════════════════════════════════════
+
+ROUTE_ENFORCER = Path(__file__).resolve().parent.parent / "tools" / "claude_hooks" / "route_enforcer.py"
+
+
+def _run_hook(payload):
+    """Pipe *payload* as JSON to the route_enforcer subprocess, return
+    the parsed stdout JSON object."""
+    if isinstance(payload, dict):
+        payload_str = json.dumps(payload)
+    else:
+        payload_str = str(payload)
+    r = subprocess.run(
+        [sys.executable, str(ROUTE_ENFORCER)],
+        input=payload_str,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if not r.stdout.strip():
+        return {}
+    return json.loads(r.stdout)
+
+
+class TestRouteEnforcerSubprocess:
+    """Verify route_enforcer.py works as a standalone hook script."""
+
+    def test_user_prompt_submit_yields_plan_only(self):
+        result = _run_hook({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "fix null pointer in the login handler",
+        })
+        assert "PLAN-ONLY" in result.get("additionalContext", "")
+
+    def test_pre_tool_use_edit_no_route_denies(self):
+        result = _run_hook({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "src/main.py"},
+        })
+        assert result.get("permissionDecision") == "deny"
+        assert "route.json" in result.get("reason", "")
+
+    def test_pre_tool_use_read_no_route_allows(self):
+        result = _run_hook({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Read",
+            "tool_input": {"file_path": "README.md"},
+        })
+        # No active task → allows; with active task + no route → still allows Read
+        assert result.get("permissionDecision") != "deny"
+
+    def test_unknown_event_returns_empty(self):
+        result = _run_hook({
+            "hook_event_name": "SomeFutureEvent",
+            "data": "irrelevant",
+        })
+        assert result == {}
+
+    def test_empty_stdin_returns_empty(self):
+        r = subprocess.run(
+            [sys.executable, str(ROUTE_ENFORCER)],
+            input="",
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert r.returncode == 0
+        result = json.loads(r.stdout) if r.stdout.strip() else {}
+        assert result == {}
+
+    def test_invalid_json_returns_empty_no_crash(self):
+        r = subprocess.run(
+            [sys.executable, str(ROUTE_ENFORCER)],
+            input="this is not json {{{",
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert r.returncode == 0
+        result = json.loads(r.stdout) if r.stdout.strip() else {}
+        assert result == {}
+
+    def test_non_dict_json_returns_empty(self):
+        result = _run_hook("just a string")
+        assert result == {}
+
+    def test_post_tool_use_returns_empty(self):
+        result = _run_hook({
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pytest -q"},
+            "tool_response": {"output": "3 passed"},
+        })
+        # PostToolUse never blocks — always returns {}
+        assert result == {}
+
+    def test_missing_hook_event_name_returns_empty(self):
+        result = _run_hook({
+            "prompt": "some task without an event name",
+        })
+        assert result == {}

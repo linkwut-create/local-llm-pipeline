@@ -326,8 +326,8 @@
       "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
       "_variant_of": "gemma4_26b",
       "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
-      "_status": "available — port 8080, -ngl 30",
-      "_backend_class": "llamacpp_unconfigured"
+      "_status": "unavailable — port 8080 offline since v0.12.0",
+      "_backend_class": "unavailable"
     },
     "gemma4_26b": {
       "model": "gemma4:26b",
@@ -398,7 +398,7 @@
       "risk_level": "medium",
       "_benchmark": "Gemma 4 31B — Google's 31B flagship. Opus-distilled variant available. 32-35GB.",
       "_drafter": "gemma-4-31B-it-assistant-F16.gguf (911MB, on zero12) — MTP ready when llama.cpp supports Gemma 4 MTP",
-      "_status": "available — Ollama",
+      "_status": "available — Ollama (uses gemma4-31b-opus:latest, not standard gemma4:31b)",
       "_backend_class": "ollama_heavy_manual"
     },
     "deepseek_r1_70b": {
@@ -531,7 +531,8 @@
       "_last_tested": "2026-05-19",
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
       "_acceleration": "mtp (pending upstream llama.cpp)",
-      "_backend_class": "ollama_mtp_pending"
+      "_backend_class": "unavailable",
+      "_status": "unavailable — llama.cpp MTP offline since v0.12.0 (pending upstream tensor fix)"
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b",
@@ -563,7 +564,8 @@
       "_last_tested": "2026-05-19",
       "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
       "_acceleration": "mtp (pending upstream llama.cpp)",
-      "_backend_class": "ollama_mtp_pending"
+      "_backend_class": "unavailable",
+      "_status": "unavailable — llama.cpp MTP offline since v0.12.0 (pending upstream tensor fix)"
     },
     "v4_flash_local_experimental": {
       "model": "v4-flash",

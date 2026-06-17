@@ -69,23 +69,21 @@
     },
     "deep-code-review": {
       "risk": "high",
-      "default_profile": "qwen3.6_35b_moe_mtp",
+      "default_profile": "deep_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
       "allowed_use": "Deep review of code for architectural issues, patterns, and risks.",
-      "forbidden_use": "Must not approve changes. Controller must verify all claims.",
-      "_llamacpp_profile": "mistral_119b_llamacpp"
+      "forbidden_use": "Must not approve changes. Controller must verify all claims."
     },
     "architecture-review": {
       "risk": "high",
-      "default_profile": "qwen3.6_35b_moe_mtp",
+      "default_profile": "deep_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
       "allowed_use": "Compare architectural approaches and flag tradeoffs.",
-      "forbidden_use": "Must not make final architecture decisions.",
-      "_llamacpp_profile": "mistral_119b_llamacpp"
+      "forbidden_use": "Must not make final architecture decisions."
     },
     "release-risk-review": {
       "risk": "high",
@@ -198,8 +196,7 @@
     },
     "suggest-improvements": {
       "risk": "low",
-      "default_profile": "qwen3.6_27b_mtp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "gemma4_26b",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
