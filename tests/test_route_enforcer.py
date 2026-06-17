@@ -265,18 +265,34 @@ class TestFlashAuthorization:
             monkeypatch.undo()
 
     def test_flash_direct_denies_write_forces_flash_subagent(self, tmp_path):
-        """flash_direct: Pro cannot Write directly — must use Agent(model='deepseek-v4-flash')."""
+        """flash_direct on Pro session: Write is denied with model switch prompt."""
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(re, "_is_flash_session", lambda: False)
         try:
             s = re.create_task_session("flash task")
             _write_route(tmp_path, s["task_id"], "flash_direct")
             r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
-            # flash_direct FORCES model switch — Pro cannot Write directly
+            # flash_direct on Pro session: Write blocked with model switch prompt
             assert r.get("permissionDecision") == "deny"
             assert "FORCES" in r.get("reason", "")
             assert "deepseek-v4-flash" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_flash_direct_allows_write_on_flash_session(self, tmp_path):
+        """flash_direct on Flash session: Write is allowed (already on Flash)."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(re, "_is_flash_session", lambda: True)
+        try:
+            s = re.create_task_session("flash task")
+            _write_route(tmp_path, s["task_id"], "flash_direct")
+            r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
+            # flash_direct on Flash session: allowed (empty response = pass through)
+            assert r == {}
         finally:
             monkeypatch.undo()
 
