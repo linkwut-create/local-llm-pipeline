@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.14.0 - 2026-06-16 (residency module)
+
+- **Session Residency** (`tools/local_llm_residency.py`): global workflow module
+  to keep local LLM models resident in GPU memory during Claude Code development
+  sessions. CLI: `start`, `stop`, `status`. `--force` uses `keep_alive=-1` (resident
+  until explicit stop); `stop --force` sends `keep_alive=0` to unload immediately.
+  Configurable via `LOCAL_LLM_RESIDENT_MODELS`, `LOCAL_LLM_KEEP_ALIVE`,
+  `LOCAL_LLM_RESIDENCY_INTERVAL`, `LOCAL_LLM_REQUEST_TIMEOUT`, `OLLAMA_HOST`.
+- **Worker / Committee keepalive integration**: Ollama `keep_alive` is included
+  in generate/chat requests when `LOCAL_LLM_KEEP_ALIVE` is set.
+- **Extended timeout**: `LOCAL_LLM_REQUEST_TIMEOUT` overrides the default request
+  timeout for worker, debate, and committee calls.
+- **Tests**: `tests/test_local_llm_residency.py`.
+
+## v0.13.0 - 2026-06-13
+
+- **Route Committee + Route Enforcer**: multi-model local route committee with
+  structured `route.json` output; route enforcer hook restricts tools per route.
+- **Escalation Dispatcher**: auto-execute per `route.json` with backend-aware
+  profile selection.
+- **Smart Classifier Guard**: no model calls in test suite via
+  `SMART_CLASSIFIER_NO_MODEL=1`; short/gibberish input guard.
+- **MCP Integration Tests**: commit gate, bypass risk, per-repo state isolation,
+  audit event wiring.
+- **VERSION**: 0.13.0.
+
 ## Post-v0.12.0 (router-explain, 2026-06-13)
 
 - **Router Explain Mode** (`tools/router_explain.py`): New CLI tool for explaining

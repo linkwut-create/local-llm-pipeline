@@ -391,58 +391,83 @@ def test_save_state_logs_diagnostic_on_write_failure():
 # ---------------------------------------------------------------------------
 
 def test_loop_guard_allows_under_threshold():
+    """Same tool + same args under threshold should be allowed."""
     with tempfile.TemporaryDirectory() as config_dir:
         gate._clear_session(config_dir)
-        for i in range(gate._LOOP_THRESHOLD):
-            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
             assert result["allow"] is True, f"call {i} should be allowed"
 
 
 def test_loop_guard_blocks_over_threshold():
+    """Same tool + same args over threshold should be blocked."""
     with tempfile.TemporaryDirectory() as config_dir:
         gate._clear_session(config_dir)
-        for i in range(gate._LOOP_THRESHOLD):
-            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
             assert result["allow"] is True
-        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
         assert result["allow"] is False
         assert "loop guard" in result["reason"].lower()
 
 
-def test_loop_guard_resets_on_user_prompt():
+def test_loop_guard_different_args_resets_counter():
+    """Same tool + DIFFERENT args resets counter — not a loop."""
     with tempfile.TemporaryDirectory() as config_dir:
         gate._clear_session(config_dir)
-        for i in range(gate._LOOP_THRESHOLD):
-            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        # Many calls with different commands — should not trigger.
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT + 5):
+            cmd = f"echo {i}"  # each call has different input → different hash
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", cmd))
+            assert result["allow"] is True, f"call {i} with varying input should be allowed"
+
+
+def test_loop_guard_resets_on_user_prompt():
+    """User prompt resets loop counters and hash window."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
             assert result["allow"] is True
         gate._reset_loop_counters(config_dir)
-        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
         assert result["allow"] is True
 
 
 def test_loop_guard_audit_event_written():
     with tempfile.TemporaryDirectory() as config_dir:
         gate._clear_session(config_dir)
-        for i in range(gate._LOOP_THRESHOLD + 1):
-            gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT + 1):
+            gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
         events = _read_log_events(config_dir)
         loop_events = [e for e in events if e.get("event_type") == "loop_detected"]
         assert len(loop_events) >= 1
-        assert loop_events[0].get("tool_name") == "Bash"
+        assert loop_events[0].get("tool_name") == "SomeUnlistedTool"
 
 
-def test_loop_guard_is_per_tool():
+def test_loop_guard_alternating_tools_never_blocks():
+    """Alternating tools reset each other's counters — diverse work, not a loop."""
     with tempfile.TemporaryDirectory() as config_dir:
         gate._clear_session(config_dir)
-        # Alternating tools keeps each counter below threshold.
-        for i in range(gate._LOOP_THRESHOLD):
+        # Alternating tools should NEVER trigger loop guard, even far above threshold.
+        for i in range(gate._LOOP_THRESHOLD_DEFAULT * 3):
             assert gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))["allow"] is True
             assert gate.handle_pre_tooluse(config_dir, _make_payload("PowerShell", "Get-Date"))["allow"] is True
-        # After alternating, each tool has been called 10 times.
-        # One more consecutive Bash call triggers the guard.
-        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
-        assert result["allow"] is False
-        assert "loop guard" in result["reason"].lower()
+
+
+def test_loop_guard_same_tool_mixed_args_partial_count():
+    """Same tool: identical calls increment, different calls reset to 1."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        # Interleave: 2 identical, 1 different, repeat.
+        # Each different call resets counter to 1, so threshold is never reached.
+        for i in range(50):
+            gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            gate.handle_pre_tooluse(config_dir, _make_payload("Bash", f"echo {i}"))
+        # Counter should be at most 2 (most recent identical run), well under threshold.
+        state = gate.load_state(config_dir)
+        assert state["_loop_counters"].get("Bash", 0) <= 2
 
 
 # ---------------------------------------------------------------------------
@@ -505,13 +530,13 @@ def test_loop_guard_escalates_after_timeout():
         original_threshold = gate._LOOP_ESCALATION_SECONDS
         gate._LOOP_ESCALATION_SECONDS = 0
         try:
-            for i in range(gate._LOOP_THRESHOLD + 2):
-                result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            for i in range(gate._LOOP_THRESHOLD_DEFAULT + 2):
+                result = gate.handle_pre_tooluse(config_dir, _make_payload("SomeUnlistedTool", "do thing"))
             assert result["allow"] is False
             events = _read_log_events(config_dir)
             escalated = [e for e in events if e.get("event_type") == "loop_escalated"]
             assert len(escalated) >= 1
-            assert escalated[0].get("tool_name") == "Bash"
+            assert escalated[0].get("tool_name") == "SomeUnlistedTool"
             assert "ESCALATION" in result["reason"]
         finally:
             gate._LOOP_ESCALATION_SECONDS = original_threshold

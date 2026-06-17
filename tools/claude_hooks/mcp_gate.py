@@ -30,8 +30,39 @@ _REVIEW_TOOLS = {
     "mcp__local-llm__local_debate_review_diff",
 }
 
-# Phase LOOP-GUARD: number of consecutive identical tool calls before blocking.
-_LOOP_THRESHOLD = 10
+# Phase LOOP-GUARD: per-tool thresholds for consecutive-identical calls.
+# High-frequency read tools get higher limits; write/mutate tools stay low.
+# Keys are tool_name prefixes (first segment before "__" for MCP tools,
+# or the full tool name for non-MCP tools).
+_LOOP_THRESHOLDS = {
+    # High-frequency read tools — called many times per session legitimately
+    "Read": 30,
+    "Glob": 30,
+    "Grep": 30,
+    "Bash": 25,
+    "PowerShell": 25,
+    # MCP local-llm tools — moderate
+    "mcp__local-llm": 20,
+    # General MCP read tools
+    "mcp__filesystem": 20,
+    "mcp__chrome-devtools": 20,
+    "mcp__playwright": 20,
+    "mcp__puppeteer": 20,
+    # Web tools
+    "WebFetch": 15,
+    "WebSearch": 15,
+    # Write / mutate tools — low threshold (real loops here are dangerous)
+    "Edit": 8,
+    "Write": 8,
+    "MultiEdit": 6,
+    "NotebookEdit": 6,
+}
+# Fallback threshold for tools not listed above.
+_LOOP_THRESHOLD_DEFAULT = 15
+
+# Phase LOOP-GUARD: window size for input-hash dedup (last N calls remembered).
+# Only calls with the SAME input hash within this window count as "identical".
+_LOOP_HASH_WINDOW = 8
 
 # Phase LOOP-GUARD-MONITOR: seconds after first block before escalating a report.
 _LOOP_ESCALATION_SECONDS = 30
@@ -194,6 +225,7 @@ _STATE_DEFAULTS = {
     "diff_line_count": 0,
     # Phase LOOP-GUARD: per-session consecutive tool call counters.
     "_loop_counters": {},
+    "_loop_hash_window": {},
     "_loop_alerted": [],
     "_loop_first_blocked_at": {},
     # Phase 2.0: auto-worker tracking
@@ -877,6 +909,7 @@ def _clear_session(config_dir: str):
     state["session_touched_files"] = []
     state["diff_line_count"] = 0
     state["_loop_counters"] = {}
+    state["_loop_hash_window"] = {}
     state["_loop_alerted"] = []
     state["_loop_first_blocked_at"] = {}
     state["_auto_spawned"] = {}
@@ -1075,14 +1108,60 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
     """Check dangerous commands, loop guard, and commit gate. Returns {"allow": bool, "reason": str}."""
     _ensure_session(config_dir)
 
-    # Phase LOOP-GUARD: detect repeated identical tool calls within a single turn.
+    # Phase LOOP-GUARD: detect truly repeated identical tool calls (same tool + same args).
+    # Three improvements over the old cumulative counter:
+    # 1. True consecutive: calling tool Y resets counter for tool X.
+    # 2. Input hashing: same tool + DIFFERENT args → not a loop.
+    # 3. Per-tool thresholds: Read/Bash get higher limits than Edit/Write.
     name = payload.get("tool_name", "")
     state = load_state(config_dir)
     counters = state.get("_loop_counters", {})
-    counters[name] = counters.get(name, 0) + 1
+    hash_window = state.get("_loop_hash_window", {})
+
+    # Compute input hash for "same tool + same args" detection.
+    tool_input = payload.get("tool_input", {})
+    try:
+        input_hash = hashlib.sha256(
+            json.dumps(tool_input, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16]
+    except Exception:
+        input_hash = "parse_error"
+
+    # True consecutive: reset counters for ALL other tools when current tool differs.
+    for k in list(counters.keys()):
+        if k != name:
+            del counters[k]
+    # Also clear hash window entries for other tools.
+    hash_window = {k: v for k, v in hash_window.items() if k == name}
+    if not isinstance(hash_window.get(name), list):
+        hash_window[name] = []
+
+    # Increment counter ONLY if same input hash seen recently (within hash window).
+    recent_hashes = hash_window[name]
+    if input_hash in recent_hashes:
+        counters[name] = counters.get(name, 0) + 1
+    else:
+        # Different input — not a loop. Reset counter to 1 (this call).
+        counters[name] = 1
+
+    # Maintain rolling hash window.
+    recent_hashes.append(input_hash)
+    if len(recent_hashes) > _LOOP_HASH_WINDOW:
+        recent_hashes.pop(0)
+    hash_window[name] = recent_hashes
+
     state["_loop_counters"] = counters
+    state["_loop_hash_window"] = hash_window
     save_state(config_dir, state)
-    if counters[name] > _LOOP_THRESHOLD:
+
+    # Determine threshold for this tool (prefix match for MCP tools).
+    threshold = _LOOP_THRESHOLD_DEFAULT
+    for prefix, limit in sorted(_LOOP_THRESHOLDS.items(), key=lambda x: -len(x[0])):
+        if name == prefix or name.startswith(prefix):
+            threshold = limit
+            break
+
+    if counters[name] > threshold:
         alerted = set(state.get("_loop_alerted", []))
         first_blocked_at = state.get("_loop_first_blocked_at", {})
         now = datetime.now(timezone.utc)
@@ -1100,7 +1179,8 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                 "task_type": "gate_boundary_audit",
                 "tool_name": name,
                 "consecutive_calls": counters[name],
-                "threshold": _LOOP_THRESHOLD,
+                "threshold": threshold,
+                "input_hash": input_hash,
                 "result_status": "blocked",
                 "blocking": True,
                 "severity": "high",
@@ -1118,7 +1198,7 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
                     "tool_name": name,
                     "consecutive_calls": counters[name],
                     "elapsed_seconds": elapsed,
-                    "threshold": _LOOP_THRESHOLD,
+                    "threshold": threshold,
                     "escalation_threshold_seconds": _LOOP_ESCALATION_SECONDS,
                     "result_status": "blocked",
                     "blocking": True,
@@ -1134,9 +1214,9 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
         return {
             "allow": False,
             "reason": (
-                f"BLOCKED: loop guard triggered — '{name}' has been called "
-                f"{counters[name]} consecutive times without a user message.\n"
-                "Please send a new user prompt to reset the counter, or review your intent."
+                f"BLOCKED: loop guard triggered — '{name}' called {counters[name]} "
+                f"times with identical inputs (threshold: {threshold}).\n"
+                "Please send a new user prompt to reset the counter, or vary your inputs."
                 f"{escalation_note}"
             ),
         }
@@ -1686,6 +1766,7 @@ def _reset_loop_counters(config_dir: str):
     try:
         state = load_state(config_dir)
         state["_loop_counters"] = {}
+        state["_loop_hash_window"] = {}
         state["_loop_alerted"] = []
         state["_loop_first_blocked_at"] = {}
         save_state(config_dir, state)

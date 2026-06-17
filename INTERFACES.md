@@ -271,8 +271,43 @@
 ### Env Var: `LOCAL_LLM_BASE_URL` / `OLLAMA_HOST`
 - **Purpose**: 指定远程 Ollama 实例
 - **Type**: URL string
-- **Used By**: worker, health check
+- **Used By**: worker, health check, residency daemon
 - **Compatibility**: 行为不变 — 设置后所有工具使用远程 Ollama
+
+### Env Var: `LOCAL_LLM_KEEP_ALIVE`
+- **Purpose**: 发送给 Ollama 的 `keep_alive` 时长，控制模型在显存中的保留时间
+- **Type**: duration string (e.g. `30m`, `2h`, `-1`) 或 truthy env
+- **Default**: 未设置时不发送（Ollama 使用默认值）
+- **Used By**: worker, debate, route committee, residency daemon
+- **Compatibility**: 新增可选变量；未设置时行为与 v0.13.0 完全一致
+
+### Env Var: `LOCAL_LLM_REQUEST_TIMEOUT`
+- **Purpose**: 覆盖本地模型 HTTP 调用的默认超时
+- **Type**: integer seconds
+- **Default**: 未设置时沿用 profile / `LOCAL_LLM_TIMEOUT` / 300s 的原有链
+- **Used By**: worker, debate, route committee
+- **Compatibility**: 新增可选变量；未设置时行为不变
+
+### Env Var: `LOCAL_LLM_RESIDENT_MODELS`
+- **Purpose**: residency daemon 默认保持常驻的模型列表
+- **Type**: comma-separated model names
+- **Default**: `qwen3.6:27b,nemotron:30b,gemma4:31b-unsloth`
+- **Used By**: `tools/local_llm_residency.py`
+- **Compatibility**: 新增可选变量
+
+### Env Var: `LOCAL_LLM_RESIDENCY_INTERVAL`
+- **Purpose**: residency daemon 两次 keepalive ping 之间的间隔
+- **Type**: integer seconds
+- **Default**: `60`
+- **Used By**: `tools/local_llm_residency.py`
+- **Compatibility**: 新增可选变量
+
+### Env Var: `LOCAL_LLM_RESIDENCY_FORCE`
+- **Purpose**: 默认启用 `--force` 常驻模式（`keep_alive=-1`）
+- **Type**: truthy string (`true`/`1`/`yes`/`on`, case-insensitive)
+- **Default**: OFF
+- **Used By**: `tools/local_llm_residency.py`
+- **Compatibility**: 新增可选变量
 
 ### Env Var: `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE`
 - **Purpose**: 恢复 legacy auto-escalation 行为

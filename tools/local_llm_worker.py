@@ -654,6 +654,9 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResul
             "num_predict": config.max_output_chars,
         },
     }
+    keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     resp = requests.post(url, json=payload, timeout=config.timeout)
     resp.raise_for_status()
     data = resp.json()
@@ -698,6 +701,9 @@ def call_ollama_stream(system: str, user: str, config: WorkerConfig):
         "stream": True,
         "options": {"num_predict": config.max_output_chars},
     }
+    keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
     resp.raise_for_status()
     for line in resp.iter_lines():
@@ -1105,8 +1111,11 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
 
     config.base_url = _resolve_endpoint(config.provider, args.base_url)
 
+    # v0.14.0: allow explicit request timeout override for residency mode
+    request_timeout_env = os.environ.get("LOCAL_LLM_REQUEST_TIMEOUT")
     config.timeout = int(
-        args.timeout
+        request_timeout_env
+        or args.timeout
         or os.environ.get("LOCAL_LLM_TIMEOUT")
         or profile.get("timeout", 300)
     )

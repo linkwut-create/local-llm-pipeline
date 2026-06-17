@@ -431,7 +431,7 @@ def test_version_unchanged():
     version_path = SCRIPT_DIR.parent / "VERSION"
     if version_path.exists():
         v = version_path.read_text().strip()
-        assert v == "0.12.0"
+        assert v == "0.13.0"
 
 
 # ── I. D-D.1 response envelope propagation ────────────────────────────
