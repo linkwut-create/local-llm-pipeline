@@ -230,6 +230,7 @@ class RouteJudgement:
     required_artifacts: list[str]
     model: str = ""                # which model produced this judgement
     confidence: float = 0.0
+    parse_failed: bool = False     # True if the model response could not be parsed
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -470,10 +471,18 @@ def merge_judgements(qwen: RouteJudgement,
 # Committee
 # ═══════════════════════════════════════════════════════════════
 
-def _call_model(model: str, prompt: str, timeout: int = 30) -> str:
+def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
     """Call Ollama model via API (not CLI) to avoid terminal artifacts."""
     import urllib.request as _ur
     import json as _json
+
+    # Allow env override for very slow local GPUs
+    env_timeout = os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT")
+    if env_timeout:
+        try:
+            timeout = max(int(env_timeout), 10)
+        except ValueError:
+            pass
 
     payload = {
         "model": model,
@@ -509,6 +518,16 @@ def _call_model(model: str, prompt: str, timeout: int = 30) -> str:
             return ""
 
 
+def _call_model_with_retry(model: str, prompt: str, timeout: int = 120, max_retries: int = 1) -> str:
+    """Call a model and retry once if the response is not parseable."""
+    raw = _call_model(model, prompt, timeout=timeout)
+    parsed = _parse_judgement(raw, model)
+    if not parsed.parse_failed or max_retries <= 0:
+        return raw
+    raw = _call_model(model, prompt, timeout=timeout)
+    return raw
+
+
 def _parse_judgement(raw: str, model: str) -> RouteJudgement:
     """Extract JSON from model output and parse into RouteJudgement."""
     # Strip ANSI escape sequences and terminal control chars
@@ -541,6 +560,7 @@ def _parse_judgement(raw: str, model: str) -> RouteJudgement:
             required_artifacts=[],
             model=model,
             confidence=0.0,
+            parse_failed=True,
         )
 
     try:
@@ -558,6 +578,7 @@ def _parse_judgement(raw: str, model: str) -> RouteJudgement:
             required_artifacts=[],
             model=model,
             confidence=0.0,
+            parse_failed=True,
         )
 
     return RouteJudgement(
@@ -603,30 +624,51 @@ def convene(task_description: str,
         evidence=evidence_text,
     )
 
+    # Allow env override for slow GPUs; default 120s per model call
+    model_timeout = int(os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT", 120))
+    result_timeout = model_timeout + 30  # headroom for threading overhead
+
     import concurrent.futures as _cf
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
-        future_qwen = pool.submit(_call_model, "qwen3.6:27b", prompt, 60)
-        future_gemma = pool.submit(_call_model, "gemma4:31b-unsloth", prompt, 60)
+        future_qwen = pool.submit(_call_model_with_retry, "qwen3.6:27b", prompt, model_timeout)
+        future_gemma = pool.submit(_call_model_with_retry, "gemma4:31b-unsloth", prompt, model_timeout)
         try:
-            raw_qwen = future_qwen.result(timeout=70)
+            raw_qwen = future_qwen.result(timeout=result_timeout)
         except Exception:
             raw_qwen = ""
         try:
-            raw_gemma = future_gemma.result(timeout=70)
+            raw_gemma = future_gemma.result(timeout=result_timeout)
         except Exception:
             raw_gemma = ""
 
     qwen = _parse_judgement(raw_qwen, "qwen3.6:27b")
     gemma = _parse_judgement(raw_gemma, "gemma4:31b-unsloth")
 
-    # Fallback: if one model failed, use the other alone
-    qwen_failed = qwen.recommended_route == "ask_user" and "unparseable" in qwen.reason
-    gemma_failed = gemma.recommended_route == "ask_user" and "unparseable" in gemma.reason
+    # If both models could not be parsed even after retry, fall back to pro_decision
+    # rather than deadlocking the session with ask_user.
+    if qwen.parse_failed and gemma.parse_failed:
+        return RouteDecision(
+            delegability="low",
+            recommended_route="pro_decision",
+            local_preprocessing_required=False,
+            pro_should_execute=True,
+            pro_should_adjudicate=True,
+            risk_level="medium",
+            privacy_status="safe",
+            reason="Local committee could not parse either model response; falling back to pro_decision.",
+            required_artifacts=[],
+            qwen_judgement=qwen.to_dict(),
+            gemma_judgement=gemma.to_dict(),
+            agreement=False,
+            escalated=True,
+            escalated_reason="both models unparseable after retry",
+        )
 
-    if qwen_failed and not gemma_failed:
+    # If exactly one model failed, use the other alone
+    if qwen.parse_failed and not gemma.parse_failed:
         return _single_model_decision(gemma)
-    if gemma_failed and not qwen_failed:
+    if gemma.parse_failed and not qwen.parse_failed:
         return _single_model_decision(qwen)
 
     return merge_judgements(qwen, gemma)

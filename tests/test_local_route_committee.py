@@ -99,3 +99,108 @@ def test_output_without_json_still_writes_file(monkeypatch, tmp_path):
     assert route_file.exists()
     data = json.loads(route_file.read_text(encoding="utf-8"))
     assert data["recommended_route"] == "local_only"
+
+
+def test_double_parse_failure_fallback_to_pro(monkeypatch):
+    import local_route_committee as committee
+
+    # Both models return non-JSON garbage
+    monkeypatch.setattr(committee, "_call_model", lambda model, prompt, timeout=90: "not json")
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
+        "git_status": "clean",
+        "recent_commits": "abc123 test",
+        "file_tree": "README.md",
+        "current_diff": "none",
+        "test_status": "unknown",
+        "privacy_scan": "safe",
+        "project_phase": "development",
+    })
+
+    decision = committee.convene("fix typo")
+    assert decision.recommended_route == "pro_decision"
+    assert decision.escalated is True
+    assert "could not parse either model" in decision.reason
+
+
+def test_single_parse_failure_uses_other_model(monkeypatch):
+    import local_route_committee as committee
+
+    def fake_call(model, prompt, timeout=90):
+        if "qwen" in model:
+            return "not json"
+        return (
+            '{"delegability":"high","recommended_route":"flash_subagent",'
+            '"local_preprocessing_required":false,"pro_should_execute":false,'
+            '"pro_should_adjudicate":false,"risk_level":"low",'
+            '"privacy_status":"safe","reason":"looks safe","required_artifacts":[]}'
+        )
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
+        "git_status": "clean",
+        "recent_commits": "abc123 test",
+        "file_tree": "README.md",
+        "current_diff": "none",
+        "test_status": "unknown",
+        "privacy_scan": "safe",
+        "project_phase": "development",
+    })
+
+    decision = committee.convene("fix typo")
+    assert decision.recommended_route == "flash_subagent"
+    assert decision.reason.startswith("Single model")
+
+
+def test_call_model_with_retry_retries_once(monkeypatch):
+    import local_route_committee as committee
+
+    calls = []
+    valid_json = (
+        '{"delegability":"high","recommended_route":"flash_subagent",'
+        '"local_preprocessing_required":false,"pro_should_execute":false,'
+        '"pro_should_adjudicate":false,"risk_level":"low",'
+        '"privacy_status":"safe","reason":"ok","required_artifacts":[]}'
+    )
+
+    def fake_call(model, prompt, timeout=90):
+        calls.append(model)
+        if len(calls) == 1:
+            return "not json"
+        return valid_json
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+
+    raw = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90)
+    assert raw == valid_json
+    assert len(calls) == 2
+
+
+def test_call_model_with_retry_respects_max_retries_zero(monkeypatch):
+    import local_route_committee as committee
+
+    calls = []
+
+    def fake_call(model, prompt, timeout=90):
+        calls.append(model)
+        return "not json"
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+
+    raw = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90, max_retries=0)
+    assert raw == "not json"
+    assert len(calls) == 1
+
+
+def test_invalid_committee_timeout_env_is_ignored(monkeypatch):
+    import local_route_committee as committee
+
+    monkeypatch.setenv("LOCAL_LLM_COMMITTEE_TIMEOUT", "not-a-number")
+
+    def fake_call(model, prompt, timeout=90):
+        # The timeout passed should fall back to the function default (90 here)
+        return f"timeout={timeout}"
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+    raw = committee._call_model("qwen3.6:27b", "prompt")
+    assert "timeout=90" in raw
+

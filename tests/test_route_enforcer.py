@@ -177,3 +177,52 @@ def test_stop_falls_back_when_committee_fails(monkeypatch, tmp_path):
     r = on_stop({})
     assert r.get("decision") == "block"
     assert "route.json" in r.get("reason", "")
+
+
+def test_load_route_alias(tmp_path):
+    import route_enforcer as re
+    route_file = tmp_path / "route.json"
+    route_file.parent.mkdir(parents=True, exist_ok=True)
+    route_file.write_text(json.dumps({"route": "pro_decision"}), encoding="utf-8")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+    try:
+        loaded = re.load_route("")
+        assert loaded is not None
+        assert loaded.get("recommended_route") == "pro_decision"
+    finally:
+        monkeypatch.undo()
+
+
+def test_ask_user_prompt_includes_authorization_command(tmp_path):
+    import route_enforcer as re
+    route_file = tmp_path / "route.json"
+    route_file.parent.mkdir(parents=True, exist_ok=True)
+    route_file.write_text(json.dumps({"recommended_route": "ask_user"}), encoding="utf-8")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+    try:
+        allowed, reason = re.check_tool_allowed("Edit", "")
+        assert allowed is False
+        assert "pending human approval" in reason
+        assert "local_route_committee.py" in reason
+        assert "--plan" in reason
+        assert "--output" in reason
+    finally:
+        monkeypatch.undo()
+
+
+def test_auth_command_format(tmp_path):
+    import route_enforcer as re
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+    try:
+        cmd = re._auth_command("20260617_test")
+        assert "local_route_committee.py" in cmd
+        assert "20260617_test" in cmd
+        assert "plan.json" in cmd
+        assert "route.json" in cmd
+    finally:
+        monkeypatch.undo()

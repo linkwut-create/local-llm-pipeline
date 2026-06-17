@@ -127,11 +127,19 @@ def get_active_task() -> dict | None:
 
 
 def load_route(task_id: str) -> dict | None:
-    """Load route.json for a task."""
+    """Load route.json for a task.
+
+    Accepts both `recommended_route` and the shorthand `route` field.
+    """
     route_file = _tasks_dir() / task_id / "route.json"
     if route_file.exists():
         try:
-            return json.loads(route_file.read_text(encoding="utf-8"))
+            data = json.loads(route_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                # Allow the shorthand `route` field used in manual files
+                if "route" in data and "recommended_route" not in data:
+                    data["recommended_route"] = data["route"]
+                return data
         except Exception:
             pass
     return None
@@ -175,6 +183,15 @@ def _update_session(task_id: str, updates: dict):
 # Route enforcement
 # ═══════════════════════════════════════════════════════════════
 
+def _auth_command(task_id: str) -> str:
+    """Return the exact command a user can run to re-run the route committee."""
+    plan = _tasks_dir() / task_id / "plan.json"
+    route = _tasks_dir() / task_id / "route.json"
+    return (
+        f"py -3 tools/local_route_committee.py --plan {plan} --json --output {route}"
+    )
+
+
 def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
     """Check if a tool is allowed by the current route.
 
@@ -192,6 +209,22 @@ def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
 
     route_type = route.get("recommended_route", "ask_user")
     perms = ROUTE_PERMISSIONS.get(route_type, ROUTE_PERMISSIONS["ask_user"])
+
+    if route_type == "ask_user":
+        # Provide an actionable next step instead of a generic denial
+        if tool_name in ("Edit", "Write", "NotebookEdit"):
+            return False, (
+                f"This task is pending human approval (route: ask_user). "
+                f"Tool '{tool_name}' is blocked until the route committee authorizes execution.\n\n"
+                f"To authorize, run:\n  {_auth_command(task_id)}\n\n"
+                f"Then reply with a clear approval message such as 'approved' or 'continue'."
+            )
+        return False, (
+            f"This task is pending human approval (route: ask_user). "
+            f"Tool '{tool_name}' is not allowed.\n\n"
+            f"To authorize execution, run:\n  {_auth_command(task_id)}\n\n"
+            f"Then reply with a clear approval message such as 'approved' or 'continue'."
+        )
 
     if perms["allowed"] and tool_name not in perms["allowed"]:
         return False, (
