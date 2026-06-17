@@ -323,6 +323,124 @@ class TestFlashAuthorization:
         finally:
             monkeypatch.undo()
 
+    def test_post_tool_always_creates_tool_call_artifact(self, tmp_path):
+        """Every tool call should produce a tool_call_N.json artifact."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("artifact test")
+            re.on_post_tool_use({"tool_name": "Read", "tool_input": {"file_path": "test.py"}, "tool_response": {"output": "content"}})
+            # Check artifact_index.json exists and has an entry
+            index_file = tmp_path / s["task_id"] / "artifacts" / "artifact_index.json"
+            assert index_file.exists()
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            assert len(index) == 1
+            assert index[0]["type"] == "tool_call"
+            assert index[0]["tool"] == "Read"
+        finally:
+            monkeypatch.undo()
+
+    def test_post_tool_bash_classifies_output(self, tmp_path):
+        """Bash commands should be classified: pytest→test_run, git diff→git_diff."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("bash test")
+            re.on_post_tool_use({"tool_name": "Bash", "tool_input": {"command": "pytest -q"}, "tool_response": {"output": "3 passed"}})
+            index_file = tmp_path / s["task_id"] / "artifacts" / "artifact_index.json"
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            types = [e["type"] for e in index]
+            assert "test_run" in types
+            assert "tool_call" in types
+        finally:
+            monkeypatch.undo()
+
+    def test_post_tool_edit_creates_edit_record(self, tmp_path):
+        """Edit/Write tools should produce edit_record_N.json artifacts."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("edit test")
+            re.on_post_tool_use({"tool_name": "Edit", "tool_input": {"file_path": "src/app.py", "new_string": "fixed"}, "tool_response": {}})
+            index_file = tmp_path / s["task_id"] / "artifacts" / "artifact_index.json"
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            types = [e["type"] for e in index]
+            assert "file_edit" in types
+            assert "tool_call" in types
+        finally:
+            monkeypatch.undo()
+
+
+class TestArtifactHelpers:
+    """Unit tests for artifact helper functions."""
+
+    def test_classify_pytest(self):
+        from route_enforcer import _classify_bash_artifact
+        assert _classify_bash_artifact("pytest -q tests/") == "test_run"
+        assert _classify_bash_artifact("python -m unittest") == "test_run"
+
+    def test_classify_git(self):
+        from route_enforcer import _classify_bash_artifact
+        assert _classify_bash_artifact("git diff HEAD~1") == "git_diff"
+        assert _classify_bash_artifact("git log --oneline") == "git_log"
+        assert _classify_bash_artifact("git status") == "git_status"
+
+    def test_classify_generic(self):
+        from route_enforcer import _classify_bash_artifact
+        assert _classify_bash_artifact("npm run build") == "bash_output"
+        assert _classify_bash_artifact("ls -la") == "bash_output"
+
+    def test_truncate_output(self):
+        from route_enforcer import _truncate_output
+        short = "hello"
+        assert _truncate_output(short, max_chars=10) == "hello"
+        long = "x" * 20000
+        result = _truncate_output(long, max_chars=100)
+        assert len(result) < 200
+        assert "truncated" in result
+
+    def test_summarize_input_bash(self):
+        from route_enforcer import _summarize_input
+        s = _summarize_input("Bash", {"command": "pytest -q tests/"})
+        assert s["command"] == "pytest -q tests/"
+
+    def test_summarize_input_edit(self):
+        from route_enforcer import _summarize_input
+        s = _summarize_input("Edit", {"file_path": "src/main.py", "new_string": "fixed bug"})
+        assert s["file_path"] == "src/main.py"
+        assert s["content_len"] == 9
+
+    def test_summarize_input_agent(self):
+        from route_enforcer import _summarize_input
+        s = _summarize_input("Agent", {"prompt": "fix the bug", "subagent_type": "code-worker"})
+        assert s["prompt_len"] == 11
+        assert s["subagent_type"] == "code-worker"
+
+    def test_summarize_output(self):
+        from route_enforcer import _summarize_output
+        s = _summarize_output({"output": "success"})
+        assert s["size_chars"] == 7
+        assert s["ok"] is True
+
+    def test_artifact_index_multiple_entries(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("multi artifact")
+            re.save_artifact_indexed(s["task_id"], "a.txt", "A", artifact_type="test_run", tool_name="Bash")
+            re.save_artifact_indexed(s["task_id"], "b.txt", "B", artifact_type="git_diff", tool_name="Bash")
+            index_file = tmp_path / s["task_id"] / "artifacts" / "artifact_index.json"
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            assert len(index) == 2
+            assert index[0]["name"] == "a.txt"
+            assert index[1]["name"] == "b.txt"
+        finally:
+            monkeypatch.undo()
+
     def test_non_flash_route_does_not_ask(self, tmp_path):
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()

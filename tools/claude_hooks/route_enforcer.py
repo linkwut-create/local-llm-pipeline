@@ -156,13 +156,73 @@ def save_plan(task_id: str, plan: dict) -> Path:
 
 
 def save_artifact(task_id: str, name: str, content: str) -> Path:
-    """Save an artifact file."""
+    """Save an artifact file and update the artifact index."""
     art_file = _tasks_dir() / task_id / "artifacts" / name
     art_file.write_text(content, encoding="utf-8")
     _update_session(task_id, {
         "artifacts": _get_artifacts(task_id) + [name],
     })
     return art_file
+
+
+def save_artifact_indexed(task_id: str, name: str, content: str,
+                          artifact_type: str = "generic",
+                          tool_name: str = "",
+                          metadata: dict | None = None) -> Path:
+    """Save an artifact AND update artifact_index.json with metadata."""
+    art_path = save_artifact(task_id, name, content)
+    entry = {
+        "name": name,
+        "type": artifact_type,
+        "tool": tool_name,
+        "size_bytes": len(content.encode("utf-8")),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if metadata:
+        entry["meta"] = metadata
+    _update_artifact_index(task_id, entry)
+    return art_path
+
+
+def _update_artifact_index(task_id: str, entry: dict) -> None:
+    """Append an entry to the artifact index file."""
+    index_file = _tasks_dir() / task_id / "artifacts" / "artifact_index.json"
+    try:
+        if index_file.exists():
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+            if not isinstance(index, list):
+                index = []
+        else:
+            index = []
+        index.append(entry)
+        index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass  # never crash on artifact housekeeping
+
+
+def _classify_bash_artifact(command: str) -> str:
+    """Classify a Bash command's artifact type from its command string."""
+    cmd_lower = command.lower()
+    if "pytest" in cmd_lower or "unittest" in cmd_lower:
+        return "test_run"
+    if "git diff" in cmd_lower:
+        return "git_diff"
+    if "git log" in cmd_lower:
+        return "git_log"
+    if "git status" in cmd_lower:
+        return "git_status"
+    if "pip install" in cmd_lower or "npm install" in cmd_lower:
+        return "package_install"
+    if "python" in cmd_lower or "py -3" in cmd_lower:
+        return "script_run"
+    return "bash_output"
+
+
+def _truncate_output(output: str, max_chars: int = 10000) -> str:
+    """Truncate output to max_chars, adding a truncation note."""
+    if len(output) <= max_chars:
+        return output
+    return output[:max_chars] + f"\n\n... [truncated: {len(output)} total chars, showing first {max_chars}]"
 
 
 def _get_artifacts(task_id: str) -> list:
@@ -364,8 +424,19 @@ def on_pre_tool_use(payload: dict) -> dict:
 
 
 def on_post_tool_use(payload: dict):
-    """PostToolUse hook: save artifacts from tool executions."""
+    """PostToolUse hook: capture all tool outputs as indexed artifacts.
+
+    Always saves:
+      - tool_call_N.json  — tool name, input summary, output size, timestamp
+    Additionally for Bash:
+      - bash_output_N.log — stdout/stderr (classified: test_run, git_diff, etc.)
+    Additionally for Edit/Write:
+      - edit_record_N.json — file path, output summary
+    Maintains:
+      - artifact_index.json — all artifacts with type, tool, size, timestamp
+    """
     tool_name = payload.get("tool_name", "") or payload.get("toolName", "")
+    tool_input = payload.get("tool_input", {}) or payload.get("toolInput", {})
     tool_response = payload.get("tool_response", {}) or payload.get("toolResponse", {})
 
     task = get_active_task()
@@ -373,20 +444,62 @@ def on_post_tool_use(payload: dict):
         return
 
     task_id = task["task_id"]
+    ts = datetime.now(timezone.utc).strftime("%H%M%S")
 
-    # Save test results
-    if tool_name == "Bash" and "pytest" in str(tool_input := payload.get("tool_input", {})):
-        output = tool_response.get("output", "") or str(tool_response)
-        save_artifact(task_id, f"test_run_{datetime.now(timezone.utc).strftime('%H%M%S')}.log", output)
+    # --- 1. Always save tool call metadata ---
+    input_summary = _summarize_input(tool_name, tool_input)
+    output_summary = _summarize_output(tool_response)
+    call_meta = {
+        "tool": tool_name,
+        "input_summary": input_summary,
+        "output_summary": output_summary,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    save_artifact_indexed(
+        task_id, f"tool_call_{ts}.json",
+        json.dumps(call_meta, ensure_ascii=False, indent=2),
+        artifact_type="tool_call",
+        tool_name=tool_name,
+    )
 
-    # Save git diffs
-    if tool_name == "Bash" and "git diff" in str(payload.get("tool_input", {})):
+    # --- 2. Bash: save classified output ---
+    if tool_name == "Bash":
+        command = str(tool_input.get("command", "") or "")
         output = tool_response.get("output", "") or str(tool_response)
         if output.strip():
-            save_artifact(task_id, f"git_diff_{datetime.now(timezone.utc).strftime('%H%M%S')}.diff", output)
+            atype = _classify_bash_artifact(command)
+            ext = "diff" if atype == "git_diff" else "log"
+            save_artifact_indexed(
+                task_id, f"{atype}_{ts}.{ext}",
+                _truncate_output(output),
+                artifact_type=atype,
+                tool_name=tool_name,
+                metadata={"command": command[:500]},
+            )
 
-    # Flash authorization: if a cloud-route tool succeeded, mark flash as authorized
-    # (PreToolUse asked; user approved; tool ran → PostToolUse confirms authorization)
+    # --- 3. Edit/Write: record file changes ---
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        file_path = str(tool_input.get("file_path", "") or "")
+        content_preview = _truncate_output(
+            str(tool_input.get("content", "") or
+                tool_input.get("new_string", "") or ""),
+            max_chars=500,
+        )
+        edit_meta = {
+            "tool": tool_name,
+            "file_path": file_path,
+            "content_preview": content_preview,
+            "output_ok": bool(tool_response) and "error" not in str(tool_response).lower()[:200],
+        }
+        save_artifact_indexed(
+            task_id, f"edit_record_{ts}.json",
+            json.dumps(edit_meta, ensure_ascii=False, indent=2),
+            artifact_type="file_edit",
+            tool_name=tool_name,
+            metadata={"file": file_path},
+        )
+
+    # --- 4. Flash authorization ---
     route = load_route(task_id)
     if route is not None:
         route_type = route.get("recommended_route", "")
@@ -394,6 +507,37 @@ def on_post_tool_use(payload: dict):
         if perms.get("cloud_ok") and route_type.startswith("flash_"):
             if not is_flash_authorized(task_id):
                 set_flash_authorized(task_id)
+
+
+def _summarize_input(tool_name: str, tool_input: dict) -> dict:
+    """Create a compact summary of tool input for the artifact index."""
+    summary = {}
+    if tool_name in ("Bash",):
+        cmd = str(tool_input.get("command", "") or "")
+        summary["command"] = cmd[:200]
+    elif tool_name in ("Edit", "Write", "NotebookEdit"):
+        summary["file_path"] = str(tool_input.get("file_path", "") or "")[:500]
+        content = str(tool_input.get("content", "") or tool_input.get("new_string", "") or "")
+        summary["content_len"] = len(content)
+    elif tool_name in ("Read", "Grep", "Glob"):
+        summary["path"] = str(tool_input.get("file_path", "") or tool_input.get("pattern", "") or "")[:200]
+    elif tool_name == "Agent":
+        prompt = str(tool_input.get("prompt", "") or "")
+        summary["prompt_len"] = len(prompt)
+        summary["subagent_type"] = str(tool_input.get("subagent_type", "") or "")
+    return summary
+
+
+def _summarize_output(tool_response) -> dict:
+    """Create a compact summary of tool output for the artifact index."""
+    if isinstance(tool_response, dict):
+        output_str = tool_response.get("output", "") or str(tool_response)
+    else:
+        output_str = str(tool_response)
+    return {
+        "size_chars": len(output_str),
+        "ok": "error" not in output_str.lower()[:200] if output_str else True,
+    }
 
 
 def _run_route_committee(task_id: str, user_task: str) -> bool:
