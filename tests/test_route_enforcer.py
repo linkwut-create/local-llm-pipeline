@@ -1,5 +1,6 @@
 """Tests for tools/claude_hooks/route_enforcer.py — hook enforcement logic."""
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -126,3 +127,53 @@ def test_e2e_task_flow():
     save_plan(s["task_id"], {"phases": [{"name": "impl"}]})
     assert should_trigger_committee(s["task_id"])
     assert not check_tool_allowed("Edit", s["task_id"])[0]  # still no route
+
+
+def test_stop_auto_generates_route_json(monkeypatch, tmp_path):
+    import route_enforcer as re
+    from route_enforcer import create_task_session, save_plan, on_stop
+
+    # Use tmp_path for task output
+    monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+
+    s = create_task_session("auto route")
+    save_plan(s["task_id"], {"phases": [{"name": "impl"}]})
+    route_file = tmp_path / s["task_id"] / "route.json"
+
+    def fake_run(cmd, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        route_file.parent.mkdir(parents=True, exist_ok=True)
+        route_file.write_text(json.dumps({"recommended_route": "flash_subagent"}), encoding="utf-8")
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    r = on_stop({})
+    assert r.get("decision") == "allow"
+    assert route_file.exists()
+
+
+def test_stop_falls_back_when_committee_fails(monkeypatch, tmp_path):
+    import route_enforcer as re
+    from route_enforcer import create_task_session, save_plan, on_stop
+
+    monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+
+    s = create_task_session("failing route")
+    save_plan(s["task_id"], {"phases": [{"name": "impl"}]})
+
+    def fake_run(cmd, **kwargs):
+        class Result:
+            returncode = 1
+            stdout = ""
+            stderr = "models unavailable"
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    r = on_stop({})
+    assert r.get("decision") == "block"
+    assert "route.json" in r.get("reason", "")

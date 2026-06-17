@@ -387,8 +387,135 @@ def test_save_state_logs_diagnostic_on_write_failure():
 
 
 # ---------------------------------------------------------------------------
-# P7-B M5/M6 — unknown MCP response shape warning
+# Loop guard
 # ---------------------------------------------------------------------------
+
+def test_loop_guard_allows_under_threshold():
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        for i in range(gate._LOOP_THRESHOLD):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            assert result["allow"] is True, f"call {i} should be allowed"
+
+
+def test_loop_guard_blocks_over_threshold():
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        for i in range(gate._LOOP_THRESHOLD):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            assert result["allow"] is True
+        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        assert result["allow"] is False
+        assert "loop guard" in result["reason"].lower()
+
+
+def test_loop_guard_resets_on_user_prompt():
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        for i in range(gate._LOOP_THRESHOLD):
+            result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            assert result["allow"] is True
+        gate._reset_loop_counters(config_dir)
+        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        assert result["allow"] is True
+
+
+def test_loop_guard_audit_event_written():
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        for i in range(gate._LOOP_THRESHOLD + 1):
+            gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        events = _read_log_events(config_dir)
+        loop_events = [e for e in events if e.get("event_type") == "loop_detected"]
+        assert len(loop_events) >= 1
+        assert loop_events[0].get("tool_name") == "Bash"
+
+
+def test_loop_guard_is_per_tool():
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        # Alternating tools keeps each counter below threshold.
+        for i in range(gate._LOOP_THRESHOLD):
+            assert gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))["allow"] is True
+            assert gate.handle_pre_tooluse(config_dir, _make_payload("PowerShell", "Get-Date"))["allow"] is True
+        # After alternating, each tool has been called 10 times.
+        # One more consecutive Bash call triggers the guard.
+        result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+        assert result["allow"] is False
+        assert "loop guard" in result["reason"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Blocked MCP tools
+# ---------------------------------------------------------------------------
+
+def _read_audit_events(audit_dir: str) -> list[dict]:
+    # mcp_audit_logger uses MCP_AUDIT_DIR as the audit base directly.
+    log_path = Path(audit_dir) / "events.jsonl"
+    if not log_path.exists():
+        return []
+    events = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def test_blocked_mcp_git_push():
+    """mcp__git__git_push is blocked and emits an mcp_tool_blocked audit event."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        audit_dir = Path(config_dir) / "audit"
+        audit_dir.mkdir()
+        import os
+        old_env = os.environ.get("MCP_AUDIT_DIR")
+        os.environ["MCP_AUDIT_DIR"] = str(audit_dir)
+        try:
+            payload = {
+                "tool_name": "mcp__git__git_push",
+                "tool_input": {"path": "C:/nonexistent/repo", "remote": "origin", "branch": "main"},
+                "cwd": "C:/nonexistent/repo",
+            }
+            result = gate.handle_pre_tooluse(config_dir, payload)
+            assert result["allow"] is False
+            assert "git push via MCP" in result["reason"]
+
+            events = _read_audit_events(str(audit_dir))
+            blocked = [e for e in events if e.get("event_type") == "mcp_tool_blocked"]
+            assert len(blocked) == 1
+            assert blocked[0].get("tool_name") == "mcp__git__git_push"
+            assert blocked[0].get("result_status") == "blocked"
+        finally:
+            if old_env is None:
+                os.environ.pop("MCP_AUDIT_DIR", None)
+            else:
+                os.environ["MCP_AUDIT_DIR"] = old_env
+
+
+def test_loop_guard_escalates_after_timeout():
+    """If blocking persists, a loop_escalated event is emitted."""
+    with tempfile.TemporaryDirectory() as config_dir:
+        gate._clear_session(config_dir)
+        # Lower escalation threshold so the test doesn't have to sleep.
+        original_threshold = gate._LOOP_ESCALATION_SECONDS
+        gate._LOOP_ESCALATION_SECONDS = 0
+        try:
+            for i in range(gate._LOOP_THRESHOLD + 2):
+                result = gate.handle_pre_tooluse(config_dir, _make_payload("Bash", "git status"))
+            assert result["allow"] is False
+            events = _read_log_events(config_dir)
+            escalated = [e for e in events if e.get("event_type") == "loop_escalated"]
+            assert len(escalated) >= 1
+            assert escalated[0].get("tool_name") == "Bash"
+            assert "ESCALATION" in result["reason"]
+        finally:
+            gate._LOOP_ESCALATION_SECONDS = original_threshold
+
 
 def test_extract_read_info_known_shape_no_event():
     """Recognized list-of-text shape => no shape_unknown event."""

@@ -315,6 +315,11 @@ def merge_judgements(qwen: RouteJudgement,
     """
     # Rule 1: blocked
     if "blocked" in (qwen.recommended_route, gemma.recommended_route):
+        blocked_reasons = [
+            qwen.reason if qwen.recommended_route == "blocked" else "",
+            gemma.reason if gemma.recommended_route == "blocked" else "",
+        ]
+        reason = "Blocked: " + "; ".join(filter(None, blocked_reasons)).strip()
         return RouteDecision(
             delegability="blocked",
             recommended_route="blocked",
@@ -326,10 +331,7 @@ def merge_judgements(qwen: RouteJudgement,
                 "blocked" if "blocked" in (qwen.privacy_status, gemma.privacy_status)
                 else "needs_review"
             ),
-            reason=f"Blocked: {'; '.join(filter(None, [
-                qwen.reason if qwen.recommended_route == 'blocked' else '',
-                gemma.reason if gemma.recommended_route == 'blocked' else '',
-            ])).strip()}",
+            reason=reason,
             required_artifacts=[],
             qwen_judgement=qwen.to_dict(),
             gemma_judgement=gemma.to_dict(),
@@ -393,7 +395,11 @@ def merge_judgements(qwen: RouteJudgement,
                 "medium" if "medium" in (qwen.risk_level, gemma.risk_level)
                 else "low"
             ),
-            privacy_status="safe",
+            privacy_status=(
+                "blocked" if "blocked" in (qwen.privacy_status, gemma.privacy_status)
+                else "needs_review" if "needs_review" in (qwen.privacy_status, gemma.privacy_status)
+                else "safe"
+            ),
             reason=f"Consensus: {route} (qwen={qwen.recommended_route}, gemma={gemma.recommended_route})",
             required_artifacts=list(set(
                 qwen.required_artifacts + gemma.required_artifacts)),
@@ -442,7 +448,11 @@ def merge_judgements(qwen: RouteJudgement,
         pro_should_execute=False,
         pro_should_adjudicate=True,
         risk_level="medium",
-        privacy_status="safe",
+        privacy_status=(
+            "blocked" if "blocked" in (qwen.privacy_status, gemma.privacy_status)
+            else "needs_review" if "needs_review" in (qwen.privacy_status, gemma.privacy_status)
+            else "safe"
+        ),
         reason=(
             f"Disagreement: qwen={qwen.recommended_route}, "
             f"gemma={gemma.recommended_route}. Human decision needed."
@@ -465,12 +475,16 @@ def _call_model(model: str, prompt: str, timeout: int = 30) -> str:
     import urllib.request as _ur
     import json as _json
 
-    body = _json.dumps({
+    payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
         "options": {"num_predict": 256, "temperature": 0.0},
-    }).encode("utf-8")
+    }
+    keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
+    body = _json.dumps(payload).encode("utf-8")
 
     base = os.environ.get("OLLAMA_HOST", "http://193.168.2.2:11434")
     url = base.rstrip("/") + "/api/generate"
@@ -635,6 +649,8 @@ def main():
     parser.add_argument("--phase", default="development",
                         help="Project phase")
     parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--output", default=None,
+                        help="Write JSON decision to this file (implies --json)")
     args = parser.parse_args()
 
     task = " ".join(args.task)
@@ -660,13 +676,20 @@ def main():
         ROUTE_PERMISSIONS["ask_user"],
     )
 
-    if args.json:
-        output = decision.to_dict()
-        output["_enforcement"] = {
-            "allowed": list(permissions.get("allowed_tools", [])) or ["all"],
-            "denied": list(permissions.get("forbidden_tools", [])),
-            "cloud_ok": permissions.get("cloud_allowed", False),
-        }
+    output = decision.to_dict()
+    output["_enforcement"] = {
+        "allowed": list(permissions.get("allowed_tools", [])) or ["all"],
+        "denied": list(permissions.get("forbidden_tools", [])),
+        "cloud_ok": permissions.get("cloud_allowed", False),
+    }
+
+    if args.output:
+        Path(args.output).write_text(
+            json.dumps(output, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    if args.json or args.output:
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
         print(f"Task: {task[:80]}")

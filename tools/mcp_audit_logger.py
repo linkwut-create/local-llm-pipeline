@@ -50,6 +50,9 @@ EVENT_TYPES = frozenset({
     "commit_gate_bypassed",
     "gate_boundary_audit",
     "gate_subprocess_bypass",
+    "mcp_tool_blocked",
+    "permission_denied",
+    "release_guard_emergency_bypass",
 })
 
 TASK_TYPES = frozenset({

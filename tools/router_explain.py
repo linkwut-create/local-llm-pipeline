@@ -246,6 +246,12 @@ WHY: <one-line reason>"""
         if _os.environ.get("SMART_CLASSIFIER_NO_MODEL", "") == "1":
             return TaskClassifier.classify(text)
 
+        # Tier 1: regex (fast path) — run before length guards so short,
+        # well-known task phrases like "review current diff" classify correctly.
+        task_type, risk, confidence = TaskClassifier.classify(text)
+        if task_type != "unknown" and confidence >= 0.5:
+            return (task_type, risk, confidence)
+
         # Guard: empty/short/gibberish → unknown (don't waste model calls)
         if not text or len(text.strip()) < 20:
             return ("unknown", "low", 0.0)
@@ -253,11 +259,6 @@ WHY: <one-line reason>"""
         words = text.strip().split()
         if len(text.strip()) < 30 and len(words) <= 3:
             return TaskClassifier.classify(text)
-
-        # Tier 1: regex (fast path)
-        task_type, risk, confidence = TaskClassifier.classify(text)
-        if task_type != "unknown" and confidence >= 0.5:
-            return (task_type, risk, confidence)
 
         # Cache check
         cache_key = text.strip().lower()[:200]

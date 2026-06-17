@@ -30,6 +30,12 @@ _REVIEW_TOOLS = {
     "mcp__local-llm__local_debate_review_diff",
 }
 
+# Phase LOOP-GUARD: number of consecutive identical tool calls before blocking.
+_LOOP_THRESHOLD = 10
+
+# Phase LOOP-GUARD-MONITOR: seconds after first block before escalating a report.
+_LOOP_ESCALATION_SECONDS = 30
+
 _DIRTY_TOOLS = {"Edit", "Write", "MultiEdit"}
 
 _MCP_TOOLS = {
@@ -186,6 +192,10 @@ _STATE_DEFAULTS = {
     "session_large_reads": [],
     "session_touched_files": [],
     "diff_line_count": 0,
+    # Phase LOOP-GUARD: per-session consecutive tool call counters.
+    "_loop_counters": {},
+    "_loop_alerted": [],
+    "_loop_first_blocked_at": {},
     # Phase 2.0: auto-worker tracking
     "_auto_spawned": {},
     "_auto_worker_count": 0,
@@ -866,6 +876,9 @@ def _clear_session(config_dir: str):
     state["session_large_reads"] = []
     state["session_touched_files"] = []
     state["diff_line_count"] = 0
+    state["_loop_counters"] = {}
+    state["_loop_alerted"] = []
+    state["_loop_first_blocked_at"] = {}
     state["_auto_spawned"] = {}
     state["_auto_worker_count"] = 0
     save_state(config_dir, state)
@@ -1059,11 +1072,76 @@ def handle_post_tooluse(config_dir: str, payload: dict):
 
 
 def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
-    """Check dangerous commands and commit gate. Returns {"allow": bool, "reason": str}."""
+    """Check dangerous commands, loop guard, and commit gate. Returns {"allow": bool, "reason": str}."""
     _ensure_session(config_dir)
 
-    # Phase 2.0: advisory for edits to un-summarized large files
+    # Phase LOOP-GUARD: detect repeated identical tool calls within a single turn.
     name = payload.get("tool_name", "")
+    state = load_state(config_dir)
+    counters = state.get("_loop_counters", {})
+    counters[name] = counters.get(name, 0) + 1
+    state["_loop_counters"] = counters
+    save_state(config_dir, state)
+    if counters[name] > _LOOP_THRESHOLD:
+        alerted = set(state.get("_loop_alerted", []))
+        first_blocked_at = state.get("_loop_first_blocked_at", {})
+        now = datetime.now(timezone.utc)
+        if name not in first_blocked_at:
+            first_blocked_at[name] = now.isoformat()
+            state["_loop_first_blocked_at"] = first_blocked_at
+            save_state(config_dir, state)
+
+        if name not in alerted:
+            alerted.add(name)
+            state["_loop_alerted"] = list(alerted)
+            save_state(config_dir, state)
+            log_event(config_dir, {
+                "event_type": "loop_detected",
+                "task_type": "gate_boundary_audit",
+                "tool_name": name,
+                "consecutive_calls": counters[name],
+                "threshold": _LOOP_THRESHOLD,
+                "result_status": "blocked",
+                "blocking": True,
+                "severity": "high",
+            })
+
+        # Phase LOOP-GUARD-MONITOR: if the loop persists, escalate with a time-based report.
+        escalation_note = ""
+        try:
+            first_ts = datetime.fromisoformat(first_blocked_at[name])
+            elapsed = (now - first_ts).total_seconds()
+            if elapsed > _LOOP_ESCALATION_SECONDS:
+                log_event(config_dir, {
+                    "event_type": "loop_escalated",
+                    "task_type": "gate_boundary_audit",
+                    "tool_name": name,
+                    "consecutive_calls": counters[name],
+                    "elapsed_seconds": elapsed,
+                    "threshold": _LOOP_THRESHOLD,
+                    "escalation_threshold_seconds": _LOOP_ESCALATION_SECONDS,
+                    "result_status": "blocked",
+                    "blocking": True,
+                    "severity": "critical",
+                })
+                escalation_note = (
+                    f"\n[ESCALATION] Loop has persisted for {elapsed:.1f}s. "
+                    "Please intervene: send a new user prompt or explicitly approve a different action."
+                )
+        except Exception:
+            pass
+
+        return {
+            "allow": False,
+            "reason": (
+                f"BLOCKED: loop guard triggered — '{name}' has been called "
+                f"{counters[name]} consecutive times without a user message.\n"
+                "Please send a new user prompt to reset the counter, or review your intent."
+                f"{escalation_note}"
+            ),
+        }
+
+    # Phase 2.0: advisory for edits to un-summarized large files
     if name in _DIRTY_TOOLS:
         target = str(payload.get("tool_input", {}).get("file_path", ""))
         if target and "mcp-gate" not in target and ".local_llm_out" not in target:
@@ -1603,8 +1681,21 @@ def _redact_recursive(obj):
     return obj
 
 
+def _reset_loop_counters(config_dir: str):
+    """Reset loop counters when the user sends a new prompt."""
+    try:
+        state = load_state(config_dir)
+        state["_loop_counters"] = {}
+        state["_loop_alerted"] = []
+        state["_loop_first_blocked_at"] = {}
+        save_state(config_dir, state)
+    except Exception:
+        pass
+
+
 def _handle_user_prompt_submit(config_dir: str, payload: dict):
     """UserPromptSubmit hook: create task session, inject plan-only context."""
+    _reset_loop_counters(config_dir)
     try:
         from tools.claude_hooks.route_enforcer import on_user_prompt_submit
         result = on_user_prompt_submit(payload)

@@ -8,6 +8,14 @@ from pathlib import Path
 
 import pytest
 
+try:
+    import mcp  # noqa: F401
+except ModuleNotFoundError:
+    pytest.skip(
+        "mcp package not installed; local-rag-core tests skipped",
+        allow_module_level=True,
+    )
+
 RAG_CORE_ROOT = Path(__file__).parent.parent.parent / "local-rag-core"
 SERVER_CMD = [sys.executable, "-m", "local_rag_core.interfaces.mcp_server"]
 
