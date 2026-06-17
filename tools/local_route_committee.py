@@ -29,6 +29,13 @@ from typing import Optional
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# ═══════════════════════════════════════════════════════════════
+# Committee model configuration (env var overridable)
+# ═══════════════════════════════════════════════════════════════
+
+_LOCAL_ROUTE_QWEN_MODEL = os.environ.get("LOCAL_ROUTE_QWEN_MODEL", "qwen3.6:27b")
+_LOCAL_ROUTE_GEMMA_MODEL = os.environ.get("LOCAL_ROUTE_GEMMA_MODEL", "gemma4:31b-unsloth")
+
 
 # ═══════════════════════════════════════════════════════════════
 # Evidence pack builder — compact context for local models
@@ -254,6 +261,8 @@ class RouteDecision:
     agreement: bool
     escalated: bool
     escalated_reason: str
+    # Pro audit (Pro does NOT vote, only audits on disagreement)
+    pro_audit_requested: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -441,13 +450,14 @@ def merge_judgements(qwen: RouteJudgement,
             escalated_reason=f"both models agreed: {route}",
         )
 
-    # Rule 5: true disagreement → escalate
+    # Rule 5: true disagreement → escalate with Pro audit
     return RouteDecision(
         delegability="low",
         recommended_route="ask_user",
         local_preprocessing_required=True,
         pro_should_execute=False,
         pro_should_adjudicate=True,
+        pro_audit_requested=True,
         risk_level="medium",
         privacy_status=(
             "blocked" if "blocked" in (qwen.privacy_status, gemma.privacy_status)
@@ -631,8 +641,8 @@ def convene(task_description: str,
     import concurrent.futures as _cf
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
-        future_qwen = pool.submit(_call_model_with_retry, "qwen3.6:27b", prompt, model_timeout)
-        future_gemma = pool.submit(_call_model_with_retry, "gemma4:31b-unsloth", prompt, model_timeout)
+        future_qwen = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_QWEN_MODEL, prompt, model_timeout)
+        future_gemma = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_GEMMA_MODEL, prompt, model_timeout)
         try:
             raw_qwen = future_qwen.result(timeout=result_timeout)
         except Exception:
@@ -642,8 +652,8 @@ def convene(task_description: str,
         except Exception:
             raw_gemma = ""
 
-    qwen = _parse_judgement(raw_qwen, "qwen3.6:27b")
-    gemma = _parse_judgement(raw_gemma, "gemma4:31b-unsloth")
+    qwen = _parse_judgement(raw_qwen, _LOCAL_ROUTE_QWEN_MODEL)
+    gemma = _parse_judgement(raw_gemma, _LOCAL_ROUTE_GEMMA_MODEL)
 
     # If both models could not be parsed even after retry, fall back to pro_decision
     # rather than deadlocking the session with ask_user.
@@ -723,6 +733,7 @@ def main():
         "allowed": list(permissions.get("allowed_tools", [])) or ["all"],
         "denied": list(permissions.get("forbidden_tools", [])),
         "cloud_ok": permissions.get("cloud_allowed", False),
+        "pro_audit_requested": decision.pro_audit_requested,
     }
 
     if args.output:

@@ -229,6 +229,129 @@ def test_auth_command_format(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════
+# Flash cloud authorization tests
+# ═══════════════════════════════════════════════════════════════
+
+
+def _write_route(task_dir: Path, task_id: str, route_type: str):
+    """Helper: write a route.json for a task."""
+    route_file = task_dir / task_id / "route.json"
+    route_file.parent.mkdir(parents=True, exist_ok=True)
+    route_file.write_text(json.dumps({"recommended_route": route_type}), encoding="utf-8")
+
+
+class TestFlashAuthorization:
+    """Verify flash cloud authorization flow: ask → authorize → allow."""
+
+    def test_flash_auth_flag_default_false(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("test flash")
+            assert re.is_flash_authorized(s["task_id"]) is False
+        finally:
+            monkeypatch.undo()
+
+    def test_set_flash_authorized(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("test flash")
+            re.set_flash_authorized(s["task_id"])
+            assert re.is_flash_authorized(s["task_id"]) is True
+        finally:
+            monkeypatch.undo()
+
+    def test_flash_direct_denies_write_forces_flash_subagent(self, tmp_path):
+        """flash_direct: Pro cannot Write directly — must use Agent(model='deepseek-v4-flash')."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("flash task")
+            _write_route(tmp_path, s["task_id"], "flash_direct")
+            r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
+            # flash_direct FORCES model switch — Pro cannot Write directly
+            assert r.get("permissionDecision") == "deny"
+            assert "FORCES" in r.get("reason", "")
+            assert "deepseek-v4-flash" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_flash_direct_allows_agent_spawn(self, tmp_path):
+        """flash_direct: Agent tool is allowed so Pro can spawn Flash subagent."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("flash task")
+            _write_route(tmp_path, s["task_id"], "flash_direct")
+            re.set_flash_authorized(s["task_id"])
+            r = re.on_pre_tool_use({"tool_name": "Agent", "tool_input": {"prompt": "fix bug"}})
+            # Agent tool is allowed — Pro delegates to Flash subagent
+            assert r == {}
+        finally:
+            monkeypatch.undo()
+
+    def test_flash_subagent_allows_write(self, tmp_path):
+        """flash_subagent: Write is in allowed list, enforcement is weaker than flash_direct."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("flash task")
+            _write_route(tmp_path, s["task_id"], "flash_subagent")
+            re.set_flash_authorized(s["task_id"])
+            r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
+            # flash_subagent allows Write directly (full access route)
+            assert r == {}
+        finally:
+            monkeypatch.undo()
+
+    def test_post_tool_sets_flash_authorized(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("flash task")
+            _write_route(tmp_path, s["task_id"], "flash_subagent")
+            assert re.is_flash_authorized(s["task_id"]) is False
+            re.on_post_tool_use({"tool_name": "Write", "tool_input": {}, "tool_response": {"output": "ok"}})
+            assert re.is_flash_authorized(s["task_id"]) is True
+        finally:
+            monkeypatch.undo()
+
+    def test_non_flash_route_does_not_ask(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("local task")
+            _write_route(tmp_path, s["task_id"], "local_only")
+            r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
+            # local_only denies Write, but NOT via ask — via deny
+            assert r.get("permissionDecision") == "deny"
+        finally:
+            monkeypatch.undo()
+
+    def test_flash_auth_only_for_flash_routes(self, tmp_path):
+        """pro_decision is cloud_ok but not flash_ — should not trigger auth popup."""
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("pro task")
+            _write_route(tmp_path, s["task_id"], "pro_decision")
+            r = re.on_pre_tool_use({"tool_name": "Write", "tool_input": {"file_path": "test.py"}})
+            # pro_decision may deny or allow but should NOT ask for flash auth
+            assert r.get("permissionDecision") != "ask" or "Flash" not in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+
+# ═══════════════════════════════════════════════════════════════
 # Subprocess-level tests — verify the script runs as a real
 # Claude Code hook (stdin JSON → stdout JSON).
 # ═══════════════════════════════════════════════════════════════

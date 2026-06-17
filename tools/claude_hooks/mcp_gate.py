@@ -449,7 +449,7 @@ def is_blocked_mcp_tool(payload: dict) -> tuple[bool, str]:
     """
     name = payload.get("tool_name", "")
     for prefix, description in _BLOCKED_MCP_TOOLS:
-        if name == prefix or name.startswith(prefix + "__"):
+        if name.startswith(prefix):
             return True, description
     return False, ""
 
@@ -1630,6 +1630,19 @@ def handle_permission_denied(config_dir: str, payload: dict) -> dict:
     tool_input = payload.get("tool_input", {})
     reason = payload.get("reason", "")
 
+    # Always log directly to hook-events.jsonl (does not depend on mcp_audit_logger)
+    log_event(config_dir, {
+        "event_type": "permission_denied",
+        "task_type": "gate_boundary_audit",
+        "tool_name": tool_name,
+        "tool_input": _redact_recursive(tool_input),
+        "reason": reason,
+        "result_status": "denied",
+        "blocking": False,
+        "severity": "medium",
+    })
+
+    # Also attempt structured audit via mcp_audit_logger (best-effort)
     _try_audit_event({
         "event_type": "permission_denied",
         "task_type": "gate_boundary_audit",

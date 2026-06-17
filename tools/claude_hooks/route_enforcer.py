@@ -32,16 +32,18 @@ ROUTE_PERMISSIONS = {
         "max_files": 10,
     },
     "flash_direct": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "Write", "Task", "Skill"},
-        "denied": {"Edit", "NotebookEdit"},
+        "allowed": {"Read", "Grep", "Glob", "Bash", "Task", "Skill", "Agent"},
+        "denied": {"Edit", "Write", "NotebookEdit"},
         "cloud_ok": True,
         "max_files": 20,
+        "_note": "Pro cannot edit/write directly. Must use Agent(model='deepseek-v4-flash') for implementation.",
     },
     "flash_subagent": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "Write", "Edit", "Task", "Skill"},
-        "denied": set(),
+        "allowed": {"Read", "Grep", "Glob", "Bash", "Write", "Edit", "Task", "Skill", "Agent"},
+        "denied": {"NotebookEdit"},
         "cloud_ok": True,
         "max_files": 50,
+        "_note": "Flash subagent has full access. Pro delegates implementation via Agent.",
     },
     "pro_decision": {
         "allowed": set(),
@@ -179,6 +181,23 @@ def _update_session(task_id: str, updates: dict):
         session_file.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def set_flash_authorized(task_id: str) -> None:
+    """Record that the user has authorized Flash cloud execution for this task."""
+    _update_session(task_id, {"flash_authorized": True})
+
+
+def is_flash_authorized(task_id: str) -> bool:
+    """Check if Flash cloud execution has been authorized for this task."""
+    session_file = _tasks_dir() / task_id / "session.json"
+    if not session_file.exists():
+        return False
+    try:
+        s = json.loads(session_file.read_text(encoding="utf-8"))
+        return s.get("flash_authorized", False)
+    except Exception:
+        return False
+
+
 # ═══════════════════════════════════════════════════════════════
 # Route enforcement
 # ═══════════════════════════════════════════════════════════════
@@ -211,13 +230,32 @@ def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
     perms = ROUTE_PERMISSIONS.get(route_type, ROUTE_PERMISSIONS["ask_user"])
 
     if route_type == "ask_user":
-        # Provide an actionable next step instead of a generic denial
+        # Pro audit: when committee disagrees, Pro audits but does NOT vote.
+        # Pro can read files to form an opinion, then presents to user.
+        enforcement = route.get("_enforcement", {})
+        pro_audit = enforcement.get("pro_audit_requested", False)
+
+        if pro_audit and tool_name in ("Read", "Grep", "Glob", "Bash", "PowerShell", "WebSearch", "WebFetch", "Task", "Skill"):
+            return True, ""  # Pro reads and forms audit opinion
+
         if tool_name in ("Edit", "Write", "NotebookEdit"):
+            if pro_audit:
+                return False, (
+                    f"Pro audit requested (committee disagreement). "
+                    f"Edit/Write blocked — present your audit opinion first, "
+                    f"then wait for user approval before editing."
+                )
             return False, (
                 f"This task is pending human approval (route: ask_user). "
                 f"Tool '{tool_name}' is blocked until the route committee authorizes execution.\n\n"
                 f"To authorize, run:\n  {_auth_command(task_id)}\n\n"
                 f"Then reply with a clear approval message such as 'approved' or 'continue'."
+            )
+        if pro_audit:
+            return False, (
+                f"Pro audit in progress (committee disagreement). "
+                f"Tool '{tool_name}' blocked. Use Read/Grep/Glob to gather context, "
+                f"then present your audit opinion. User approval required for edits."
             )
         return False, (
             f"This task is pending human approval (route: ask_user). "
@@ -227,6 +265,14 @@ def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
         )
 
     if perms["allowed"] and tool_name not in perms["allowed"]:
+        # Special message for flash_direct: forced model switch
+        if route_type == "flash_direct" and tool_name in ("Edit", "Write", "NotebookEdit"):
+            return False, (
+                f"Route '{route_type}' FORCES execution on DeepSeek v4 Flash. "
+                f"You cannot {tool_name} directly — the main session model must switch. "
+                f"Use Agent(model='deepseek-v4-flash') to delegate implementation, "
+                f"or run /model to switch the session model to Flash."
+            )
         return False, (
             f"Tool '{tool_name}' not allowed for route '{route_type}'. "
             f"Allowed: {perms['allowed']}"
@@ -298,6 +344,22 @@ def on_pre_tool_use(payload: dict) -> dict:
             "reason": reason,
         }
 
+    # Flash cloud authorization — ask user, then force model switch enforcement
+    route = load_route(task_id)
+    if route is not None:
+        route_type = route.get("recommended_route", "")
+        perms = ROUTE_PERMISSIONS.get(route_type, {})
+        if perms.get("cloud_ok") and route_type.startswith("flash_"):
+            if not is_flash_authorized(task_id):
+                return {
+                    "permissionDecision": "ask",
+                    "reason": (
+                        f"Route '{route_type}' requires execution on DeepSeek v4 Flash. "
+                        f"This will send task context to a cloud API. "
+                        f"Approve to authorize Flash for this task (once per task)."
+                    ),
+                }
+
     return {}  # allow
 
 
@@ -322,6 +384,16 @@ def on_post_tool_use(payload: dict):
         output = tool_response.get("output", "") or str(tool_response)
         if output.strip():
             save_artifact(task_id, f"git_diff_{datetime.now(timezone.utc).strftime('%H%M%S')}.diff", output)
+
+    # Flash authorization: if a cloud-route tool succeeded, mark flash as authorized
+    # (PreToolUse asked; user approved; tool ran → PostToolUse confirms authorization)
+    route = load_route(task_id)
+    if route is not None:
+        route_type = route.get("recommended_route", "")
+        perms = ROUTE_PERMISSIONS.get(route_type, {})
+        if perms.get("cloud_ok") and route_type.startswith("flash_"):
+            if not is_flash_authorized(task_id):
+                set_flash_authorized(task_id)
 
 
 def _run_route_committee(task_id: str, user_task: str) -> bool:
@@ -370,8 +442,52 @@ def _run_route_committee(task_id: str, user_task: str) -> bool:
         return False
 
 
+def _apply_model_switch(route_type: str) -> None:
+    """Switch the main session model in Claude Code settings.
+    
+    Writes ``model`` to .claude/settings.local.json. The new model
+    takes effect on the next Claude Code session start (or /model reload).
+    
+    Only switches for flash routes that require a different model than
+    the default Pro/Opus tier.
+    """
+    # Map route types to Claude Code model identifiers
+    _ROUTE_MODEL_MAP = {
+        "flash_direct": "deepseek-v4-flash",
+        "flash_subagent": "deepseek-v4-flash",
+    }
+    target_model = _ROUTE_MODEL_MAP.get(route_type)
+    if target_model is None:
+        return
+
+    settings_file = Path(".claude/settings.local.json")
+    try:
+        if settings_file.exists():
+            settings = json.loads(settings_file.read_text(encoding="utf-8"))
+        else:
+            settings = {}
+        if not isinstance(settings, dict):
+            settings = {}
+
+        current = settings.get("model", "")
+        if current == target_model:
+            return  # already set
+
+        settings["model"] = target_model
+        settings_file.write_text(
+            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass  # never crash the hook
+
+
 def on_stop(payload: dict) -> dict:
-    """Stop hook: trigger route committee if plan exists but no route yet."""
+    """Stop hook: trigger route committee if plan exists but no route yet.
+    
+    If route.json recommends flash_*, automatically switch the session
+    model to DeepSeek v4 Flash for the next session.
+    """
     task = get_active_task()
     if task is None:
         return {}
@@ -398,6 +514,21 @@ def on_stop(payload: dict) -> dict:
                 f".local_llm_out/tasks/{task_id}/route.json"
             ),
         }
+
+    # Auto-switch main model if route recommends Flash
+    route = load_route(task_id)
+    if route is not None:
+        route_type = route.get("recommended_route", "")
+        if route_type.startswith("flash_"):
+            _apply_model_switch(route_type)
+            return {
+                "decision": "allow",
+                "reason": (
+                    f"Route '{route_type}' → main model set to deepseek-v4-flash. "
+                    f"Next session will use Flash for execution. "
+                    f"Pro remains available for planning/adjudication via /model."
+                ),
+            }
 
     return {}
 
