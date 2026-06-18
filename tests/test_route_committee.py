@@ -53,14 +53,15 @@ def test_route_judgement_to_dict():
 # ── Merge logic ──
 
 def _make_j(route="flash_subagent", risk="medium", privacy="safe",
-            delegability="high", preprocess=True, execute=False, adjudicate=False):
+            delegability="high", preprocess=True, execute=False, adjudicate=False,
+            artifacts=None):
     from local_route_committee import RouteJudgement
     return RouteJudgement(
         delegability=delegability, recommended_route=route,
         local_preprocessing_required=preprocess,
         pro_should_execute=execute, pro_should_adjudicate=adjudicate,
         risk_level=risk, privacy_status=privacy, reason="test",
-        required_artifacts=[], model="test", confidence=0.8,
+        required_artifacts=artifacts or [], model="test", confidence=0.8,
     )
 
 
@@ -160,3 +161,66 @@ def test_single_model_decision():
     result = _single_model_decision(j)
     assert result.recommended_route == "flash_subagent"
     assert result.agreement is True
+
+
+def test_merge_required_artifacts_are_stable_and_deduplicated():
+    from local_route_committee import merge_judgements
+    qwen = _make_j("flash_direct", artifacts=["diff", "summary"])
+    gemma = _make_j("local_only", artifacts=["summary", "test_log"])
+    result = merge_judgements(qwen, gemma)
+    assert result.required_artifacts == ["diff", "summary", "test_log"]
+
+
+def test_build_route_output_validates():
+    from local_route_committee import (
+        RouteDecision,
+        build_route_output,
+        validate_route_output,
+    )
+    decision = RouteDecision(
+        delegability="high",
+        recommended_route="flash_direct",
+        local_preprocessing_required=True,
+        pro_should_execute=False,
+        pro_should_adjudicate=False,
+        risk_level="low",
+        privacy_status="safe",
+        reason="ok",
+        required_artifacts=["summary"],
+        qwen_judgement={},
+        gemma_judgement={},
+        agreement=True,
+        escalated=False,
+        escalated_reason="",
+    )
+    output = build_route_output(decision)
+    assert validate_route_output(output) == []
+    assert output["_enforcement"]["allowed"] == sorted(output["_enforcement"]["allowed"])
+
+
+def test_validate_route_output_rejects_invalid_route():
+    from local_route_committee import validate_route_output
+    errors = validate_route_output({
+        "delegability": "high",
+        "recommended_route": "invalid",
+        "local_preprocessing_required": True,
+        "pro_should_execute": False,
+        "pro_should_adjudicate": False,
+        "risk_level": "low",
+        "privacy_status": "safe",
+        "reason": "bad route",
+        "required_artifacts": [],
+        "qwen_judgement": {},
+        "gemma_judgement": {},
+        "agreement": True,
+        "escalated": False,
+        "escalated_reason": "",
+        "pro_audit_requested": False,
+        "_enforcement": {
+            "allowed": ["Read"],
+            "denied": [],
+            "cloud_ok": False,
+            "pro_audit_requested": False,
+        },
+    })
+    assert "invalid recommended_route: 'invalid'" in errors

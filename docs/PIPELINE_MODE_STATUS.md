@@ -1,15 +1,20 @@
 # PIPELINE_MODE_STATUS.md — v2 Completion Tracker
 
-> **Last updated**: 2026-06-18 (B2/B3 route committee prompt hardening)
-> **Git**: local branch ahead of origin; B2/B3 route committee prompt hardening passed local gates; no push/tag/release
-> **Tests**: 74 targeted passed after B2/B3 prompt hardening; config validation PASS with 8 warnings
-> **Codex CLI**: real user `codex doctor` overall OK; project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`
+> **Last updated**: 2026-06-18 (B4/B5 route committee validator hardening)
+> **Git**: local branch ahead of origin; B4/B5 route committee validator hardening passed local tests; no push/tag/release
+> **Tests**: 78 targeted route/hook/committee tests, 48 model-call/residency tests, and 3 router focused tests passed; config validation PASS with 8 warnings
+> **Review gates**: local review-diff PASS; fast debate PASS with no high-confidence findings
+> **Codex CLI**: project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`, pinned to the local zero12 tunnel at `127.0.0.1:11436`
 
 ## Recent Progress
 
 - Worktree convergence is complete: Codex/agent baseline files were committed in `094775e`.
+- Codex project config now routes local LLM MCP calls to the zero12 SSH tunnel (`127.0.0.1:11436`) with `qwen3.6:27b` as the resident model.
+- Router model discovery now falls back to the Ollama HTTP API when the local `ollama` CLI is unavailable, matching the Codex sandbox path.
+- Worker/residency keepalive payloads now normalize `-1` and `0` to numeric values for Ollama 0.30.7 compatibility.
 - B2/B3 route committee prompt hardening is complete locally: Qwen and Gemma now receive role-specific prompts while sharing the same JSON output schema.
-- Next route committee slice remains B4/B5: deterministic merge hardening and route.json schema validation.
+- B4/B5 route committee validator hardening is complete locally: artifact merges are deterministic and generated route.json output is validated before write.
+- Next route committee slice after B4/B5 remains A6/F1: E2E hook loop test or secrets/.env protection in PreToolUse.
 
 ## Module Completion Overview
 
@@ -55,11 +60,11 @@
 | LOCAL_ROUTE_GEMMA_MODEL env var (B1) | ✅ |
 | Timeout + retry + parse fallback | ✅ |
 | --output direct route.json write | ✅ |
-| Qwen/Gemma structured output prompt | 🔧 |
-| Deterministic merge rules hardening | 🔧 |
-| route.json schema validator | ⬜ |
+| Qwen/Gemma structured output prompt | ✅ |
+| Deterministic merge rules hardening | ✅ |
+| route.json schema validator | ✅ |
 
-**Completion**: 60% (was 50%)
+**Completion**: 75% (was 60%)
 
 ### 4. Artifact Store (A4)
 
@@ -166,7 +171,7 @@
 
 ```
 Phase A (Hook Closure):   85% — main() + register + matchers + flash auth + artifacts
-Phase B (Route Committee): 60% — env vars done, schema validator + merge rules pending
+Phase B (Route Committee): 75% — env vars, prompt hardening, schema validator, and merge rules done
 Phase C (AgentDB):          5% — not started
 Phase D (Worker+Tool):     30% — artifact capture done, workers still v1
 Phase E (Pro Adjudication):  5% — not started
@@ -199,10 +204,8 @@ Pipeline mode overall:     32% (was 22%)
 
 ## Next Priority (ranked)
 
-1. **Worktree convergence**: decide whether to track the untracked Codex/agent baseline files before opening the next feature slice.
-2. **B2/B3**: Qwen/Gemma structured output prompt optimization (higher route quality).
-3. **A6**: E2E hook loop test in real Claude Code session.
-4. **F1**: Secrets/.env protection in PreToolUse.
-5. **C1**: Task session directory structure stabilization.
-6. **E1**: Adjudication input pack schema.
-7. **Push**: 222 commits to origin (blocked by release guard — needs debate review).
+1. **A6**: E2E hook loop test in real Claude Code session.
+2. **F1**: Secrets/.env protection in PreToolUse.
+3. **C1**: Task session directory structure stabilization.
+4. **E1**: Adjudication input pack schema.
+7. **Push**: local commits to origin (blocked by release guard — needs debate review).

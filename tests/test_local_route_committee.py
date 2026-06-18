@@ -101,6 +101,45 @@ def test_output_without_json_still_writes_file(monkeypatch, tmp_path):
     assert data["recommended_route"] == "local_only"
 
 
+def test_output_rejects_invalid_route(monkeypatch, tmp_path):
+    import local_route_committee as committee
+
+    route_file = tmp_path / "route.json"
+    fake_decision = committee.RouteDecision(
+        delegability="high",
+        recommended_route="invalid",
+        local_preprocessing_required=False,
+        pro_should_execute=False,
+        pro_should_adjudicate=False,
+        risk_level="low",
+        privacy_status="safe",
+        reason="invalid route",
+        required_artifacts=[],
+        qwen_judgement={},
+        gemma_judgement={},
+        agreement=True,
+        escalated=False,
+        escalated_reason="",
+    )
+
+    monkeypatch.setattr(committee, "convene", lambda **kwargs: fake_decision)
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda: "")
+
+    original_argv = sys.argv
+    try:
+        sys.argv = [
+            "local_route_committee.py",
+            "bad route",
+            "--json",
+            "--output", str(route_file),
+        ]
+        assert committee.main() == 2
+    finally:
+        sys.argv = original_argv
+
+    assert not route_file.exists()
+
+
 def test_double_parse_failure_fallback_to_pro(monkeypatch):
     import local_route_committee as committee
 

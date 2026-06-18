@@ -112,6 +112,26 @@ def test_send_keepalive_success(monkeypatch):
     assert calls[0][2] == 30
 
 
+def test_send_keepalive_normalizes_force_keep_alive(monkeypatch):
+    calls = []
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(
+        residency.requests,
+        "post",
+        lambda url, json, timeout: calls.append(json) or FakeResp(),
+    )
+    result = residency._send_keepalive(
+        "mymodel", "-1", base_url="http://ollama:11434"
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["keep_alive"] == -1
+
+
 def test_send_keepalive_failure(monkeypatch):
     def fake_post(*args, **kwargs):
         raise RuntimeError("connection refused")
@@ -132,7 +152,7 @@ def test_unload_model_sends_zero_keepalive(monkeypatch):
     monkeypatch.setattr(residency.requests, "post", lambda url, json, timeout: calls.append(json) or FakeResp())
     residency._unload_model("mymodel")
     assert len(calls) == 1
-    assert calls[0]["keep_alive"] == "0"
+    assert calls[0]["keep_alive"] == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -302,6 +322,34 @@ def test_worker_call_ollama_includes_keep_alive_env(monkeypatch):
     result = worker.call_ollama("system", "user", config)
     assert captured["payload"]["keep_alive"] == "1h"
     assert result.content == "ok"
+
+
+def test_worker_call_ollama_normalizes_force_keep_alive(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_KEEP_ALIVE", "-1")
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"message": {"content": "ok"}}
+
+    def fake_post(url, json, timeout):
+        captured["payload"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(worker.requests, "post", fake_post)
+
+    config = worker.WorkerConfig(
+        provider="ollama",
+        model="test",
+        base_url="http://localhost:11434",
+        timeout=120,
+        max_output_chars=100,
+    )
+    worker.call_ollama("system", "user", config)
+    assert captured["payload"]["keep_alive"] == -1
 
 
 def test_worker_call_ollama_omits_keep_alive_without_env(monkeypatch):

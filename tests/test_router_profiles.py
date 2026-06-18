@@ -139,6 +139,79 @@ def test_check_model_available_empty_model():
     assert not router.check_model_available("", ["gemma4:e4b"])
 
 
+def test_get_ollama_models_falls_back_to_api(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://example.test:11436")
+    monkeypatch.setattr(
+        router.subprocess,
+        "check_output",
+        MagicMock(side_effect=FileNotFoundError("ollama")),
+    )
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "models": [
+                    {"name": "qwen3.6:27b"},
+                    {"model": "gemma4:12b-unsloth"},
+                    {"name": ""},
+                    "bad-entry",
+                ]
+            }).encode("utf-8")
+
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["url"] = req.full_url
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(router, "urlopen", fake_urlopen)
+
+    assert router.get_ollama_models() == ["qwen3.6:27b", "gemma4:12b-unsloth"]
+    assert seen == {
+        "url": "http://example.test:11436/api/tags",
+        "timeout": 5,
+    }
+
+
+def test_get_ollama_models_api_malformed_payload_returns_empty(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://example.test:11436")
+    monkeypatch.setattr(
+        router.subprocess,
+        "check_output",
+        MagicMock(side_effect=FileNotFoundError("ollama")),
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"models": {"not": "a-list"}}).encode("utf-8")
+
+    monkeypatch.setattr(router, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    assert router.get_ollama_models() == []
+
+
+def test_resolve_ollama_base_url_normalizes_ollama_host(monkeypatch):
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:11436")
+
+    assert router._resolve_ollama_base_url() == "http://127.0.0.1:11436"
+
+
 def test_resolve_profile_candidates_list():
     """Profile resolution should return a profile with candidates for fallback."""
     _, model, _ = router.resolve_profile("summarize-file", None, None)

@@ -640,6 +640,13 @@ def build_prompt(task: str, content: str, config: WorkerConfig) -> tuple[str, st
     return system, user, meta
 
 
+def _normalize_keep_alive(value: str) -> str | int:
+    stripped = value.strip()
+    if stripped in {"-1", "0"}:
+        return int(stripped)
+    return value
+
+
 def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResult":
     from model_call_result import ModelCallResult, normalize_usage
     url = f"{config.base_url}/api/chat"
@@ -656,7 +663,7 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResul
     }
     keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
     if keep_alive is not None:
-        payload["keep_alive"] = keep_alive
+        payload["keep_alive"] = _normalize_keep_alive(keep_alive)
     resp = requests.post(url, json=payload, timeout=config.timeout)
     resp.raise_for_status()
     data = resp.json()
@@ -703,7 +710,7 @@ def call_ollama_stream(system: str, user: str, config: WorkerConfig):
     }
     keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
     if keep_alive is not None:
-        payload["keep_alive"] = keep_alive
+        payload["keep_alive"] = _normalize_keep_alive(keep_alive)
     resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
     resp.raise_for_status()
     for line in resp.iter_lines():

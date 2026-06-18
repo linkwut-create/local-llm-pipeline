@@ -38,6 +38,37 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _resolve_ollama_base_url() -> str:
+    base_url = os.environ.get("LOCAL_LLM_BASE_URL") or os.environ.get("OLLAMA_HOST")
+    if not base_url:
+        return "http://localhost:11434"
+    if not base_url.startswith(("http://", "https://")):
+        base_url = "http://" + base_url
+    return base_url.rstrip("/")
+
+
+def _get_ollama_models_from_api() -> list[str]:
+    url = _resolve_ollama_base_url() + "/api/tags"
+    try:
+        req = Request(url, method="GET")
+        with urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    models = payload.get("models", [])
+    if not isinstance(models, list):
+        return []
+    names: list[str] = []
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name") or entry.get("model")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
 def get_ollama_models() -> list[str]:
     try:
         output = subprocess.check_output(
@@ -46,7 +77,7 @@ def get_ollama_models() -> list[str]:
         lines = output.strip().splitlines()[1:]
         return [line.split()[0] for line in lines if line.strip()]
     except Exception:
-        return []
+        return _get_ollama_models_from_api()
 
 
 def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:

@@ -171,6 +171,13 @@ def _ollama_base_url() -> str:
     return DEFAULT_OLLAMA_HOST
 
 
+def _normalize_keep_alive_payload(value: str) -> str | int:
+    stripped = value.strip()
+    if stripped in {"-1", "0"}:
+        return int(stripped)
+    return value
+
+
 def _send_keepalive(model: str, keep_alive: str, base_url: str | None = None) -> dict[str, Any]:
     """Ping a model to keep it loaded. Returns {ok, model, keep_alive, error}."""
     base = (base_url or _ollama_base_url()).rstrip("/")
@@ -180,7 +187,7 @@ def _send_keepalive(model: str, keep_alive: str, base_url: str | None = None) ->
         "prompt": " ",
         "stream": False,
         "options": {"num_predict": 1, "temperature": 0.0},
-        "keep_alive": keep_alive,
+        "keep_alive": _normalize_keep_alive_payload(keep_alive),
     }
     try:
         if requests is not None:

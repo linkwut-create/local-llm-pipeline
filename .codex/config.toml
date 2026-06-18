@@ -11,3 +11,4 @@ args = ["tools/local_llm_mcp_server.py"]
 cwd = "."
 startup_timeout_sec = 30
 tool_timeout_sec = 900
+env = { LOCAL_LLM_BASE_URL = "http://127.0.0.1:11436", OLLAMA_HOST = "http://127.0.0.1:11436", LOCAL_LLM_PROVIDER = "ollama", LOCAL_LLM_KEEP_ALIVE = "-1", LOCAL_LLM_RESIDENT_MODELS = "qwen3.6:27b", LOCAL_LLM_RESIDENCY_FORCE = "true" }
