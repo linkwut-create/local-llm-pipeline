@@ -272,14 +272,34 @@ class RouteDecision:
 # Prompt
 # ═══════════════════════════════════════════════════════════════
 
+ROUTE_JUDGEMENT_SCHEMA = '{"delegability":"high|medium|low|blocked","recommended_route":"local_only|flash_direct|flash_subagent|pro_decision|blocked|ask_user","local_preprocessing_required":true|false,"pro_should_execute":true|false,"pro_should_adjudicate":true|false,"risk_level":"low|medium|high|critical","privacy_status":"safe|needs_review|blocked","reason":"short","required_artifacts":[]}'
+
+QWEN_ROLE_INSTRUCTIONS = """Role: Qwen engineering delegate.
+Focus on delegability, execution route, and required artifacts.
+- Prefer local_only for read-only discovery, summaries, repo maps, and test planning.
+- Prefer flash_direct only for simple bounded writing or rewriting.
+- Prefer flash_subagent when a bounded worker can produce a candidate artifact.
+- Use pro_decision for architecture, interface, security, release, or broad code changes.
+- Set required_artifacts to the evidence a controller must inspect before continuing."""
+
+GEMMA_ROLE_INSTRUCTIONS = """Role: Gemma risk and privacy reviewer.
+Focus on conservatism, privacy, route safety, and escalation boundaries.
+- Set privacy_status=blocked for secrets, credentials, private keys, or .env exposure.
+- Set privacy_status=needs_review when sensitive intent or unclear private data appears.
+- Set risk_level=high for hooks, routing, MCP, gate, security, release, or interface changes.
+- Prefer ask_user when the task is ambiguous or missing authorization.
+- Prefer pro_decision when local or flash execution would cross a safety boundary."""
+
 ROUTE_JUDGEMENT_PROMPT = """Route this task. Output ONLY valid JSON, no markdown.
+
+{role_instructions}
 
 {plan_json}
 
 {evidence}
 
 JSON format (exact):
-{{"delegability":"high|medium|low|blocked","recommended_route":"local_only|flash_direct|flash_subagent|pro_decision|blocked|ask_user","local_preprocessing_required":true|false,"pro_should_execute":true|false,"pro_should_adjudicate":true|false,"risk_level":"low|medium|high|critical","privacy_status":"safe|needs_review|blocked","reason":"short","required_artifacts":[]}}
+{schema}
 
 Rules:
 - privacy=blocked → blocked
@@ -292,6 +312,16 @@ Rules:
 # ═══════════════════════════════════════════════════════════════
 # Deterministic merge rules
 # ═══════════════════════════════════════════════════════════════
+
+def build_route_prompt(role_instructions: str, plan_json: str, evidence: str) -> str:
+    """Build one model-specific prompt while preserving the shared JSON schema."""
+    return ROUTE_JUDGEMENT_PROMPT.format(
+        role_instructions=role_instructions.strip(),
+        plan_json=plan_json,
+        evidence=evidence,
+        schema=ROUTE_JUDGEMENT_SCHEMA,
+    )
+
 
 def _single_model_decision(j: RouteJudgement) -> RouteDecision:
     """When only one model responds, use its judgement directly."""
@@ -629,9 +659,19 @@ def convene(task_description: str,
         evidence_pack = build_evidence_pack(repo_root)
     evidence_text = format_evidence_pack(evidence_pack)
 
-    prompt = ROUTE_JUDGEMENT_PROMPT.format(
-        plan_json=plan_json or f'{{"task": "{task_description[:500]}"}}',
-        evidence=evidence_text,
+    plan_text = plan_json or json.dumps(
+        {"task": task_description[:500]},
+        ensure_ascii=False,
+    )
+    qwen_prompt = build_route_prompt(
+        QWEN_ROLE_INSTRUCTIONS,
+        plan_text,
+        evidence_text,
+    )
+    gemma_prompt = build_route_prompt(
+        GEMMA_ROLE_INSTRUCTIONS,
+        plan_text,
+        evidence_text,
     )
 
     # Allow env override for slow GPUs; default 120s per model call
@@ -641,8 +681,8 @@ def convene(task_description: str,
     import concurrent.futures as _cf
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
-        future_qwen = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_QWEN_MODEL, prompt, model_timeout)
-        future_gemma = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_GEMMA_MODEL, prompt, model_timeout)
+        future_qwen = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_QWEN_MODEL, qwen_prompt, model_timeout)
+        future_gemma = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_GEMMA_MODEL, gemma_prompt, model_timeout)
         try:
             raw_qwen = future_qwen.result(timeout=result_timeout)
         except Exception:

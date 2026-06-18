@@ -151,6 +151,139 @@ def test_single_parse_failure_uses_other_model(monkeypatch):
     assert decision.reason.startswith("Single model")
 
 
+def test_build_route_prompt_includes_role_and_schema():
+    import local_route_committee as committee
+
+    prompt = committee.build_route_prompt(
+        "Role: test role.",
+        '{"task":"x"}',
+        "Git status: clean",
+    )
+
+    assert "Role: test role." in prompt
+    assert '{"task":"x"}' in prompt
+    assert "Git status: clean" in prompt
+    assert committee.ROUTE_JUDGEMENT_SCHEMA in prompt
+
+
+def test_convene_uses_role_specific_prompts(monkeypatch):
+    import local_route_committee as committee
+
+    prompts = {}
+    valid_json = (
+        '{"delegability":"high","recommended_route":"local_only",'
+        '"local_preprocessing_required":true,"pro_should_execute":false,'
+        '"pro_should_adjudicate":false,"risk_level":"low",'
+        '"privacy_status":"safe","reason":"ok","required_artifacts":["summary"]}'
+    )
+
+    def fake_call(model, prompt, timeout=90):
+        prompts[model] = prompt
+        return valid_json
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
+        "git_status": "clean",
+        "recent_commits": "abc123 test",
+        "file_tree": "README.md",
+        "current_diff": "none",
+        "test_status": "unknown",
+        "privacy_scan": "safe",
+        "project_phase": "development",
+    })
+
+    decision = committee.convene("summarize repository")
+
+    qwen_prompt = prompts[committee._LOCAL_ROUTE_QWEN_MODEL]
+    gemma_prompt = prompts[committee._LOCAL_ROUTE_GEMMA_MODEL]
+    assert "Qwen engineering delegate" in qwen_prompt
+    assert "Gemma risk and privacy reviewer" in gemma_prompt
+    assert "required_artifacts" in qwen_prompt
+    assert "privacy_status=blocked" in gemma_prompt
+    assert qwen_prompt != gemma_prompt
+    assert decision.recommended_route == "local_only"
+
+
+def test_convene_merges_different_role_judgements(monkeypatch):
+    import local_route_committee as committee
+
+    qwen_json = (
+        '{"delegability":"high","recommended_route":"flash_direct",'
+        '"local_preprocessing_required":false,"pro_should_execute":false,'
+        '"pro_should_adjudicate":false,"risk_level":"low",'
+        '"privacy_status":"safe","reason":"simple bounded rewrite",'
+        '"required_artifacts":["diff"]}'
+    )
+    gemma_json = (
+        '{"delegability":"high","recommended_route":"local_only",'
+        '"local_preprocessing_required":true,"pro_should_execute":false,'
+        '"pro_should_adjudicate":false,"risk_level":"medium",'
+        '"privacy_status":"safe","reason":"safe but inspect first",'
+        '"required_artifacts":["summary"]}'
+    )
+
+    def fake_call(model, prompt, timeout=90):
+        if model == committee._LOCAL_ROUTE_QWEN_MODEL:
+            assert "Qwen engineering delegate" in prompt
+            return qwen_json
+        assert model == committee._LOCAL_ROUTE_GEMMA_MODEL
+        assert "Gemma risk and privacy reviewer" in prompt
+        return gemma_json
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
+        "git_status": "clean",
+        "recent_commits": "abc123 test",
+        "file_tree": "README.md",
+        "current_diff": "none",
+        "test_status": "unknown",
+        "privacy_scan": "safe",
+        "project_phase": "development",
+    })
+
+    decision = committee.convene("rewrite a short doc section", plan_json="")
+
+    assert decision.recommended_route == "flash_direct"
+    assert decision.risk_level == "medium"
+    assert set(decision.required_artifacts) == {"diff", "summary"}
+    assert decision.agreement is True
+
+
+def test_convene_escapes_fallback_plan_json(monkeypatch):
+    import local_route_committee as committee
+
+    prompts = {}
+    valid_json = (
+        '{"delegability":"high","recommended_route":"local_only",'
+        '"local_preprocessing_required":true,"pro_should_execute":false,'
+        '"pro_should_adjudicate":false,"risk_level":"low",'
+        '"privacy_status":"safe","reason":"ok","required_artifacts":[]}'
+    )
+
+    def fake_call(model, prompt, timeout=90):
+        prompts[model] = prompt
+        return valid_json
+
+    monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
+        "git_status": "clean",
+        "recent_commits": "abc123 test",
+        "file_tree": "README.md",
+        "current_diff": "none",
+        "test_status": "unknown",
+        "privacy_scan": "safe",
+        "project_phase": "development",
+    })
+
+    committee.convene('rewrite "quoted" section\nwith newline', plan_json="")
+
+    qwen_prompt = prompts[committee._LOCAL_ROUTE_QWEN_MODEL]
+    assert json.dumps(
+        {"task": 'rewrite "quoted" section\nwith newline'},
+        ensure_ascii=False,
+    ) in qwen_prompt
+
+
 def test_call_model_with_retry_retries_once(monkeypatch):
     import local_route_committee as committee
 

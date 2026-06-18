@@ -1,9 +1,15 @@
 # PIPELINE_MODE_STATUS.md — v2 Completion Tracker
 
-> **Last updated**: 2026-06-18 (Codex status convergence)
-> **Git**: 222 ahead of origin; working tree dirty for test/doc/Codex config updates plus untracked Codex/agent baseline files
-> **Tests**: 70 targeted passed (route_enforcer + local_route_committee 57, route_committee 13); config validation PASS with 8 warnings
+> **Last updated**: 2026-06-18 (B2/B3 route committee prompt hardening)
+> **Git**: local branch ahead of origin; B2/B3 route committee prompt hardening passed local gates; no push/tag/release
+> **Tests**: 74 targeted passed after B2/B3 prompt hardening; config validation PASS with 8 warnings
 > **Codex CLI**: real user `codex doctor` overall OK; project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`
+
+## Recent Progress
+
+- Worktree convergence is complete: Codex/agent baseline files were committed in `094775e`.
+- B2/B3 route committee prompt hardening is complete locally: Qwen and Gemma now receive role-specific prompts while sharing the same JSON output schema.
+- Next route committee slice remains B4/B5: deterministic merge hardening and route.json schema validation.
 
 ## Module Completion Overview
 
