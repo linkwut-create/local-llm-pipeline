@@ -36,11 +36,17 @@ Full delegation contract: see AGENTS.md "Controller Delegation Contract (U-1)".
 Before cross-file, cross-module, or unfamiliar-repo work:
 
 ```bash
-py -3 tools/task_bootstrap.py --project <PATH> --task "<DESC>" `
+python3 tools/task_bootstrap.py --project <PATH> --task "<DESC>" `
   --max-summaries 3 --budget 6000
 ```
 
 See AGENTS.md for full workflow.
+
+## Codex CLI on Windows
+
+Use `codex.cmd` or `cmd /c codex ...` from PowerShell if script execution policy
+blocks `codex.ps1`. This project-level Codex config uses `python3` because the
+`py -3` launcher is not available in the current Codex desktop/CLI environment.
 
 ## Allowed Tasks
 
@@ -88,21 +94,22 @@ Codex may use `tools/local_llm_debate.py` for multi-model cross-review.
 Debate results are NOT final conclusions — Codex must verify all findings.
 
 ```bash
-git diff | py -3 tools/local_llm_debate.py review-diff --stdin
-git diff | py -3 tools/local_llm_debate.py review-diff --stdin --fast
-py -3 tools/local_llm_debate.py risk-analysis <path>
-py -3 tools/local_llm_debate.py architecture-review <path>
+git diff | python3 tools/local_llm_debate.py review-diff --stdin
+git diff | python3 tools/local_llm_debate.py review-diff --stdin --fast
+python3 tools/local_llm_debate.py risk-analysis <path>
+python3 tools/local_llm_debate.py architecture-review <path>
 ```
 
 ## MCP Integration (v0.11.0)
 
-The pipeline exposes **12** source-non-mutating MCP tools via
+The pipeline exposes **13** source-non-mutating MCP tools via
 `tools/local_llm_mcp_server.py`:
 
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
 `local_generate_test_plan`, `local_review_diff`, `local_debate_review_diff`,
 `local_parallel_review`, `local_draft_code`, `local_contextual_analyze`,
-`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`.
+`local_repo_map`, `local_classify_test_failure`, `local_workflow_plan`,
+`local_route_explain`.
 
 MCP tools are source-non-mutating — output only to `.local_llm_out/`.
 
@@ -118,8 +125,8 @@ MCP tools are source-non-mutating — output only to `.local_llm_out/`.
 ### Profile Auto-Tuning
 
 ```bash
-py -3 tools/update_profiles_from_ollama.py --auto-tune         # show recommendations
-py -3 tools/update_profiles_from_ollama.py --auto-tune --apply # apply >20% improvements
+python3 tools/update_profiles_from_ollama.py --auto-tune         # show recommendations
+python3 tools/update_profiles_from_ollama.py --auto-tune --apply # apply >20% improvements
 ```
 
 ### llama.cpp MTP Backend (zero12)
@@ -133,11 +140,11 @@ bash tools/start_llamacpp_mtp.sh --stop    # stop all servers
 ## Standard Commands
 
 ```bash
-py -3 tools/local_llm_check.py
-py -3 tools/local_llm_router.py summarize-file <path>
-py -3 tools/local_llm_router.py summarize-tree <path> --max-files 30
-py -3 tools/local_llm_router.py extract-todos <path>
-py -3 tools/local_llm_router.py generate-test-plan <path>
-git diff | py -3 tools/local_llm_router.py review-diff --stdin
-py -3 tools/local_llm_router.py risk-analysis <path>
+python3 tools/local_llm_check.py
+python3 tools/local_llm_router.py summarize-file <path>
+python3 tools/local_llm_router.py summarize-tree <path> --max-files 30
+python3 tools/local_llm_router.py extract-todos <path>
+python3 tools/local_llm_router.py generate-test-plan <path>
+git diff | python3 tools/local_llm_router.py review-diff --stdin
+python3 tools/local_llm_router.py risk-analysis <path>
 ```

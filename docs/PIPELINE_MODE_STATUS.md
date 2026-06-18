@@ -1,8 +1,9 @@
 # PIPELINE_MODE_STATUS.md — v2 Completion Tracker
 
-> **Last updated**: 2026-06-17 (session end)
-> **Git**: 3 commits today, 219 ahead of origin, working tree clean
-> **Tests**: 69 passed (route_enforcer 49 + route_committee 20)
+> **Last updated**: 2026-06-18 (Codex status convergence)
+> **Git**: 222 ahead of origin; working tree dirty for test/doc/Codex config updates plus untracked Codex/agent baseline files
+> **Tests**: 70 targeted passed (route_enforcer + local_route_committee 57, route_committee 13); config validation PASS with 8 warnings
+> **Codex CLI**: real user `codex doctor` overall OK; project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`
 
 ## Module Completion Overview
 
@@ -135,7 +136,8 @@
 | Check | Status |
 |-------|--------|
 | route_enforcer tests | ✅ (49 tests) |
-| route_committee tests | ✅ (20 tests) |
+| route_enforcer + local_route_committee targeted tests | ✅ (57 tests) |
+| route_committee tests | ✅ (13 tests) |
 | End-to-end dry-run | ⬜ |
 | Real task dogfood | ⬜ |
 
@@ -179,11 +181,22 @@ Pipeline mode overall:     32% (was 22%)
 | False cloud-on-secret | 0 | 0 ✅ |
 | Warning gate | blocked | — |
 
+## Worktree Status
+
+- `tests/conftest.py` now uses a per-process pytest basetemp under the current working directory, with `LOCAL_LLM_PYTEST_TMP` as an explicit override. This fixes the Codex/Windows path-mapping failure where the old fixed `.local_llm_out/pytest-tmp` directory could not be removed.
+- `.codex/config.toml` and `.codex/hooks.json` now use `python3` so Codex desktop/CLI do not depend on the unavailable `py -3` launcher or a PowerShell-only `python` shim.
+- Real Codex CLI verification passed outside the sandbox: `codex doctor` overall OK, `codex mcp list` includes enabled `local-llm`, and zero12/Ollama handled a real `summarize-file` worker call.
+- Targeted hook/committee tests pass under `python3`; `.pytest_cache` still reports a non-blocking permission warning in this environment. Do not use `--cache-clear` in the current mapped workspace because it tries to delete the old restricted cache directory.
+- Codex/agent baseline candidates are present in the worktree: `.agents/skills/project-governance/SKILL.md`, `.agents/skills/task-bootstrap/SKILL.md`, `.codex/agents/*.toml`, and `.codex/hooks.json`.
+- Local-only state is ignored: `.pytest_cache/` and `.claude/session-handoff-*.md`.
+- No commit, push, tag, or release has been performed.
+
 ## Next Priority (ranked)
 
-1. **B2/B3**: Qwen/Gemma structured output prompt optimization (higher route quality)
-2. **A6**: E2E hook loop test in real Claude Code session
-3. **F1**: Secrets/.env protection in PreToolUse
-4. **C1**: Task session directory structure stabilization
-5. **E1**: Adjudication input pack schema
-6. **Push**: 219 commits to origin (blocked by release guard — needs debate review)
+1. **Worktree convergence**: decide whether to track the untracked Codex/agent baseline files before opening the next feature slice.
+2. **B2/B3**: Qwen/Gemma structured output prompt optimization (higher route quality).
+3. **A6**: E2E hook loop test in real Claude Code session.
+4. **F1**: Secrets/.env protection in PreToolUse.
+5. **C1**: Task session directory structure stabilization.
+6. **E1**: Adjudication input pack schema.
+7. **Push**: 222 commits to origin (blocked by release guard — needs debate review).

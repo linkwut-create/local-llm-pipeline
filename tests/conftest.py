@@ -1,4 +1,5 @@
 """pytest configuration and workarounds for the test suite."""
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,9 +28,15 @@ def pytest_configure(config):
     C:\\Users\\Zero\\AppData\\Local\\Temp\\pytest-of-Zero can accumulate stale
     dirs with broken ACLs from mixed-elevation runs, causing PermissionError in
     os.scandir during tmp_path fixture setup.  Using a project-local temp dir
-    avoids that entirely.
+    avoids that entirely.  Sandboxed runners may expose source files through a
+    read-only mapped path, so allow an explicit override and otherwise prefer
+    the current working directory over ``__file__``.
     """
     if config.option.basetemp is None:
-        project_tmp = Path(__file__).parent.parent / ".local_llm_out" / "pytest-tmp"
+        base = os.environ.get("LOCAL_LLM_PYTEST_TMP")
+        if base:
+            project_tmp = Path(base)
+        else:
+            project_tmp = Path.cwd() / ".local_llm_out" / f"pytest-tmp-{os.getpid()}"
         project_tmp.mkdir(parents=True, exist_ok=True)
         config.option.basetemp = str(project_tmp)

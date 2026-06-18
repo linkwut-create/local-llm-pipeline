@@ -6,7 +6,7 @@
 # Local LLM MCP server (source-non-mutating tools for code review and drafting).
 # See: https://developers.openai.com/codex/mcp
 [mcp_servers.local-llm]
-command = "python"
+command = "python3"
 args = ["tools/local_llm_mcp_server.py"]
 cwd = "."
 startup_timeout_sec = 30

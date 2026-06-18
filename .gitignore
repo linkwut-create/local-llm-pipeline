@@ -2,6 +2,10 @@
 .local_llm_out/
 .mcp_audit/
 
+# Local test/session state
+.pytest_cache/
+.claude/session-handoff-*.md
+
 # Model audition raw/generated outputs; may contain sensitive context.
 evals/model_audition/results/*.jsonl
 evals/model_audition/reports/*
