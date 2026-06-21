@@ -1,6 +1,6 @@
 # PIPELINE_MODE_ROADMAP.md — local-llm-pipeline v2
 
-> **Status**: Active planning (2026-06-17)
+> **Status**: Active planning (2026-06-19)
 > **Phase**: Hook adapter hardening → route enforcement → worker artifact → Pro adjudication
 > **Current completion**: ~20-25% (pipeline mode usable); ~30-35% (multi-model code-agent prototype)
 
@@ -141,7 +141,7 @@ Pro Adjudication
 
 | # | Module | Status | Target |
 |---|--------|--------|--------|
-| F1 | Secrets/.env protection in PreToolUse | 🔧 Partial | hard deny |
+| F1 | Secrets/.env protection in PreToolUse | ✅ Local done (2026-06-19) | hard deny; E2E pending |
 | F2 | Destructive command guard | 🔧 Partial | rm/git reset/curl pipe |
 | F3 | Bash command tiering (safe/medium/danger) | ⬜ TODO | per-route permissions |
 | F4 | Audit log (allow/deny/ask/override) | 🔧 Partial | full replay |

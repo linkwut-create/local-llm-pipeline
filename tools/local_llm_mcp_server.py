@@ -54,28 +54,30 @@ _call_lock = threading.Lock()
 # When confidence=low or uncertain_points>3, the server auto-escalates to the next tier.
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
-    # Summarization: fast/e4b → smart/9b → gemma4-26b llama.cpp (0.4s!) → qwen3.6-27b
-    "summarize-file": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
-                       "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
-                       "qwen3.6_27b_mtp"],
-    # Diff review: commit reviewer (30b) → nemotron reasoning → 27b → 35b deep
-    "review-diff": ["commit_reviewer", "diff_reviewer", "qwen3.6_27b_mtp",
-                    "deep_reviewer"],
-    # Code generation: coder → gemma4 fast path → 27b → 35b
-    "generate-test-plan": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
+    # Summarization: fast/e4b → smart/9b → qwen3.6 llama.cpp resident → fallbacks
+    "summarize-file": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+                       "gemma4_26b_llamacpp", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
+    "summarize-tree": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+                       "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    # Diff review: commit reviewer (30b) → qwen3.6 llama.cpp → nemotron reasoning → 35b deep
+    "review-diff": ["commit_reviewer", "diff_reviewer", "qwen3.6_llamacpp",
+                    "qwen3.6_27b_mtp", "deep_reviewer"],
+    # Code generation: coder → qwen3.6 llama.cpp → 27b → 35b
+    "generate-test-plan": ["code_worker", "qwen3.6_llamacpp",
+                           "gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
                            "deep_reviewer"],
-    "generate-test-draft": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-fix": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-feature": ["code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "generate-test-draft": ["code_worker", "qwen3.6_llamacpp",
+                            "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-fix": ["code_worker", "qwen3.6_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-feature": ["code_worker", "qwen3.6_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
     # Advisory draft text generation: code_worker is sufficient, no escalation needed
     "draft-commit-message": ["code_worker"],
     "draft-pr-summary": ["code_worker"],
     "draft-changelog-entry": ["code_worker"],
-    # Suggestions: fast llama.cpp → 27b → coder → 35b
-    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
-                             "code_worker", "deep_reviewer"],
+    # Suggestions: qwen3.6 llama.cpp → 27b → coder → 35b
+    "suggest-improvements": ["qwen3.6_llamacpp", "gemma4_26b_llamacpp",
+                             "qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
     # Deep/architecture review: 35b MoE → 35b → 31b Opus → 128b → nemotron super → 120b
     "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
                          "release_auditor", "nemotron_super", "heavy_reviewer"],
@@ -89,13 +91,17 @@ _ESCALATION_CHAIN = {
     "logic-check": ["reasoning_checker", "deep_reasoning", "release_auditor"],
     "failure-mode-analysis": ["reasoning_checker", "deep_reasoning",
                                "release_auditor"],
-    "contextual-analyze": ["qwen3.6_27b_mtp", "code_worker", "reasoning_checker"],
+    "contextual-analyze": ["qwen3.6_llamacpp", "qwen3.6_27b_mtp",
+                            "code_worker", "reasoning_checker"],
     "translate-text": ["translation", "qwen3.6_27b_mtp"],
-    "rewrite-text": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp",
-                     "qwen3.6_27b_mtp"],
-    "extract-todos": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "find-related-files": ["code_worker", "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "classify-test-failure": ["code_worker", "reasoning_checker", "qwen3.6_27b_mtp"],
+    "rewrite-text": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+                     "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    "extract-todos": ["code_worker", "qwen3.6_llamacpp",
+                      "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    "find-related-files": ["code_worker", "qwen3.6_llamacpp",
+                           "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+    "classify-test-failure": ["code_worker", "qwen3.6_llamacpp",
+                               "reasoning_checker", "qwen3.6_27b_mtp"],
 }
 
 # Security-sensitive patterns that auto-trigger reasoning model review.

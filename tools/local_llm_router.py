@@ -80,6 +80,44 @@ def get_ollama_models() -> list[str]:
         return _get_ollama_models_from_api()
 
 
+def _get_openai_models_from_api(base_url: str) -> list[str]:
+    """Query an OpenAI-compatible /v1/models endpoint (e.g. llama.cpp, LiteLLM)."""
+    url = base_url.rstrip("/") + "/models"
+    try:
+        req = Request(url, method="GET")
+        with urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return []
+    data = payload.get("data", [])
+    if not isinstance(data, list):
+        return []
+    names: list[str] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        mid = entry.get("id") or entry.get("model") or ""
+        if isinstance(mid, str) and mid:
+            names.append(mid)
+    return names
+
+
+def get_available_models() -> list[str]:
+    """Get available models from the configured backend.
+
+    When LOCAL_LLM_BASE_URL points to a non-Ollama endpoint (e.g. LiteLLM,
+    llama.cpp), model discovery goes through the OpenAI-compatible /v1/models
+    endpoint first.  Falls back to Ollama when the OpenAI-compatible endpoint
+    is unreachable or when the base URL still points at an Ollama port.
+    """
+    base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    if base_url and ":11434" not in base_url and ":11436" not in base_url:
+        models = _get_openai_models_from_api(base_url)
+        if models:
+            return models
+    return get_ollama_models()
+
+
 def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
     """Quick health check against a llama.cpp-compatible /models endpoint."""
     url = base_url.rstrip("/") + "/models"
@@ -93,7 +131,7 @@ def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
 
 # --- backend class eligibility (J-C5) ---
 
-BACKEND_CLASS_AUTO_ALLOWED = {"ollama", "ollama_mtp_pending"}
+BACKEND_CLASS_AUTO_ALLOWED = {"ollama", "ollama_mtp_pending", "openai-compatible"}
 
 BACKEND_CLASS_HEAVY = {"ollama_heavy_manual"}
 
@@ -456,7 +494,7 @@ def main():
 
     # Resolve model availability (with cross-backend fallback)
     if not profile_cfg.get("_env"):
-        available_models = get_ollama_models()
+        available_models = get_available_models()
 
         # Phase 3B: health-aware routing — check primary profile health
         if not is_profile_healthy(profile_name, profiles_data):

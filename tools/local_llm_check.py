@@ -24,6 +24,7 @@ except ImportError:
 
 OLLAMA_BASE_DEFAULT = "http://localhost:11434"
 OPENAI_COMPAT_BASE = "http://localhost:8080"
+LITELLM_BASE_DEFAULT = "http://127.0.0.1:4000"
 
 # llama.cpp MTP endpoints to check (remote GPU server + local)
 _MTP_ENDPOINTS = [
@@ -158,6 +159,22 @@ def check_openai_compat() -> CheckResult:
         return CheckResult("openai_compat", True, f"{len(models)} models", data=models)
     except Exception as e:
         return CheckResult("openai_compat", False, f"not reachable: {e}")
+
+
+def check_litellm() -> CheckResult:
+    """Check LiteLLM proxy (wraps llama.cpp + Ollama fallbacks)."""
+    base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    if not base_url or ":11434" in base_url or ":11436" in base_url:
+        base_url = LITELLM_BASE_DEFAULT
+    try:
+        import requests
+        resp = requests.get(f"{base_url.rstrip('/')}/models", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        models = [m.get("id", m.get("name", "?")) for m in data.get("data", [])]
+        return CheckResult("litellm", True, f"{len(models)} models via LiteLLM at {base_url}", data=models)
+    except Exception as e:
+        return CheckResult("litellm", False, f"LiteLLM at {base_url} not reachable: {e}")
 
 
 def check_mtp_endpoints() -> list[CheckResult]:
@@ -451,9 +468,13 @@ def main(argv: list[str] | None = None):
     api_result = check_ollama()
     print(f"  [{('OK' if api_result.ok else 'FAIL'):4s}] {api_result.detail}")
 
-    print_section("OpenAI-Compatible Server")
+    print_section("OpenAI-Compatible Server (llama.cpp direct)")
     oai_result = check_openai_compat()
     print(f"  [{('OK' if oai_result.ok else 'FAIL'):4s}] {oai_result.detail}")
+
+    print_section("LiteLLM Proxy (zero12)")
+    litellm_result = check_litellm()
+    print(f"  [{('OK' if litellm_result.ok else 'FAIL'):4s}] {litellm_result.detail}")
 
     print_section("llama.cpp MTP Endpoints (zero12)")
     mtp_results = check_mtp_endpoints()
@@ -465,6 +486,8 @@ def main(argv: list[str] | None = None):
         all_models = cli_result.data
     elif api_result.ok and api_result.data:
         all_models = api_result.data
+    elif litellm_result.ok and litellm_result.data:
+        all_models = litellm_result.data
 
     if all_models:
         base_models = deduplicate_models(all_models)
@@ -505,15 +528,19 @@ def main(argv: list[str] | None = None):
     for ex in examples:
         print(f"  {ex}")
 
-    all_ok = all(c.ok for c in checks) and (cli_result.ok or api_result.ok)
+    any_backend = cli_result.ok or api_result.ok or oai_result.ok or litellm_result.ok
+    all_ok = all(c.ok for c in checks) and any_backend
     print_section("Summary")
     if all_ok:
         print("  Environment is ready.")
     else:
         print("  Some checks failed. Review above for details.")
-        if not cli_result.ok and not api_result.ok:
+        if not any_backend:
             print("  CRITICAL: No LLM backend reachable.")
-            print("  Start Ollama: ollama serve")
+            print("  Options:")
+            print("    - Start Ollama: ollama serve")
+            print("    - Start LiteLLM proxy: systemctl --user start litellm")
+            print("    - Start llama.cpp: llama-server ...")
 
     if args.probe_workers:
         report = build_probe_report()

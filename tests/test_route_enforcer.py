@@ -240,6 +240,210 @@ def _write_route(task_dir: Path, task_id: str, route_type: str):
     route_file.write_text(json.dumps({"recommended_route": route_type}), encoding="utf-8")
 
 
+class TestSecretsProtection:
+    """Verify PreToolUse hard-denies secrets before route enforcement."""
+
+    def test_env_read_denied_without_active_task(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Read",
+                "tool_input": {"file_path": ".env"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_normal_read_allowed_without_active_task(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "README.md"},
+            })
+            assert r == {}
+        finally:
+            monkeypatch.undo()
+
+    def test_env_template_read_allowed(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Read",
+                "tool_input": {"file_path": ".env.example"},
+            })
+            assert r == {}
+        finally:
+            monkeypatch.undo()
+
+    def test_camel_case_file_path_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Read",
+                "tool_input": {"filePath": "C:\\Users\\Zero\\.ssh\\id_rsa"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_path_traversal_to_env_file_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "../config/.env.local"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_filename_containing_equals_not_mangled(self):
+        import route_enforcer as re
+        assert re._path_basename_for_policy("config.key=value") == "config.key=value"
+
+    def test_flash_subagent_cannot_write_env_file(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            s = re.create_task_session("flash secrets task")
+            _write_route(tmp_path, s["task_id"], "flash_subagent")
+            re.set_flash_authorized(s["task_id"])
+            r = re.on_pre_tool_use({
+                "tool_name": "Write",
+                "tool_input": {"file_path": ".env.local"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_multiedit_cannot_edit_env_file(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "MultiEdit",
+                "tool_input": {"file_path": ".env"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_grep_cannot_target_env_file(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Grep",
+                "tool_input": {"path": ".env", "pattern": "TOKEN"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_glob_cannot_search_private_key_files(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Glob",
+                "tool_input": {"pattern": "**/*.pem"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "Secrets/.env protection" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_shell_command_referencing_private_key_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Bash",
+                "tool_input": {"command": "cat ~/.ssh/id_ed25519"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "sensitive path" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_shell_redirection_referencing_env_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Bash",
+                "tool_input": {"command": "cat<.env; echo done"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "sensitive path" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_shell_env_file_flag_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Bash",
+                "tool_input": {"command": "docker run --env-file=.env image"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "sensitive path" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_powershell_command_referencing_env_denied(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "PowerShell",
+                "tool_input": {"command": "Get-Content .env"},
+            })
+            assert r.get("permissionDecision") == "deny"
+            assert "sensitive path" in r.get("reason", "")
+        finally:
+            monkeypatch.undo()
+
+    def test_shell_command_without_sensitive_path_allowed(self, tmp_path):
+        import route_enforcer as re
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        try:
+            r = re.on_pre_tool_use({
+                "tool_name": "Bash",
+                "tool_input": {"command": "pytest tests/test_route_enforcer.py -q"},
+            })
+            assert r == {}
+        finally:
+            monkeypatch.undo()
+
+
 class TestFlashAuthorization:
     """Verify flash cloud authorization flow: ask → authorize → allow."""
 

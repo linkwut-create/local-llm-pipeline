@@ -412,8 +412,10 @@ class WorkerConfig:
     profile: str = ""
     base_url: str = ""
     timeout: int = 300
+    max_context_tokens: int = 8192
     max_chars: int = 60000
     max_output_chars: int = 3000
+    max_output_tokens: int = 0
     output_dir: str = ".local_llm_out"
     target_language: str = "zh-CN"
     style: str = "concise"
@@ -658,7 +660,7 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResul
         ],
         "stream": False,
         "options": {
-            "num_predict": config.max_output_chars,
+            "num_predict": config.max_output_tokens or config.max_output_chars,
         },
     }
     keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
@@ -681,7 +683,7 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCa
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "max_tokens": config.max_output_chars,
+        "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": False,
     }
     resp = requests.post(url, json=payload, timeout=config.timeout)
@@ -691,7 +693,12 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCa
     if isinstance(data, dict):
         choices = data.get("choices") or []
         if choices and isinstance(choices[0], dict):
-            content = choices[0].get("message", {}).get("content", "") or ""
+            msg = choices[0].get("message", {})
+            content = msg.get("content", "") or ""
+            # llama.cpp --reasoning auto: short max_tokens may return empty
+            # content with reasoning_content populated instead.
+            if not content:
+                content = msg.get("reasoning_content", "") or ""
     usage = normalize_usage("openai-compatible", data) if isinstance(data, dict) else None
     return ModelCallResult(content=content, usage=usage, raw_provider="openai-compatible")
 
@@ -733,7 +740,7 @@ def call_openai_compat_stream(system: str, user: str, config: WorkerConfig):
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "max_tokens": config.max_output_chars,
+        "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": True,
     }
     resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
@@ -1135,6 +1142,14 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
         args.max_output_chars
         or task_conf.get("max_output_chars")
         or profile.get("max_output_chars", 3000)
+    )
+    config.max_context_tokens = int(
+        profile.get("max_context_tokens", 8192)
+    )
+    config.max_output_tokens = int(
+        profile.get("max_output_tokens", 0)
+        or task_conf.get("max_output_tokens", 0)
+        or 0
     )
     config.output_dir = (
         os.environ.get("LOCAL_LLM_OUTPUT_DIR")

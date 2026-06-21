@@ -8,8 +8,10 @@
         "general"
       ],
       "temperature": 0.2,
-      "max_chars": 60000,
+      "max_context_tokens": 8192,
+      "max_chars": 24000,
       "max_output_chars": 3000,
+      "max_output_tokens": 2048,
       "use_for": [
         "summarize-file",
         "summarize-tree",
@@ -35,8 +37,10 @@
         "consistency"
       ],
       "temperature": 0.15,
-      "max_chars": 80000,
+      "max_context_tokens": 8192,
+      "max_chars": 28000,
       "max_output_chars": 4000,
+      "max_output_tokens": 3072,
       "use_for": [
         "update-governance-docs",
         "review-documentation",
@@ -61,8 +65,10 @@
         "opus-distilled"
       ],
       "temperature": 0.15,
+      "max_context_tokens": 32768,
       "max_chars": 60000,
       "max_output_chars": 3000,
+      "max_output_tokens": 2048,
       "use_for": [
         "summarize-file",
         "summarize-tree",
@@ -83,8 +89,10 @@
         "test-generation"
       ],
       "temperature": 0.15,
+      "max_context_tokens": 32768,
       "max_chars": 90000,
       "max_output_chars": 4000,
+      "max_output_tokens": 4096,
       "use_for": [
         "extract-todos",
         "find-related-files",
@@ -115,8 +123,10 @@
         "commit-gate"
       ],
       "temperature": 0.1,
-      "max_chars": 90000,
+      "max_context_tokens": 16384,
+      "max_chars": 40000,
       "max_output_chars": 4000,
+      "max_output_tokens": 2048,
       "use_for": [
         "review-diff"
       ],
@@ -128,7 +138,7 @@
       "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
       "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
       "_commit_gate_allowed": true,
-      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s.",
+      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s. Context: 16K (prioritize speed over context).",
       "_last_tested": "2026-05-12",
       "_backend_class": "ollama"
     },
@@ -140,8 +150,10 @@
         "diff-analysis"
       ],
       "temperature": 0.1,
-      "max_chars": 120000,
+      "max_context_tokens": 32768,
+      "max_chars": 90000,
       "max_output_chars": 5000,
+      "max_output_tokens": 4096,
       "use_for": [
         "review-diff"
       ],
@@ -161,8 +173,10 @@
         "reliability"
       ],
       "temperature": 0.1,
-      "max_chars": 160000,
+      "max_context_tokens": 32768,
+      "max_chars": 100000,
       "max_output_chars": 6000,
+      "max_output_tokens": 6144,
       "use_for": [
         "deep-code-review",
         "architecture-review"
@@ -187,8 +201,10 @@
         "backup"
       ],
       "temperature": 0.1,
-      "max_chars": 140000,
+      "max_context_tokens": 32768,
+      "max_chars": 100000,
       "max_output_chars": 6000,
+      "max_output_tokens": 6144,
       "use_for": [
         "deep-code-review",
         "architecture-review"
@@ -208,8 +224,10 @@
         "security"
       ],
       "temperature": 0.1,
-      "max_chars": 100000,
+      "max_context_tokens": 32768,
+      "max_chars": 60000,
       "max_output_chars": 5000,
+      "max_output_tokens": 4096,
       "use_for": [
         "risk-analysis",
         "logic-check",
@@ -233,8 +251,10 @@
         "root-cause-analysis"
       ],
       "temperature": 0.1,
-      "max_chars": 100000,
+      "max_context_tokens": 32768,
+      "max_chars": 60000,
       "max_output_chars": 5000,
+      "max_output_tokens": 6144,
       "use_for": [
         "risk-analysis",
         "logic-check",
@@ -258,8 +278,10 @@
         "multilingual"
       ],
       "temperature": 0.2,
-      "max_chars": 80000,
+      "max_context_tokens": 32768,
+      "max_chars": 40000,
       "max_output_chars": 6000,
+      "max_output_tokens": 4096,
       "use_for": [
         "translate-text"
       ],
@@ -279,8 +301,10 @@
         "engineering-judgment"
       ],
       "temperature": 0.1,
-      "max_chars": 140000,
+      "max_context_tokens": 32768,
+      "max_chars": 100000,
       "max_output_chars": 6000,
+      "max_output_tokens": 6144,
       "use_for": [
         "architecture-review",
         "deep-code-review",
@@ -337,8 +361,10 @@
         "mo-efficiency"
       ],
       "temperature": 0.2,
-      "max_chars": 90000,
+      "max_context_tokens": 8192,
+      "max_chars": 28000,
       "max_output_chars": 5000,
+      "max_output_tokens": 3072,
       "use_for": [
         "summarize-file",
         "summarize-tree",
@@ -357,8 +383,10 @@
         "mtp-accelerated"
       ],
       "temperature": 0.2,
-      "max_chars": 90000,
+      "max_context_tokens": 8192,
+      "max_chars": 28000,
       "max_output_chars": 5000,
+      "max_output_tokens": 3072,
       "use_for": [
         "summarize-file",
         "summarize-tree",
@@ -380,8 +408,10 @@
         "general"
       ],
       "temperature": 0.15,
-      "max_chars": 120000,
+      "max_context_tokens": 8192,
+      "max_chars": 28000,
       "max_output_chars": 6000,
+      "max_output_tokens": 4096,
       "use_for": [
         "deep-code-review",
         "architecture-review",
@@ -438,8 +468,10 @@
         "deep-review"
       ],
       "temperature": 0.1,
-      "max_chars": 140000,
+      "max_context_tokens": 32768,
+      "max_chars": 100000,
       "max_output_chars": 6000,
+      "max_output_tokens": 6144,
       "use_for": [
         "deep-code-review",
         "architecture-review",
@@ -464,8 +496,10 @@
         "summarization"
       ],
       "temperature": 0.15,
-      "max_chars": 100000,
+      "max_context_tokens": 32768,
+      "max_chars": 60000,
       "max_output_chars": 5000,
+      "max_output_tokens": 4096,
       "use_for": [
         "summarize-file",
         "summarize-tree",
@@ -533,6 +567,71 @@
       "_acceleration": "mtp (pending upstream llama.cpp)",
       "_backend_class": "unavailable",
       "_status": "unavailable — llama.cpp MTP offline since v0.12.0 (pending upstream tensor fix)"
+    },
+    "qwen3.6_llamacpp": {
+      "model": "qwen3.6-deep",
+      "_strengths": [
+        "general",
+        "reasoning",
+        "deep-review",
+        "cjk"
+      ],
+      "temperature": 0.15,
+      "max_context_tokens": 16384,
+      "max_chars": 40000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 1536,
+      "use_for": [
+        "review-diff",
+        "suggest-improvements",
+        "summarize-file",
+        "summarize-tree",
+        "rewrite-text",
+        "contextual-analyze",
+        "draft-commit-message",
+        "generate-test-plan"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp_direct",
+        "code_worker"
+      ],
+      "risk_level": "medium",
+      "_backend": "llama.cpp b9543 ROCm via LiteLLM on zero12:8001",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000",
+      "_benchmark": "2026-06-21 measured: prompt 34 tok/s, gen 6 tok/s. 7K prompt OK. max_output_tokens=1024 min for content, 1536 stable, 2048+ timeout. Typical call 65-162s.",
+      "_community_reputation": "Qwen3.6 27B GGUF resident on zero12. Managed by qwen36-llama.service (user systemd). Uses Radeon 8060S APU via ROCm — RTX 5070 Ti is free.",
+      "_constraints": "Not for commit gate (65-162s, >30s target). --reasoning auto causes unbounded reasoning. Content only at max_tokens>=1024. Worker handles empty content via reasoning_content fallback.",
+      "_reasoning_behavior": "--reasoning auto: content empty when max_tokens<=768. reasoning_content 2-4x max_tokens. Timeout risk above 2048.",
+      "_service": "qwen36-llama.service on zero12 (user systemd, enabled)"
+    },
+    "qwen3.6_llamacpp_direct": {
+      "model": "qwen3.6-27b.sha256-19a2f473.gguf",
+      "_strengths": [
+        "general",
+        "reasoning",
+        "deep-review",
+        "cjk"
+      ],
+      "temperature": 0.15,
+      "max_context_tokens": 16384,
+      "max_chars": 40000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 1536,
+      "risk_level": "medium",
+      "_backend": "llama.cpp b9543 ROCm direct on zero12:8001",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8001/v1",
+      "_benchmark": "Same as qwen3.6_llamacpp — measured 2026-06-21",
+      "_note": "Debug/fallback only. Prefer qwen3.6_llamacpp (via LiteLLM) for normal use.",
+      "use_for": [
+        "summarize-file",
+        "summarize-tree",
+        "suggest-improvements",
+        "review-diff",
+        "rewrite-text",
+        "contextual-analyze"
+      ]
     },
     "qwen3.6_35b_moe_mtp": {
       "model": "qwen3.6:35b",
@@ -715,6 +814,98 @@
       "_escalation_trigger": "architecture_or_long_term_design",
       "_constraints": "Cloud only. For architecture decisions and long-term design. Must pass privacy gate. Controller must explicitly request.",
       "_backend_class": "cloud_deepseek"
+    },
+    "code_worker_llamacpp": {
+      "model": "qwen3-coder-30b.sha256-13b998bb.gguf",
+      "_strengths": [
+        "coding",
+        "refactoring",
+        "code-review",
+        "test-generation"
+      ],
+      "temperature": 0.15,
+      "max_context_tokens": 16384,
+      "max_chars": 50000,
+      "max_output_chars": 4000,
+      "max_output_tokens": 4096,
+      "use_for": [
+        "extract-todos",
+        "find-related-files",
+        "generate-test-plan",
+        "generate-test-draft",
+        "draft-fix",
+        "draft-feature",
+        "draft-refactor",
+        "draft-commit-message",
+        "draft-pr-summary",
+        "draft-changelog-entry"
+      ],
+      "candidates": [
+        "code_worker"
+      ],
+      "risk_level": "medium",
+      "_backend": "llama.cpp on zero12:8003",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8003/v1",
+      "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. No reasoning overhead — direct code generation.",
+      "_constraints": "Commit gate OK (under 30s). 16K ctx. Direct coder model, no reasoning delays."
+    },
+    "commit_reviewer_llamacpp": {
+      "model": "qwen3-coder-30b.sha256-13b998bb.gguf",
+      "_strengths": [
+        "coding",
+        "fast-review",
+        "commit-gate"
+      ],
+      "temperature": 0.1,
+      "max_context_tokens": 16384,
+      "max_chars": 40000,
+      "max_output_chars": 4000,
+      "max_output_tokens": 2048,
+      "use_for": [
+        "review-diff"
+      ],
+      "candidates": [
+        "code_worker_llamacpp"
+      ],
+      "risk_level": "medium",
+      "_backend": "llama.cpp on zero12:8003",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8003/v1",
+      "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. Fast code review, no reasoning overhead.",
+      "_commit_gate_allowed": true,
+      "_constraints": "Commit gate. Latency target: under 30s. No reasoning model."
+    },
+    "gemma4_31b_llamacpp": {
+      "model": "gemma-4-31B-it-Q8_0.gguf",
+      "_strengths": [
+        "documentation",
+        "summarization",
+        "governance",
+        "general"
+      ],
+      "temperature": 0.15,
+      "max_context_tokens": 8192,
+      "max_chars": 24000,
+      "max_output_chars": 4000,
+      "max_output_tokens": 3072,
+      "use_for": [
+        "summarize-file",
+        "summarize-tree",
+        "rewrite-text",
+        "suggest-improvements",
+        "review-documentation",
+        "maintain-docs"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp"
+      ],
+      "risk_level": "medium",
+      "_backend": "llama.cpp on zero12:8004 (systemd gemma4-31b-llama.service)",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8004/v1",
+      "_benchmark": "2026-06-21: Gemma4 31B Q8_0 via llama.cpp. 6s load. Has reasoning but lighter than Qwen3.6. Good for summarization and docs.",
+      "_constraints": "8K context. Has reasoning — worker handles via content fallback. Not for code generation or commit gate."
     }
   },
   "default_profile": "fast_summary",
@@ -739,6 +930,25 @@
         "qwen3.6_35b_moe_mtp": "Qwen3.6 MoE has native MTP heads — no drafter needed"
       },
       "launch_example": "llama-server -m <target_gguf> --mtp-head <drafter_gguf> --spec-type mtp -ngl 99 --port 8080"
+    },
+    "llama_cpp_resident": {
+      "description": "llama.cpp resident Qwen3.6 27B service on zero12. Managed by systemd (qwen36-llama.service). Access via LiteLLM proxy (port 4000) or direct (port 8001).",
+      "profiles": [
+        "qwen3.6_llamacpp",
+        "qwen3.6_llamacpp_direct",
+        "code_worker_llamacpp",
+        "commit_reviewer_llamacpp",
+        "gemma4_31b_llamacpp"
+      ],
+      "service": "qwen36-llama.service (user systemd, enabled)",
+      "endpoints": {
+        "litellm": "http://127.0.0.1:4000/v1 — LiteLLM proxy wrapping llama.cpp",
+        "direct": "http://127.0.0.1:8001/v1 — llama.cpp server direct"
+      },
+      "model": "qwen3.6-27b.sha256-19a2f473.gguf",
+      "context": 16384,
+      "acceleration": "ROCm (Radeon 8060S APU) — RTX 5070 Ti free",
+      "launch_example": "llama-server -m <gguf> --host 127.0.0.1 --port 8001 -c 16384 -t 16 -ngl auto --reasoning auto"
     }
   },
   "_notes": {

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -282,6 +283,125 @@ def _auth_command(task_id: str) -> str:
     )
 
 
+_FILE_PATH_INPUT_KEYS = (
+    "file",
+    "filePath",
+    "file_path",
+    "files",
+    "glob",
+    "newPath",
+    "path",
+    "pattern",
+    "oldPath",
+    "notebookPath",
+    "notebook_path",
+    "source",
+    "sourcePath",
+    "target",
+    "targetPath",
+)
+
+_SENSITIVE_EXACT_NAMES = {
+    ".env",
+    ".env.local",
+    ".env.development",
+    ".env.test",
+    ".env.production",
+    ".envrc",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "id_rsa",
+}
+
+_SAFE_ENV_TEMPLATE_NAMES = {
+    ".env.defaults",
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+}
+
+_SENSITIVE_SUFFIXES = (
+    ".key",
+    ".pem",
+    ".p12",
+    ".pfx",
+)
+
+
+def _path_basename_for_policy(path_value: object) -> str:
+    """Return a normalized basename for policy checks without touching the FS."""
+    if not isinstance(path_value, str):
+        return ""
+    value = path_value.strip().strip("\"'`;,(){}[]<>|&")
+    if not value:
+        return ""
+    if "=" in value and value.startswith("-"):
+        value = value.rsplit("=", 1)[-1]
+        value = value.strip().strip("\"'`;,(){}[]<>|&")
+    return value.replace("\\", "/").rstrip("/").split("/")[-1].lower()
+
+
+def _is_sensitive_path(path_value: object) -> bool:
+    name = _path_basename_for_policy(path_value)
+    if not name or name in _SAFE_ENV_TEMPLATE_NAMES:
+        return False
+    if name in _SENSITIVE_EXACT_NAMES:
+        return True
+    if name.startswith(".env.") and name not in _SAFE_ENV_TEMPLATE_NAMES:
+        return True
+    if name.endswith(_SENSITIVE_SUFFIXES):
+        return True
+    return name in {"credentials", "credentials.json", "token", "token.json"}
+
+
+def _iter_tool_paths(tool_input: dict):
+    if not isinstance(tool_input, dict):
+        return
+    for key in _FILE_PATH_INPUT_KEYS:
+        value = tool_input.get(key)
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    yield item
+
+
+def _bash_mentions_sensitive_path(command: object) -> bool:
+    if not isinstance(command, str):
+        return False
+    for token in re.split(r"[\s\"'`;&|<>(){}\[\]]+", command):
+        if _is_sensitive_path(token):
+            return True
+    return False
+
+
+def _secret_access_reason(tool_name: str, tool_input: dict) -> str:
+    """Return a hard-deny reason when a PreToolUse payload touches secrets."""
+    path_tools = {"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Grep", "Glob"}
+    if tool_name in path_tools:
+        for path_value in _iter_tool_paths(tool_input):
+            if _is_sensitive_path(path_value):
+                return (
+                    "Secrets/.env protection: hard-deny access to sensitive "
+                    f"path '{path_value}' via {tool_name}."
+                )
+
+    if tool_name in {"Bash", "PowerShell"}:
+        command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+        if _bash_mentions_sensitive_path(command):
+            return (
+                "Secrets/.env protection: hard-deny shell command that references "
+                "a sensitive path."
+            )
+
+    return ""
+
+
 def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
     """Check if a tool is allowed by the current route.
 
@@ -395,9 +515,16 @@ def on_user_prompt_submit(payload: dict) -> dict:
 
 
 def on_pre_tool_use(payload: dict) -> dict:
-    """PreToolUse hook: enforce route.json tool permissions."""
+    """PreToolUse hook: hard-deny secrets, then enforce route permissions."""
     tool_name = payload.get("tool_name", "") or payload.get("toolName", "")
     tool_input = payload.get("tool_input", {}) or payload.get("toolInput", {})
+
+    secret_reason = _secret_access_reason(tool_name, tool_input)
+    if secret_reason:
+        return {
+            "permissionDecision": "deny",
+            "reason": secret_reason,
+        }
 
     task = get_active_task()
     if task is None:
