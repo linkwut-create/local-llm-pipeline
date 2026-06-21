@@ -55,28 +55,28 @@ _call_lock = threading.Lock()
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
     # Summarization: fast/e4b → smart/9b → qwen3.6 llama.cpp resident → fallbacks
-    "summarize-file": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp", "qwen3.6_llamacpp",
+    "summarize-file": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary", "smart_summary", "qwen3.6_llamacpp",
                        "gemma4_26b_llamacpp", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp", "qwen3.6_llamacpp",
+    "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary", "smart_summary", "qwen3.6_llamacpp",
                        "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     # Diff review: commit reviewer (30b) → qwen3.6 llama.cpp → nemotron reasoning → 35b deep
     "review-diff": ["commit_reviewer", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
                     "qwen3.6_27b_mtp", "deep_reviewer"],
     # Code generation: coder → qwen3.6 llama.cpp → 27b → 35b
-    "generate-test-plan": ["code_worker", "qwen3.6_llamacpp",
+    "generate-test-plan": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                            "gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
                            "deep_reviewer"],
-    "generate-test-draft": ["code_worker", "qwen3.6_llamacpp",
+    "generate-test-draft": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                             "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-fix": ["code_worker", "qwen3.6_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-feature": ["code_worker", "qwen3.6_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-fix": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-feature": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
     # Advisory draft text generation: code_worker is sufficient, no escalation needed
     "draft-commit-message": ["code_worker"],
     "draft-pr-summary": ["code_worker"],
     "draft-changelog-entry": ["code_worker"],
     # Suggestions: qwen3.6 llama.cpp → 27b → coder → 35b
-    "suggest-improvements": ["qwen3.6_llamacpp", "gemma4_26b_llamacpp",
+    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp",
                              "qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
     # Deep/architecture review: 35b MoE → 35b → 31b Opus → 128b → nemotron super → 120b
     "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
@@ -94,13 +94,13 @@ _ESCALATION_CHAIN = {
     "contextual-analyze": ["qwen3.6_llamacpp", "qwen3.6_27b_mtp",
                             "code_worker", "reasoning_checker"],
     "translate-text": ["translation_llamacpp", "translation", "qwen3.6_llamacpp"],
-    "rewrite-text": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+    "rewrite-text": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
                      "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "extract-todos": ["code_worker", "qwen3.6_llamacpp",
+    "extract-todos": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                       "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "find-related-files": ["code_worker", "qwen3.6_llamacpp",
+    "find-related-files": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                            "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "classify-test-failure": ["code_worker", "qwen3.6_llamacpp",
+    "classify-test-failure": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                                "reasoning_checker", "qwen3.6_27b_mtp"],
 }
 
