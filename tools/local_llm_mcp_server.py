@@ -55,9 +55,9 @@ _call_lock = threading.Lock()
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
     # Summarization: fast/e4b → smart/9b → qwen3.6 llama.cpp resident → fallbacks
-    "summarize-file": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+    "summarize-file": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp", "qwen3.6_llamacpp",
                        "gemma4_26b_llamacpp", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
+    "summarize-tree": ["fast_summary", "smart_summary", "gemma4_26b_llamacpp", "qwen3.6_llamacpp",
                        "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     # Diff review: commit reviewer (30b) → qwen3.6 llama.cpp → nemotron reasoning → 35b deep
     "review-diff": ["commit_reviewer", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",

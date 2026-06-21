@@ -324,34 +324,34 @@
       "_backend_class": "ollama_heavy_manual"
     },
     "gemma4_26b_llamacpp": {
-      "model": "gemma4:26b",
+      "model": "gemma-4-26B-A4B-it-UD-Q8_K_XL.gguf",
       "_strengths": [
         "speed",
         "summarization",
-        "suggestions"
+        "mo-efficiency"
       ],
       "temperature": 0.2,
-      "max_chars": 90000,
+      "max_context_tokens": 8192,
+      "max_chars": 24000,
       "max_output_chars": 5000,
+      "max_output_tokens": 3072,
       "use_for": [
         "summarize-file",
         "summarize-tree",
         "suggest-improvements",
-        "rewrite-text",
-        "deep-code-review"
+        "rewrite-text"
       ],
       "candidates": [
-        "gemma4_26b",
-        "gemma4_26b_mtp",
-        "smart_summary"
+        "qwen3.6_llamacpp_direct",
+        "gemma4_31b_llamacpp"
       ],
       "risk_level": "medium",
-      "_backend": "llama.cpp ROCm HIP on port 8080",
-      "_env": "LOCAL_LLM_BASE_URL=http://193.168.2.2:8080/v1",
-      "_variant_of": "gemma4_26b",
-      "_note": "llama.cpp v387 (45b455e) on port 8080, -ngl 30 (GPU memory limited). Assistant drafter: gemma-4-26B-A4B-it-assistant.F16.gguf (816MB, ready for MTP when supported). Gemma 4 arch confirmed working with v387.",
-      "_status": "unavailable — port 8080 offline since v0.12.0",
-      "_backend_class": "unavailable"
+      "_backend": "llama.cpp:8002 (Q8_K_XL)",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8002/v1",
+      "_service": "gemma4-26b-llama",
+      "_port": 8002,
+      "_benchmark": "2026-06-21: loads 16s. Gemma4 26B MoE (4B active), Q8_K_XL. Good mid-size generalist."
     },
     "gemma4_26b": {
       "model": "gemma4:26b",
@@ -1048,7 +1048,8 @@
         "gemma4_31b_llamacpp",
         "diff_reviewer_llamacpp",
         "deep_reasoning_llamacpp",
-        "translation_llamacpp"
+        "translation_llamacpp",
+        "gemma4_26b_llamacpp"
       ],
       "service": "qwen36-llama.service (user systemd, enabled)",
       "endpoints": {

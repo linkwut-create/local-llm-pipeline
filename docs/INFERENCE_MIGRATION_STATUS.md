@@ -38,3 +38,16 @@ Quarantine: .quarantine/ (6 models with Q8 replacements)
 - Auto model switching in pipeline workflow
 - MTP-compatible llama.cpp build
 - Ollama Qwen3.5 series removal
+## 更新 (2026-06-21 第二批)
+
+新增 llama.cpp profiles:
+- diff_reviewer_llamacpp: Nemotron 30B (28s)
+- deep_reasoning_llamacpp: DeepSeek R1 32B (18s)
+- translation_llamacpp: GLM-4.7 Flash (14s)
+- gemma4_26b_llamacpp: Gemma4 26B Q8_K_XL (16s)
+
+不兼容:
+- qwen3.6-35b-moe-mtp-q8_k_xl.gguf: MTP 格式需要新版 llama.cpp
+- qwen3.6-27b-mtp-q8_k_xl.gguf: 同上
+
+所有新增 profile 自动 fallback 到常驻 Qwen3.6 27B。
