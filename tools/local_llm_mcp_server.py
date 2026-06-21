@@ -60,7 +60,7 @@ _ESCALATION_CHAIN = {
     "summarize-tree": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
                        "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     # Diff review: commit reviewer (30b) → qwen3.6 llama.cpp → nemotron reasoning → 35b deep
-    "review-diff": ["commit_reviewer", "diff_reviewer", "qwen3.6_llamacpp",
+    "review-diff": ["commit_reviewer", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
                     "qwen3.6_27b_mtp", "deep_reviewer"],
     # Code generation: coder → qwen3.6 llama.cpp → 27b → 35b
     "generate-test-plan": ["code_worker", "qwen3.6_llamacpp",
@@ -87,13 +87,13 @@ _ESCALATION_CHAIN = {
     "release-risk-review": ["release_auditor", "nemotron_super", "deep_reviewer",
                             "qwen3.6_35b_moe_mtp"],
     # Reasoning: nemotron → deepseek-r1-32b → 128b (70b unavailable, API timeout)
-    "risk-analysis": ["reasoning_checker", "deep_reasoning", "release_auditor"],
-    "logic-check": ["reasoning_checker", "deep_reasoning", "release_auditor"],
-    "failure-mode-analysis": ["reasoning_checker", "deep_reasoning",
+    "risk-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning", "release_auditor"],
+    "logic-check": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning", "release_auditor"],
+    "failure-mode-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning",
                                "release_auditor"],
     "contextual-analyze": ["qwen3.6_llamacpp", "qwen3.6_27b_mtp",
                             "code_worker", "reasoning_checker"],
-    "translate-text": ["translation", "qwen3.6_27b_mtp"],
+    "translate-text": ["translation_llamacpp", "translation", "qwen3.6_llamacpp"],
     "rewrite-text": ["fast_summary", "smart_summary", "qwen3.6_llamacpp",
                      "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     "extract-todos": ["code_worker", "qwen3.6_llamacpp",

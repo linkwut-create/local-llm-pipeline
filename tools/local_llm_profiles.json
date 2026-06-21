@@ -927,6 +927,92 @@
       "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
       "_service": "gemma4-31b-llama",
       "_port": 8004
+    },
+    "diff_reviewer_llamacpp": {
+      "model": "nemotron-30b",
+      "_strengths": [
+        "reasoning",
+        "code-review",
+        "diff-analysis"
+      ],
+      "temperature": 0.1,
+      "max_context_tokens": 16384,
+      "max_chars": 60000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 4096,
+      "use_for": [
+        "review-diff"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp_direct",
+        "qwen3.6_llamacpp",
+        "diff_reviewer"
+      ],
+      "risk_level": "medium",
+      "_backend": "LiteLLM -> llama.cpp:8009",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
+      "_service": "nemotron-30b-llama",
+      "_port": 8009,
+      "_benchmark": "2026-06-21: loads 28s. Nemotron Nano Omni, NVIDIA reasoning model."
+    },
+    "deep_reasoning_llamacpp": {
+      "model": "deepseek-r1-32b",
+      "_strengths": [
+        "reasoning",
+        "logic",
+        "root-cause"
+      ],
+      "temperature": 0.1,
+      "max_context_tokens": 16384,
+      "max_chars": 60000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 6144,
+      "use_for": [
+        "risk-analysis",
+        "logic-check",
+        "failure-mode-analysis"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp_direct",
+        "qwen3.6_llamacpp",
+        "deep_reasoning"
+      ],
+      "risk_level": "high",
+      "_backend": "LiteLLM -> llama.cpp:8010",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
+      "_service": "deepseek-r1-32b-llama",
+      "_port": 8010,
+      "_benchmark": "2026-06-21: loads 18s. DeepSeek R1 distill 32B, reasoning specialist."
+    },
+    "translation_llamacpp": {
+      "model": "glm-4.7-flash",
+      "_strengths": [
+        "translation",
+        "cjk",
+        "multilingual"
+      ],
+      "temperature": 0.2,
+      "max_context_tokens": 16384,
+      "max_chars": 40000,
+      "max_output_chars": 6000,
+      "max_output_tokens": 4096,
+      "use_for": [
+        "translate-text"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp_direct",
+        "qwen3.6_llamacpp",
+        "translation"
+      ],
+      "risk_level": "low",
+      "_backend": "LiteLLM -> llama.cpp:8011",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
+      "_service": "glm4-flash-llama",
+      "_port": 8011,
+      "_benchmark": "2026-06-21: loads 14s. GLM-4.7 Flash, translation and CJK."
     }
   },
   "default_profile": "fast_summary",
@@ -959,7 +1045,10 @@
         "qwen3.6_llamacpp_direct",
         "code_worker_llamacpp",
         "commit_reviewer_llamacpp",
-        "gemma4_31b_llamacpp"
+        "gemma4_31b_llamacpp",
+        "diff_reviewer_llamacpp",
+        "deep_reasoning_llamacpp",
+        "translation_llamacpp"
       ],
       "service": "qwen36-llama.service (user systemd, enabled)",
       "endpoints": {
