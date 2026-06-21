@@ -416,6 +416,7 @@ class WorkerConfig:
     max_chars: int = 60000
     max_output_chars: int = 3000
     max_output_tokens: int = 0
+    api_key: str = ""
     output_dir: str = ".local_llm_out"
     target_language: str = "zh-CN"
     style: str = "concise"
@@ -666,7 +667,10 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResul
     keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
     if keep_alive is not None:
         payload["keep_alive"] = _normalize_keep_alive(keep_alive)
-    resp = requests.post(url, json=payload, timeout=config.timeout)
+    headers = {}
+    if config.api_key:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+    resp = requests.post(url, json=payload, timeout=config.timeout, headers=headers or None)
     resp.raise_for_status()
     data = resp.json()
     content = data.get("message", {}).get("content", "") if isinstance(data, dict) else ""
@@ -686,7 +690,10 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCa
         "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": False,
     }
-    resp = requests.post(url, json=payload, timeout=config.timeout)
+    headers = {}
+    if config.api_key:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+    resp = requests.post(url, json=payload, timeout=config.timeout, headers=headers or None)
     resp.raise_for_status()
     data = resp.json()
     content = ""
@@ -1150,6 +1157,10 @@ def resolve_config(args: argparse.Namespace) -> WorkerConfig:
         profile.get("max_output_tokens", 0)
         or task_conf.get("max_output_tokens", 0)
         or 0
+    )
+    config.api_key = (
+        os.environ.get("LOCAL_LLM_API_KEY", "")
+        or profile.get("api_key", "")
     )
     config.output_dir = (
         os.environ.get("LOCAL_LLM_OUTPUT_DIR")

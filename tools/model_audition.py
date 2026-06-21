@@ -252,5 +252,33 @@ def main():
             print(f"\nScore with: py -3 tools/score_model_audition.py {all_saved[-1]}")
 
 
+
+def _get_openai_models_from_api(base_url: str) -> list[str]:
+    """Fallback: query OpenAI-compatible /v1/models endpoint."""
+    try:
+        from urllib.request import Request, urlopen
+        import json
+        url = base_url.rstrip("/") + "/models"
+        req = Request(url, method="GET")
+        with urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return [m.get("id", "") for m in payload.get("data", []) if isinstance(m, dict) and m.get("id")]
+    except Exception:
+        return []
+
+
+def get_available_models() -> list[str]:
+    """Get models: Ollama first, fall back to OpenAI-compat endpoints."""
+    import os
+    models = get_ollama_models()
+    if models:
+        return models
+    base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    if base_url and ":11434" not in base_url and ":11436" not in base_url:
+        models = _get_openai_models_from_api(base_url)
+        if models:
+            return models
+    return get_ollama_models()  # retry
+
 if __name__ == "__main__":
     main()

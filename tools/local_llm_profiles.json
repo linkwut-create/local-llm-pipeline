@@ -596,9 +596,9 @@
         "code_worker"
       ],
       "risk_level": "medium",
-      "_backend": "llama.cpp b9543 ROCm via LiteLLM on zero12:8001",
+      "_backend": "LiteLLM proxy on zero12:4000 → llama.cpp:8001",
       "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21 measured: prompt 34 tok/s, gen 6 tok/s. 7K prompt OK. max_output_tokens=1024 min for content, 1536 stable, 2048+ timeout. Typical call 65-162s.",
       "_community_reputation": "Qwen3.6 27B GGUF resident on zero12. Managed by qwen36-llama.service (user systemd). Uses Radeon 8060S APU via ROCm — RTX 5070 Ti is free.",
       "_constraints": "Not for commit gate (65-162s, >30s target). --reasoning auto causes unbounded reasoning. Content only at max_tokens>=1024. Worker handles empty content via reasoning_content fallback.",
