@@ -129,6 +129,74 @@ def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
         return False
 
 
+def _get_service_for_profile(profile_name: str, profile_config: dict) -> str:
+    """Get the systemd service name for a llama.cpp profile."""
+    return profile_config.get("_service", "")
+
+
+def _ensure_model_running(profile_name: str, profile_config: dict,
+                          timeout: int = 60) -> bool:
+    """Auto-start a llama.cpp systemd service if the model is not reachable.
+
+    Returns True if the model is reachable (was already or started successfully).
+    Only acts on profiles with _backend_class == "openai-compatible" and a _service field.
+    """
+    bc = profile_config.get("_backend_class", "")
+    if bc != "openai-compatible":
+        return True  # Not a llama.cpp profile, nothing to do
+
+    service = _get_service_for_profile(profile_name, profile_config)
+    if not service:
+        return True  # No service configured, assume already running
+
+    # Check direct llama.cpp port health (not LiteLLM proxy)
+    port = profile_config.get("_port", 0)
+    if not port:
+        return True  # No port configured
+    direct_url = f"http://127.0.0.1:{port}/v1"
+
+    # Quick health check via SSH to zero12
+    import subprocess
+    result = subprocess.run(
+        ["ssh", "zero12", f"curl -s --max-time 3 http://127.0.0.1:{port}/health"],
+        timeout=10, capture_output=True, text=True,
+    )
+    if result.returncode == 0 and '"status":"ok"' in result.stdout:
+        return True
+
+    # Model not reachable — auto-start via SSH
+    import subprocess
+    print(
+        f"Router: model {profile_name} not reachable, auto-starting {service}...",
+        file=sys.stderr,
+    )
+    try:
+        subprocess.run(
+            ["ssh", "zero12", f"systemctl --user start {service}"],
+            timeout=15, capture_output=True, text=True,
+        )
+    except Exception as e:
+        print(f"WARNING: SSH start failed: {e}", file=sys.stderr)
+        return False
+
+    # Wait for health
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(2)
+        if probe_llamacpp_endpoint(base_url, timeout=3):
+            elapsed = timeout - (deadline - time.time())
+            print(
+                f"Router: {service} ready after {elapsed:.0f}s",
+                file=sys.stderr,
+            )
+            return True
+        print(".", end="", file=sys.stderr, flush=True)
+
+    print(f" WARNING: {service} did not become ready within {timeout}s", file=sys.stderr)
+    return False
+
+
 # --- backend class eligibility (J-C5) ---
 
 BACKEND_CLASS_AUTO_ALLOWED = {"ollama", "ollama_mtp_pending", "openai-compatible"}
@@ -567,14 +635,46 @@ def main():
             if probe_llamacpp_endpoint(base_url):
                 print(f"Router: llama.cpp endpoint {base_url} health check OK", file=sys.stderr)
             else:
-                print(f"WARNING: llama.cpp endpoint {base_url} not reachable.", file=sys.stderr)
+                # Try auto-starting the model before falling back
+                service = profile_cfg.get("_service", "")
+                port = profile_cfg.get("_port", 0)
+                if service and port:
+                    print(f"Router: attempting auto-start {service}...", file=sys.stderr)
+                    import subprocess as _subprocess, time as _time
+                    try:
+                        _subprocess.run(
+                            ["ssh", "zero12", f"systemctl --user start {service}"],
+                            timeout=15, capture_output=True, text=True)
+                        deadline = _time.time() + 30
+                        while _time.time() < deadline:
+                            _time.sleep(2)
+                            r = _subprocess.run(
+                                ["ssh", "zero12", f"curl -s --max-time 2 http://127.0.0.1:{port}/health"],
+                                timeout=10, capture_output=True, text=True)
+                            if r.returncode == 0 and '"status":"ok"' in r.stdout:
+                                print(f" {service} ready", file=sys.stderr)
+                                break
+                            print(".", end="", file=sys.stderr, flush=True)
+                    except Exception as _e:
+                        print(f" (unavailable: {_e})", file=sys.stderr)
+                
+                if not probe_llamacpp_endpoint(base_url):
+                    print(f"WARNING: llama.cpp endpoint {base_url} not reachable.", file=sys.stderr)
                 candidates = profile_cfg.get("candidates", [])
                 fallback = None
                 for c in candidates:
                     c_profile = profiles_data.get("profiles", {}).get(c, {})
-                    if not c_profile.get("_env") and check_model_available(
-                        c_profile.get("model", ""), get_ollama_models()
-                    ):
+                    # Check if candidate is an _env profile (llama.cpp/LiteLLM)
+                    if c_profile.get("_env"):
+                        c_env = c_profile.get("_env", "")
+                        c_base = ""
+                        for part in c_env.split(" "):
+                            if part.startswith("LOCAL_LLM_BASE_URL="):
+                                c_base = part.split("=", 1)[1]
+                        if c_base and probe_llamacpp_endpoint(c_base):
+                            fallback = c
+                            break
+                    elif check_model_available(c_profile.get("model", ""), get_ollama_models()):
                         fallback = c
                         break
                 if fallback:
@@ -603,6 +703,9 @@ def main():
             )
             sys.exit(1)
         print(f"NOTE: High-risk task confirmed. Controller MUST verify output.", file=sys.stderr)
+
+    # Auto-start llama.cpp service if model not reachable
+    _ensure_model_running(profile_name, profile_cfg)
 
     # Apply profile-specific env overrides (e.g. llama.cpp endpoint for MTP profiles)
     subprocess_env = os.environ.copy()
