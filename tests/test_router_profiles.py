@@ -215,7 +215,7 @@ def test_resolve_ollama_base_url_normalizes_ollama_host(monkeypatch):
 def test_resolve_profile_candidates_list():
     """Profile resolution should return a profile with candidates for fallback."""
     _, model, _ = router.resolve_profile("summarize-file", None, None)
-    assert model == "gemma4:12b-unsloth"  # default profile for summarize-file (audition upgrade 2026-06-13)
+    assert model == "gemma-4-26B-A4B-it-UD-Q8_K_XL.gguf"  # llama.cpp default for summarize-file
 
 
 def test_profiles_without_candidates_error_safe():
@@ -315,11 +315,11 @@ def test_commit_reviewer_profile_exists():
     assert len(cr.get("candidates", [])) >= 1, "commit_reviewer must have candidates"
 
 
-def test_review_diff_default_profile_is_commit_reviewer():
+def test_review_diff_default_profile_is_diff_reviewer_llamacpp():
     tasks = _load_tasks()["tasks"]
     rd = tasks["review-diff"]
-    assert rd["default_profile"] == "commit_reviewer", (
-        f"review-diff default_profile must be commit_reviewer, got {rd['default_profile']}"
+    assert rd["default_profile"] == "diff_reviewer_llamacpp", (
+        f"review-diff default_profile must be diff_reviewer_llamacpp, got {rd['default_profile']}"
     )
 
 
@@ -427,36 +427,36 @@ class TestExistingTaskResolutionStillWorks:
 
     def test_review_diff_resolves(self):
         p, m, r = resolve_profile("review-diff", None, None)
-        assert p == "commit_reviewer"
+        assert p == "diff_reviewer_llamacpp"
 
     def test_draft_commit_message_resolves(self):
         p, m, r = resolve_profile("draft-commit-message", None, None)
-        assert p == "code_worker"
+        assert p == "code_worker_llamacpp"
 
     def test_draft_pr_summary_resolves(self):
         p, m, r = resolve_profile("draft-pr-summary", None, None)
-        assert p == "code_worker"
+        assert p == "code_worker_llamacpp"
 
     def test_draft_changelog_entry_resolves(self):
         p, m, r = resolve_profile("draft-changelog-entry", None, None)
-        assert p == "code_worker"
+        assert p == "code_worker_llamacpp"
 
     def test_summarize_file_resolves(self):
         p, m, r = resolve_profile("summarize-file", None, None)
-        assert p == "fast_summary"
+        assert p == "gemma4_26b_llamacpp"
 
     def test_risk_analysis_resolves(self):
         p, m, r = resolve_profile("risk-analysis", None, None)
-        assert p == "reasoning_checker"
+        assert p == "deep_reasoning_llamacpp"
 
     def test_suggest_improvements_resolves(self):
         p, m, r = resolve_profile("suggest-improvements", None, None)
-        assert p == "gemma4_26b"
+        assert p == "gemma4_26b_llamacpp"
 
     def test_find_related_files_resolves(self):
         """J-K2: find-related-files must resolve to code_worker."""
         p, m, r = resolve_profile("find-related-files", None, None)
-        assert p == "code_worker"
+        assert p == "code_worker_llamacpp"
 
 
 def test_cli_no_traceback():
