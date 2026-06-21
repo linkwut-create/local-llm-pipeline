@@ -596,14 +596,15 @@
         "code_worker"
       ],
       "risk_level": "medium",
-      "_backend": "LiteLLM proxy on zero12:4000 → llama.cpp:8001",
+      "_backend": "LiteLLM proxy on zero12:4000",
       "_backend_class": "openai-compatible",
       "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21 measured: prompt 34 tok/s, gen 6 tok/s. 7K prompt OK. max_output_tokens=1024 min for content, 1536 stable, 2048+ timeout. Typical call 65-162s.",
       "_community_reputation": "Qwen3.6 27B GGUF resident on zero12. Managed by qwen36-llama.service (user systemd). Uses Radeon 8060S APU via ROCm — RTX 5070 Ti is free.",
       "_constraints": "Not for commit gate (65-162s, >30s target). --reasoning auto causes unbounded reasoning. Content only at max_tokens>=1024. Worker handles empty content via reasoning_content fallback.",
       "_reasoning_behavior": "--reasoning auto: content empty when max_tokens<=768. reasoning_content 2-4x max_tokens. Timeout risk above 2048.",
-      "_service": "qwen36-llama.service on zero12 (user systemd, enabled)"
+      "_service": "qwen36-llama.service on zero12 (user systemd, enabled)",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env."
     },
     "qwen3.6_llamacpp_direct": {
       "model": "qwen3.6-27b.sha256-19a2f473.gguf",
@@ -816,7 +817,7 @@
       "_backend_class": "cloud_deepseek"
     },
     "code_worker_llamacpp": {
-      "model": "qwen3-coder-30b.sha256-13b998bb.gguf",
+      "model": "qwen3-coder-30b",
       "_strengths": [
         "coding",
         "refactoring",
@@ -844,14 +845,15 @@
         "code_worker"
       ],
       "risk_level": "medium",
-      "_backend": "llama.cpp on zero12:8003",
+      "_backend": "LiteLLM proxy on zero12:4000",
       "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8003/v1",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. No reasoning overhead — direct code generation.",
-      "_constraints": "Commit gate OK (under 30s). 16K ctx. Direct coder model, no reasoning delays."
+      "_constraints": "Commit gate OK (under 30s). 16K ctx. Direct coder model, no reasoning delays.",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env."
     },
     "commit_reviewer_llamacpp": {
-      "model": "qwen3-coder-30b.sha256-13b998bb.gguf",
+      "model": "qwen3-coder-30b",
       "_strengths": [
         "coding",
         "fast-review",
@@ -869,15 +871,16 @@
         "code_worker_llamacpp"
       ],
       "risk_level": "medium",
-      "_backend": "llama.cpp on zero12:8003",
+      "_backend": "LiteLLM proxy on zero12:4000",
       "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8003/v1",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. Fast code review, no reasoning overhead.",
       "_commit_gate_allowed": true,
-      "_constraints": "Commit gate. Latency target: under 30s. No reasoning model."
+      "_constraints": "Commit gate. Latency target: under 30s. No reasoning model.",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env."
     },
     "gemma4_31b_llamacpp": {
-      "model": "gemma-4-31B-it-Q8_0.gguf",
+      "model": "gemma4-31b",
       "_strengths": [
         "documentation",
         "summarization",
@@ -901,11 +904,12 @@
         "qwen3.6_llamacpp"
       ],
       "risk_level": "medium",
-      "_backend": "llama.cpp on zero12:8004 (systemd gemma4-31b-llama.service)",
+      "_backend": "LiteLLM proxy on zero12:4000",
       "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8004/v1",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21: Gemma4 31B Q8_0 via llama.cpp. 6s load. Has reasoning but lighter than Qwen3.6. Good for summarization and docs.",
-      "_constraints": "8K context. Has reasoning — worker handles via content fallback. Not for code generation or commit gate."
+      "_constraints": "8K context. Has reasoning — worker handles via content fallback. Not for code generation or commit gate.",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env."
     }
   },
   "default_profile": "fast_summary",
