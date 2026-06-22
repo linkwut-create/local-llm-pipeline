@@ -59,7 +59,7 @@ def test_diff_review():
     assert r["ok"] is True
     assert r["task_type"] == "review-diff"
     assert r["risk_level"] == "medium"
-    assert r["recommended_local_profile"] == "commit_reviewer"
+    assert r["recommended_local_profile"] == "diff_reviewer_llamacpp"
     assert r["flash_escalation_condition"] is not None
 
 

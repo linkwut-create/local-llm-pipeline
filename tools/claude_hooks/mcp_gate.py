@@ -725,6 +725,98 @@ def save_state(config_dir: str, state: dict):
             pass
 
 
+# ---------------------------------------------------------------------------
+# User-authorized commit bypass (Phase 2E)
+# ---------------------------------------------------------------------------
+# Allows a user who explicitly authorized a commit to bypass the local-model
+# review gate once. The authorization is scoped to a specific repo/HEAD/diff
+# and expires after a short window. It is logged and consumed on use.
+
+_BYPASS_MAX_AGE_SECONDS = 600
+
+
+def _bypass_file_path(config_dir: str) -> Path:
+    return Path(config_dir) / "user_authorized_commit_bypass.json"
+
+
+def _load_user_bypass(config_dir: str, repo: str | None, head: str | None,
+                      diff_hash: str | None) -> dict | None:
+    """Return a valid, unconsumed user bypass if one matches current state."""
+    if not repo or not head or not diff_hash:
+        return None
+    try:
+        bp = _bypass_file_path(config_dir)
+        if not bp.exists():
+            return None
+        data = json.loads(bp.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        if data.get("consumed"):
+            return None
+        if data.get("repo") != repo or data.get("head") != head:
+            return None
+        # diff_hash may be absent for blanket authorization; if present, match.
+        if data.get("diff_hash") and data.get("diff_hash") != diff_hash:
+            return None
+        created = data.get("authorized_at")
+        if not created:
+            return None
+        try:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(created)).total_seconds()
+        except Exception:
+            return None
+        if age < 0 or age > _BYPASS_MAX_AGE_SECONDS:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _consume_user_bypass(config_dir: str, data: dict) -> bool:
+    """Mark the bypass as consumed. Failures are silent (best-effort)."""
+    try:
+        data = dict(data)
+        data["consumed"] = True
+        data["consumed_at"] = datetime.now(timezone.utc).isoformat()
+        _bypass_file_path(config_dir).write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def authorize_commit_bypass(
+    config_dir: str,
+    repo: str,
+    head: str,
+    diff_hash: str | None = None,
+    reason: str = "",
+    authorized_by: str = "user",
+) -> dict:
+    """Create a one-time user-authorized commit bypass for the current state.
+
+    This is intended to be called after the user explicitly authorizes a
+    bypass (e.g. "authorize commit"). The resulting token is scoped to the
+    repo/HEAD/diff and expires after _BYPASS_MAX_AGE_SECONDS.
+    """
+    data = {
+        "authorized_at": datetime.now(timezone.utc).isoformat(),
+        "authorized_by": authorized_by,
+        "repo": repo,
+        "head": head,
+        "diff_hash": diff_hash,
+        "reason": reason,
+        "consumed": False,
+    }
+    try:
+        _bypass_file_path(config_dir).parent.mkdir(parents=True, exist_ok=True)
+        _bypass_file_path(config_dir).write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "bypass": data}
+
+
 MAX_LOG_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
@@ -829,7 +921,10 @@ def _ensure_repo_state(state: dict, repo_root: str):
 def _try_audit_event(event: dict):
     """Write an audit event via mcp_audit_logger if available. Never raises."""
     try:
-        from mcp_audit_logger import write_audit_event
+        try:
+            from tools.mcp_audit_logger import write_audit_event
+        except ImportError:
+            from mcp_audit_logger import write_audit_event
         write_audit_event(None, event)
     except Exception:
         pass
@@ -838,7 +933,10 @@ def _try_audit_event(event: dict):
 def _try_audit_failure(failure: dict):
     """Write an audit failure via mcp_audit_logger if available. Never raises."""
     try:
-        from mcp_audit_logger import write_failure_event
+        try:
+            from tools.mcp_audit_logger import write_failure_event
+        except ImportError:
+            from mcp_audit_logger import write_failure_event
         write_failure_event(None, failure)
     except Exception:
         pass
@@ -1390,104 +1488,135 @@ def handle_pre_tooluse(config_dir: str, payload: dict) -> dict:
 
         if reviewed_ok:
             return {"allow": True, "reason": ""}
-        else:
-            parts = [
-                "BLOCKED: git commit requires prior local model review.",
-                "Call mcp__local-llm__local_review_diff with commit_gate=true.",
-            ]
-            mismatch_type = None
-            if state.get("diff_reviewed"):
-                if state.get("dirty_since_review"):
-                    parts.append("Reason: files modified after review.")
-                    mismatch_type = "dirty_since_review"
-                elif fp is None:
-                    parts.append("Reason: cannot determine current repo/HEAD.")
-                elif state.get("reviewed_repo") != fp["repo"]:
-                    parts.append(
-                        f"Reason: review was for {state.get('reviewed_repo')}, "
-                        f"current is {fp['repo']}."
-                    )
-                    mismatch_type = "repo_mismatch"
-                elif state.get("reviewed_head") != fp["head"]:
-                    parts.append("Reason: HEAD has changed since review.")
-                    mismatch_type = "head_mismatch"
-                elif state.get("reviewed_diff_hash") != fp["diff_hash"]:
-                    parts.append("Reason: staged diff has changed since review.")
-                    mismatch_type = "diff_hash_mismatch"
-                else:
-                    parts.append("Reason: review state mismatch.")
-            parts.append(
-                f"State: diff_reviewed={state.get('diff_reviewed')}, "
-                f"dirty_since_review={state.get('dirty_since_review')}"
-            )
-            # Phase 3E.1: list pending MCP recommendations
-            pending = []
-            if state.get("needs_review"):
-                pending.append("local_review_diff")
-            if state.get("needs_debate"):
-                pending.append("local_debate_review_diff")
-            if state.get("needs_test_plan"):
-                pending.append("local_generate_test_plan")
-            if state.get("needs_summarize"):
-                pending.append("local_summarize_file")
-            if pending:
-                parts.append(f"MCP pending recommendations: {', '.join(pending)}")
 
-            # MCP-GATE-1B: write audit events for blocked commit
-            audit_reason = "\n".join(parts)
+        # Phase 2E: user-authorized one-time bypass.
+        # If the user has explicitly authorized a bypass for this exact
+        # repo/HEAD/diff, allow the commit and consume the token.
+        bypass = _load_user_bypass(
+            config_dir,
+            repo=repo_root,
+            head=fp["head"] if fp else None,
+            diff_hash=fp["diff_hash"] if fp else None,
+        )
+        if bypass:
+            _consume_user_bypass(config_dir, bypass)
             _try_audit_event({
-                "event_type": "commit_gate_blocked",
+                "event_type": "commit_gate_user_bypass",
                 "task_type": "commit_gate",
                 "tool_name": "commit_gate",
                 "project_name": project_name,
                 "project_path": repo_root,
                 "command": cmd[:500],
-                "result_status": "blocked",
-                "blocking": True,
-                "output_summary": audit_reason[:500],
-                "commit_before": fp["head"] if fp else None,
-                "staged_diff_hash": fp["diff_hash"] if fp else None,
-                "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+                "result_status": "allowed_bypass",
+                "blocking": False,
+                "severity": "high",
+                "bypass_reason": bypass.get("reason", ""),
+                "authorized_by": bypass.get("authorized_by", "user"),
+                "authorized_at": bypass.get("authorized_at"),
+            })
+            print(
+                "\n[commit gate] user-authorized bypass consumed — allowing commit.",
+                file=sys.stderr,
+            )
+            return {"allow": True, "reason": ""}
+
+        parts = [
+            "BLOCKED: git commit requires prior local model review.",
+            "Call mcp__local-llm__local_review_diff with commit_gate=true.",
+        ]
+        mismatch_type = None
+        if state.get("diff_reviewed"):
+            if state.get("dirty_since_review"):
+                parts.append("Reason: files modified after review.")
+                mismatch_type = "dirty_since_review"
+            elif fp is None:
+                parts.append("Reason: cannot determine current repo/HEAD.")
+            elif state.get("reviewed_repo") != fp["repo"]:
+                parts.append(
+                    f"Reason: review was for {state.get('reviewed_repo')}, "
+                    f"current is {fp['repo']}."
+                )
+                mismatch_type = "repo_mismatch"
+            elif state.get("reviewed_head") != fp["head"]:
+                parts.append("Reason: HEAD has changed since review.")
+                mismatch_type = "head_mismatch"
+            elif state.get("reviewed_diff_hash") != fp["diff_hash"]:
+                parts.append("Reason: staged diff has changed since review.")
+                mismatch_type = "diff_hash_mismatch"
+            else:
+                parts.append("Reason: review state mismatch.")
+        parts.append(
+            f"State: diff_reviewed={state.get('diff_reviewed')}, "
+            f"dirty_since_review={state.get('dirty_since_review')}"
+        )
+        # Phase 3E.1: list pending MCP recommendations
+        pending = []
+        if state.get("needs_review"):
+            pending.append("local_review_diff")
+        if state.get("needs_debate"):
+            pending.append("local_debate_review_diff")
+        if state.get("needs_test_plan"):
+            pending.append("local_generate_test_plan")
+        if state.get("needs_summarize"):
+            pending.append("local_summarize_file")
+        if pending:
+            parts.append(f"MCP pending recommendations: {', '.join(pending)}")
+
+        # MCP-GATE-1B: write audit events for blocked commit
+        audit_reason = "\n".join(parts)
+        _try_audit_event({
+            "event_type": "commit_gate_blocked",
+            "task_type": "commit_gate",
+            "tool_name": "commit_gate",
+            "project_name": project_name,
+            "project_path": repo_root,
+            "command": cmd[:500],
+            "result_status": "blocked",
+            "blocking": True,
+            "output_summary": audit_reason[:500],
+            "commit_before": fp["head"] if fp else None,
+            "staged_diff_hash": fp["diff_hash"] if fp else None,
+            "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+            "hook_state_summary": json.dumps({
+                "reviewed_repo": state.get("reviewed_repo"),
+                "current_repo": fp["repo"] if fp else None,
+                "reviewed_head": state.get("reviewed_head"),
+                "current_head": fp["head"] if fp else None,
+                "dirty_since_review": state.get("dirty_since_review"),
+                "diff_reviewed": state.get("diff_reviewed"),
+            }),
+            "notes": f"Mismatch type: {mismatch_type}" if mismatch_type else "",
+        })
+
+        if mismatch_type in ("repo_mismatch", "head_mismatch"):
+            _try_audit_failure({
+                "failure_type": "hook_state_mismatch",
+                "severity": "high",
+                "tool_name": "commit_gate",
+                "project_name": project_name,
+                "project_path": repo_root,
+                "command": cmd[:500],
                 "hook_state_summary": json.dumps({
                     "reviewed_repo": state.get("reviewed_repo"),
                     "current_repo": fp["repo"] if fp else None,
                     "reviewed_head": state.get("reviewed_head"),
                     "current_head": fp["head"] if fp else None,
-                    "dirty_since_review": state.get("dirty_since_review"),
-                    "diff_reviewed": state.get("diff_reviewed"),
                 }),
-                "notes": f"Mismatch type: {mismatch_type}" if mismatch_type else "",
+                "resolved": False,
+            })
+        elif mismatch_type == "diff_hash_mismatch":
+            _try_audit_failure({
+                "failure_type": "staged_diff_hash_mismatch",
+                "severity": "high",
+                "tool_name": "commit_gate",
+                "project_name": project_name,
+                "project_path": repo_root,
+                "staged_diff_hash": fp["diff_hash"] if fp else None,
+                "reviewed_diff_hash": state.get("reviewed_diff_hash"),
+                "resolved": False,
             })
 
-            if mismatch_type in ("repo_mismatch", "head_mismatch"):
-                _try_audit_failure({
-                    "failure_type": "hook_state_mismatch",
-                    "severity": "high",
-                    "tool_name": "commit_gate",
-                    "project_name": project_name,
-                    "project_path": repo_root,
-                    "command": cmd[:500],
-                    "hook_state_summary": json.dumps({
-                        "reviewed_repo": state.get("reviewed_repo"),
-                        "current_repo": fp["repo"] if fp else None,
-                        "reviewed_head": state.get("reviewed_head"),
-                        "current_head": fp["head"] if fp else None,
-                    }),
-                    "resolved": False,
-                })
-            elif mismatch_type == "diff_hash_mismatch":
-                _try_audit_failure({
-                    "failure_type": "staged_diff_hash_mismatch",
-                    "severity": "high",
-                    "tool_name": "commit_gate",
-                    "project_name": project_name,
-                    "project_path": repo_root,
-                    "staged_diff_hash": fp["diff_hash"] if fp else None,
-                    "reviewed_diff_hash": state.get("reviewed_diff_hash"),
-                    "resolved": False,
-                })
-
-            return {"allow": False, "reason": "\n".join(parts)}
+        return {"allow": False, "reason": "\n".join(parts)}
     # Phase 3A: route enforcement via local committee
     try:
         from tools.claude_hooks.route_enforcer import on_pre_tool_use as route_check

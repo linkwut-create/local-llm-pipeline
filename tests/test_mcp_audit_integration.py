@@ -1,9 +1,11 @@
 """Test MCP audit hook/wrapper integration (MCP-AUDIT-5)."""
 
 import json
+import builtins
 import os
 import sys
 import tempfile
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
@@ -254,6 +256,72 @@ def test_no_hook_recursion():
     gate._try_audit_event({"event_type": "test_event", "tool_name": "test"})
     gate._try_audit_failure({"failure_type": "test_failed", "severity": "low"})
     # No exception = no recursion
+
+
+def test_try_audit_helpers_prefer_tools_package_import(monkeypatch):
+    calls = []
+    tools_mod = types.ModuleType("tools.mcp_audit_logger")
+    top_mod = types.ModuleType("mcp_audit_logger")
+
+    def tools_event(config_dir, event):
+        calls.append(("tools_event", config_dir, event["event_type"]))
+
+    def tools_failure(config_dir, failure):
+        calls.append(("tools_failure", config_dir, failure["failure_type"]))
+
+    def top_event(config_dir, event):
+        calls.append(("top_event", config_dir, event["event_type"]))
+
+    def top_failure(config_dir, failure):
+        calls.append(("top_failure", config_dir, failure["failure_type"]))
+
+    tools_mod.write_audit_event = tools_event
+    tools_mod.write_failure_event = tools_failure
+    top_mod.write_audit_event = top_event
+    top_mod.write_failure_event = top_failure
+    monkeypatch.setitem(sys.modules, "tools.mcp_audit_logger", tools_mod)
+    monkeypatch.setitem(sys.modules, "mcp_audit_logger", top_mod)
+
+    gate._try_audit_event({"event_type": "test_event"})
+    gate._try_audit_failure({"failure_type": "test_failure"})
+
+    assert calls == [
+        ("tools_event", None, "test_event"),
+        ("tools_failure", None, "test_failure"),
+    ]
+
+
+def test_try_audit_helpers_fallback_to_top_level_import(monkeypatch):
+    calls = []
+    top_mod = types.ModuleType("mcp_audit_logger")
+
+    def top_event(config_dir, event):
+        calls.append(("top_event", config_dir, event["event_type"]))
+
+    def top_failure(config_dir, failure):
+        calls.append(("top_failure", config_dir, failure["failure_type"]))
+
+    top_mod.write_audit_event = top_event
+    top_mod.write_failure_event = top_failure
+    monkeypatch.setitem(sys.modules, "mcp_audit_logger", top_mod)
+    monkeypatch.delitem(sys.modules, "tools.mcp_audit_logger", raising=False)
+
+    real_import = builtins.__import__
+
+    def force_tools_import_error(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "tools.mcp_audit_logger":
+            raise ImportError("forced tools import failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", force_tools_import_error)
+
+    gate._try_audit_event({"event_type": "test_event"})
+    gate._try_audit_failure({"failure_type": "test_failure"})
+
+    assert calls == [
+        ("top_event", None, "test_event"),
+        ("top_failure", None, "test_failure"),
+    ]
 
 
 def test_windows_paths_supported():

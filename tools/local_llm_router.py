@@ -24,6 +24,17 @@ TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 WORKER_PATH = SCRIPT_DIR / "local_llm_worker.py"
 
 ALLOWED_ENV_VARS = {"LOCAL_LLM_BASE_URL"}
+WORKER_OPTIONS_WITH_VALUES = {
+    "--provider",
+    "--base-url",
+    "--max-files",
+    "--max-chars",
+    "--max-output-chars",
+    "--timeout",
+    "--target-language",
+    "--style",
+    "--output-dir",
+}
 
 # Lazy import: health_store lives in the same directory but is loaded on
 # demand so this module stays importable in environments where the
@@ -80,11 +91,18 @@ def get_ollama_models() -> list[str]:
         return _get_ollama_models_from_api()
 
 
+def _openai_compat_headers() -> dict[str, str]:
+    api_key = os.environ.get("LOCAL_LLM_API_KEY", "").strip()
+    if not api_key:
+        return {}
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 def _get_openai_models_from_api(base_url: str) -> list[str]:
     """Query an OpenAI-compatible /v1/models endpoint (e.g. llama.cpp, LiteLLM)."""
     url = base_url.rstrip("/") + "/models"
     try:
-        req = Request(url, method="GET")
+        req = Request(url, headers=_openai_compat_headers(), method="GET")
         with urlopen(req, timeout=5) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except Exception:
@@ -122,7 +140,7 @@ def probe_llamacpp_endpoint(base_url: str, timeout: int = 5) -> bool:
     """Quick health check against a llama.cpp-compatible /models endpoint."""
     url = base_url.rstrip("/") + "/models"
     try:
-        req = Request(url, method="GET")
+        req = Request(url, headers=_openai_compat_headers(), method="GET")
         with urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except Exception:
@@ -531,6 +549,10 @@ def main():
                 privacy_strict = True
             elif passthrough_args[i + 1] == "relaxed":
                 privacy_strict = False
+            i += 2
+            continue
+        elif arg in WORKER_OPTIONS_WITH_VALUES and i + 1 < len(passthrough_args):
+            filtered_args.extend([arg, passthrough_args[i + 1]])
             i += 2
             continue
         elif not arg.startswith("-") and positional_target is None:

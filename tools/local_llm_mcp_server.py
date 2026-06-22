@@ -54,48 +54,51 @@ _call_lock = threading.Lock()
 # When confidence=low or uncertain_points>3, the server auto-escalates to the next tier.
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
-    # Summarization: fast/e4b → smart/9b → qwen3.6 llama.cpp resident → fallbacks
-    "summarize-file": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary", "smart_summary", "qwen3.6_llamacpp",
-                       "gemma4_26b_llamacpp", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary", "smart_summary", "qwen3.6_llamacpp",
-                       "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    # Diff review: commit reviewer (30b) → qwen3.6 llama.cpp → nemotron reasoning → 35b deep
+    # Summarization: llama.cpp fallbacks → fast/e4b → smart/9b → 27b → coder
+    "summarize-file": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
+                       "smart_summary", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
+    "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
+                       "smart_summary", "qwen3.6_27b_mtp"],
+    # Diff review: commit gate → llama.cpp diff reviewer → resident → 27b → deep
     "review-diff": ["commit_reviewer", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
                     "qwen3.6_27b_mtp", "deep_reviewer"],
-    # Code generation: coder → qwen3.6 llama.cpp → 27b → 35b
+    # Code generation: on-demand coder → resident → 27b → deep
     "generate-test-plan": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
-                           "gemma4_26b_llamacpp", "qwen3.6_27b_mtp",
-                           "deep_reviewer"],
+                           "gemma4_26b_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
     "generate-test-draft": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                             "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-fix": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-feature": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker", "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-fix": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+                  "qwen3.6_27b_mtp", "deep_reviewer"],
+    "draft-feature": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+                      "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
     # Advisory draft text generation: code_worker is sufficient, no escalation needed
     "draft-commit-message": ["code_worker"],
     "draft-pr-summary": ["code_worker"],
     "draft-changelog-entry": ["code_worker"],
-    # Suggestions: qwen3.6 llama.cpp → 27b → coder → 35b
-    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp",
-                             "qwen3.6_27b_mtp", "code_worker", "deep_reviewer"],
-    # Deep/architecture review: 35b MoE → 35b → 31b Opus → 128b → nemotron super → 120b
+    # Suggestions: llama.cpp fallbacks → 27b → coder → deep
+    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "qwen3.6_27b_mtp",
+                             "code_worker", "deep_reviewer"],
+    # Deep/architecture review: 35b MoE → deep → 31b → release → super → heavy
     "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
                          "release_auditor", "nemotron_super", "heavy_reviewer"],
     "architecture-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
                             "release_auditor", "nemotron_super", "heavy_reviewer"],
-    # Release: 128b → nemotron super → 35b
+    # Release: release auditor → super → deep → 35b MoE
     "release-risk-review": ["release_auditor", "nemotron_super", "deep_reviewer",
                             "qwen3.6_35b_moe_mtp"],
-    # Reasoning: nemotron → deepseek-r1-32b → 128b (70b unavailable, API timeout)
-    "risk-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning", "release_auditor"],
-    "logic-check": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning", "release_auditor"],
+    # Reasoning: llama.cpp deep reasoning → checker → deep → release auditor
+    "risk-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning",
+                      "release_auditor"],
+    "logic-check": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning",
+                    "release_auditor"],
     "failure-mode-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning",
                                "release_auditor"],
     "contextual-analyze": ["qwen3.6_llamacpp", "qwen3.6_27b_mtp",
                             "code_worker", "reasoning_checker"],
     "translate-text": ["translation_llamacpp", "translation", "qwen3.6_llamacpp"],
     "rewrite-text": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
-                     "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
+                     "qwen3.6_27b_mtp"],
     "extract-todos": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
                       "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
     "find-related-files": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
@@ -2471,7 +2474,69 @@ def call_generate_test_plan(params: dict) -> dict:
     return result
 
 
-REVIEW_TIMEOUT = 60
+REVIEW_TIMEOUT = 900
+REVIEW_PREWARM_TIMEOUT = 300
+
+
+def _prewarm_llamacpp_profile(profile_name: str, timeout: int = REVIEW_PREWARM_TIMEOUT) -> dict:
+    """Start and wait for a llama.cpp-backed profile before timed review.
+
+    This keeps on-demand model loading outside the review subprocess timeout.
+    Returns {"ok": True, ...} when no prewarm is needed or health is ready.
+    """
+    try:
+        profiles = json.loads((SCRIPT_DIR / "local_llm_profiles.json").read_text(encoding="utf-8"))
+        profile = profiles.get("profiles", {}).get(profile_name, {})
+    except Exception as e:
+        return {"ok": False, "error": f"profile load failed: {e}"}
+
+    port = profile.get("_port")
+    service = str(profile.get("_service", "")).strip()
+    if not port:
+        return {"ok": True, "skipped": True, "reason": "profile has no direct llama.cpp port"}
+
+    health_cmd = [
+        "ssh", "zero12",
+        f"curl -fsS --max-time 5 http://127.0.0.1:{port}/health",
+    ]
+
+    def _healthy() -> bool:
+        try:
+            r = subprocess.run(health_cmd, timeout=10, capture_output=True, text=True)
+            return r.returncode == 0 and '"status":"ok"' in (r.stdout or "")
+        except Exception:
+            return False
+
+    if _healthy():
+        return {"ok": True, "skipped": False, "already_warm": True}
+
+    if service:
+        unit = service if service.endswith(".service") else f"{service}.service"
+        try:
+            subprocess.run(
+                ["ssh", "zero12", f"systemctl --user start {unit}"],
+                timeout=30, capture_output=True, text=True,
+            )
+        except Exception as e:
+            return {"ok": False, "error": f"failed to start {unit}: {e}"}
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _healthy():
+            return {
+                "ok": True,
+                "skipped": False,
+                "already_warm": False,
+                "elapsed_seconds": round(timeout - (deadline - time.time()), 2),
+            }
+        time.sleep(2)
+
+    return {
+        "ok": False,
+        "error": f"profile '{profile_name}' did not become healthy within {timeout}s",
+        "service": service,
+        "port": port,
+    }
 
 
 # B1-E: controlled low-risk auto-debate skip helper.
@@ -2757,7 +2822,20 @@ def call_review_diff(params: dict) -> dict:
             except Exception:
                 pass  # Best-effort check
 
-    # Commit gate: fast direct path with 60s timeout
+        prewarm = _prewarm_llamacpp_profile(resolved)
+        if not prewarm.get("ok"):
+            return build_error_response(
+                tool="local_review_diff",
+                error_type="prewarm_failed",
+                error=prewarm.get("error", "model route did not become healthy before review"),
+                suggestion="prewarm the selected route manually, evict lower-priority resident models, or retry with a smaller profile",
+                profile=resolved,
+                model=params.get("model"),
+            )
+
+    # Commit gate: direct path against an already-warm model route.
+    # On-demand model startup/prewarm is an operational step before the gate;
+    # model load time should not be counted as review generation time.
     request_id = _make_request_id()
     result = run_subprocess(
         cmd, stdin_data=diff_text, timeout=REVIEW_TIMEOUT,
@@ -2768,8 +2846,8 @@ def call_review_diff(params: dict) -> dict:
     if not result["ok"] and "timed out" in result["stderr"].lower():
         return build_error_response(
             tool="local_review_diff", error_type="timeout",
-            error=f"single-model review timed out after {REVIEW_TIMEOUT}s",
-            suggestion="try a smaller diff, a lighter profile, or unload the active Ollama model",
+            error=f"single-model review timed out after {REVIEW_TIMEOUT}s on a prewarmed route",
+            suggestion="prewarm the selected route, split or shrink the diff, or evict lower-priority resident models before retrying",
             elapsed=result["elapsed_seconds"], request_id=request_id,
             profile=params.get("profile"), model=params.get("model"),
         )

@@ -254,8 +254,8 @@ def test_commit_gate_false_still_triggers_debate():
         assert result["tool"] == "local_debate_review_diff"
 
 
-def test_commit_gate_uses_60s_timeout(monkeypatch):
-    """commit_gate=true on a large diff still uses REVIEW_TIMEOUT=60."""
+def test_commit_gate_uses_review_timeout(monkeypatch):
+    """commit_gate=true on a large diff still uses REVIEW_TIMEOUT."""
     captured = {}
 
     def _capture_run(cmd, **kwargs):
@@ -276,7 +276,7 @@ def test_commit_gate_uses_60s_timeout(monkeypatch):
     large = _make_diff(line_count=120, files=1)
     result = mcp.call_review_diff({"diff_text": large, "commit_gate": True})
     assert result["ok"] is True
-    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 60, (
+    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 900, (
         f"Expected timeout={mcp.REVIEW_TIMEOUT}, got {captured['kwargs'].get('timeout')}"
     )
 
@@ -302,6 +302,94 @@ def test_commit_gate_respects_explicit_profile(monkeypatch):
     mcp.call_review_diff({"diff_text": large, "commit_gate": True, "profile": "commit_reviewer"})
     assert "--profile" in cmd_parts
     assert "commit_reviewer" in cmd_parts
+
+
+def test_commit_gate_prewarms_llamacpp_profile(monkeypatch):
+    """llama.cpp commit-gate profiles prewarm before timed review subprocess."""
+    calls = []
+
+    def _capture_prewarm(profile_name):
+        calls.append(profile_name)
+        return {"ok": True}
+
+    def _capture_run(cmd, **kwargs):
+        return {
+            "ok": True, "stdout": "JSON: /fake/o.json",
+            "stderr": "", "returncode": 0, "elapsed_seconds": 1.5,
+        }
+
+    monkeypatch.setattr(mcp, "_prewarm_llamacpp_profile", _capture_prewarm)
+    monkeypatch.setattr(mcp, "run_subprocess", _capture_run)
+    monkeypatch.setattr(mcp, "load_worker_output",
+                        lambda stdout: ({"task": "review-diff", "profile": "commit_reviewer_llamacpp",
+                                         "prompt_id": "x", "prompt_version": "v1", "prompt_hash": "abc",
+                                         "model": "qwen3-coder-30b", "cache_hit": False,
+                                         "result": {"summary": "ok"}}, None))
+    small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
+    result = mcp.call_review_diff({
+        "diff_text": small,
+        "commit_gate": True,
+        "profile": "commit_reviewer_llamacpp",
+    })
+
+    assert result["ok"] is True
+    assert calls == ["commit_reviewer_llamacpp"]
+
+
+def test_prewarm_llamacpp_profile_skips_profiles_without_port():
+    result = mcp._prewarm_llamacpp_profile("commit_reviewer")
+
+    assert result["ok"] is True
+    assert result["skipped"] is True
+
+
+def test_prewarm_llamacpp_profile_uses_existing_healthy_route(monkeypatch):
+    calls = []
+
+    class HealthyResponse:
+        returncode = 0
+        stdout = '{"status":"ok"}'
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return HealthyResponse()
+
+    monkeypatch.setattr(mcp.subprocess, "run", fake_run)
+
+    result = mcp._prewarm_llamacpp_profile("commit_reviewer_llamacpp")
+
+    assert result["ok"] is True
+    assert result["already_warm"] is True
+    assert len(calls) == 1
+    assert "curl -fsS --max-time 5 http://127.0.0.1:8003/health" in calls[0]
+
+
+def test_prewarm_llamacpp_profile_starts_service_when_initial_health_fails(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, returncode, stdout=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            return Response(22, "")
+        if "systemctl --user start qwen3-coder-llama.service" in cmd:
+            return Response(0, "")
+        return Response(0, '{"status":"ok"}')
+
+    monkeypatch.setattr(mcp.subprocess, "run", fake_run)
+    monkeypatch.setattr(mcp.time, "sleep", lambda _seconds: None)
+
+    result = mcp._prewarm_llamacpp_profile("commit_reviewer_llamacpp", timeout=1)
+
+    assert result["ok"] is True
+    assert result["already_warm"] is False
+    assert any("systemctl --user start qwen3-coder-llama.service" in cmd for cmd in calls)
 
 
 # --- contextual_analyze tests (v0.9.5) ---
@@ -600,7 +688,7 @@ def test_dry_run_does_not_write_manifest_import():
 # --- commit_reviewer timeout and profile tests (v0.9.5) ---
 
 def test_review_timeout_constant_exists():
-    assert mcp.REVIEW_TIMEOUT == 60, "REVIEW_TIMEOUT should be 60s for commit gate"
+    assert mcp.REVIEW_TIMEOUT == 900, "REVIEW_TIMEOUT should allow long prewarmed local reviews"
 
 
 def test_review_diff_respects_explicit_profile(monkeypatch):
@@ -728,8 +816,8 @@ def test_mcp_server_stdin_reconfigure(monkeypatch):
 # --- v0.9.5 tests continue below ---
 
 
-def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
-    """call_review_diff with commit_gate=True must pass timeout=REVIEW_TIMEOUT (60)."""
+def test_review_diff_uses_review_subprocess_timeout(monkeypatch):
+    """call_review_diff with commit_gate=True must pass timeout=REVIEW_TIMEOUT."""
     captured = {}
 
     def _capture_run(cmd, **kwargs):
@@ -750,7 +838,7 @@ def test_review_diff_uses_60s_subprocess_timeout(monkeypatch):
     small = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n+line\n"
     result = mcp.call_review_diff({"diff_text": small, "commit_gate": True})
     assert result["ok"] is True
-    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 60, (
+    assert captured["kwargs"]["timeout"] == mcp.REVIEW_TIMEOUT == 900, (
         f"Expected timeout={mcp.REVIEW_TIMEOUT}, got {captured['kwargs'].get('timeout')}"
     )
 

@@ -126,8 +126,11 @@ def test_launcher_detects_target_project(git_project):
 
 
 def test_launcher_outside_git_repo():
-    # Use the system temp directory so no parent in the path is a git repository.
-    tmp = tempfile.mkdtemp(dir=os.environ.get("TEMP", "C:\\Windows\\Temp"))
+    # The system TEMP directory lives under C:\Users\Zero, which contains a
+    # .git directory in this environment. Use the project's parent directory
+    # to ensure the launcher genuinely sees no git repository.
+    base = Path(__file__).resolve().parent.parent.parent
+    tmp = tempfile.mkdtemp(dir=base)
     proc = subprocess.Popen(
         [sys.executable, str(LAUNCHER)],
         cwd=tmp,

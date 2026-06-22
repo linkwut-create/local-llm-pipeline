@@ -285,17 +285,17 @@ def test_privacy_credential_mention():
 
 def test_profile_diff_review():
     p = ProfileMapper.recommend("review-diff", "medium")
-    assert p == "commit_reviewer", f"Expected commit_reviewer, got {p}"
+    assert p == "diff_reviewer_llamacpp", f"Expected diff_reviewer_llamacpp, got {p}"
 
 
 def test_profile_bug_fix():
     p = ProfileMapper.recommend("draft-fix", "medium")
-    assert p == "code_worker", f"Expected code_worker, got {p}"
+    assert p == "code_worker_llamacpp", f"Expected code_worker_llamacpp, got {p}"
 
 
 def test_profile_simple_query():
     p = ProfileMapper.recommend("summarize-file", "low")
-    assert p == "fast_summary", f"Expected fast_summary, got {p}"
+    assert p == "gemma4_26b_llamacpp", f"Expected gemma4_26b_llamacpp, got {p}"
 
 
 def test_profile_governance_docs():
@@ -419,7 +419,7 @@ def test_engine_multi_service_feature():
     d = engine.analyze("add rate limiting to API gateway across 3 services")
     assert d.task_type == "draft-feature"
     assert d.risk_level == "medium"
-    assert d.recommended_local_profile == "code_worker"
+    assert d.recommended_local_profile == "code_worker_llamacpp"
     assert d.flash_escalation_condition is not None
 
 

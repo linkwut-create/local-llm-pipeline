@@ -129,28 +129,44 @@ def test_global_launcher_exposes_eleven_tools():
 
 def test_global_launcher_find_project_root_returns_none_outside_git(tmp_path, monkeypatch):
     """find_project_root must return None when CWD is not in a git repo."""
-    # Use a temp dir outside the project to avoid finding the project's .git
-    import tempfile as _tf
-    outside_dir = Path(_tf.mkdtemp())
+    # The system temp dir is under the user's home, and this environment has a
+    # .git at C:\Users\Zero, so any temp dir there would incorrectly match.
+    # Use the project's parent directory (no .git on this machine) for a clean
+    # outside-git test.
+    base = Path(__file__).resolve().parent.parent.parent
+    outside_dir = base / f"tmp_no_git_{os.getpid()}"
+    outside_dir.mkdir(parents=True, exist_ok=True)
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
     monkeypatch.chdir(outside_dir)
-    result = launcher.find_project_root()
-    assert result is None, (
-        f"find_project_root should return None outside git, got {result}"
-    )
+    try:
+        result = launcher.find_project_root()
+        assert result is None, (
+            f"find_project_root should return None outside git, got {result}"
+        )
+    finally:
+        monkeypatch.chdir(base)
+        outside_dir.rmdir()
 
 
 def test_global_launcher_find_project_root_finds_git(tmp_path, monkeypatch):
     """find_project_root must return the git root when CWD is inside one."""
     launcher = importlib.import_module("local_llm_global_mcp_launcher")
-    (tmp_path / ".git").mkdir()
-    subdir = tmp_path / "subdir"
+    base = Path(__file__).resolve().parent.parent.parent
+    git_root = base / f"tmp_git_{os.getpid()}"
+    git_root.mkdir(parents=True, exist_ok=True)
+    (git_root / ".git").mkdir()
+    subdir = git_root / "subdir"
     subdir.mkdir()
     monkeypatch.chdir(subdir)
-    result = launcher.find_project_root()
-    assert result == tmp_path, (
-        f"find_project_root should return {tmp_path}, got {result}"
-    )
+    try:
+        result = launcher.find_project_root()
+        assert result == git_root, (
+            f"find_project_root should return {git_root}, got {result}"
+        )
+    finally:
+        monkeypatch.chdir(base)
+        import shutil
+        shutil.rmtree(git_root, ignore_errors=True)
 
 
 def test_global_launcher_validate_project_rejects_missing(tmp_path):

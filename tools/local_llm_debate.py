@@ -91,7 +91,7 @@ DEBATE_TASKS = {
     "review-diff", "risk-analysis", "architecture-review", "failure-mode-analysis",
 }
 
-DEFAULT_ROUND_PROFILES = ["qwen3.6_27b_mtp", "reasoning_checker", "deep_reviewer"]
+DEFAULT_ROUND_PROFILES = ["commit_reviewer", "fast_summary", "reasoning_checker"]
 
 ROUND_SYSTEM_BASE = """You are a local auxiliary review model, NOT the final decision-maker.
 Rules:
@@ -322,6 +322,7 @@ def run_round(round_num: int, task: str, original_input: str,
         base_url=base_url or resolve_base_url(provider),
         timeout=timeout,
         max_output_chars=max_output_chars or profile.get("max_output_chars", 5000),
+        api_key=os.environ.get("LOCAL_LLM_API_KEY", "").strip(),
     )
 
     system = ROUND_SYSTEM_BASE + f"\nTask: {task}\nRound: {round_num} of {MAX_ROUNDS}\nProfile: {profile_name}\n"

@@ -306,7 +306,7 @@ def test_worker_call_ollama_includes_keep_alive_env(monkeypatch):
         def json(self):
             return {"message": {"content": "ok"}}
 
-    def fake_post(url, json, timeout):
+    def fake_post(url, json, timeout, **kwargs):
         captured["payload"] = json
         return FakeResp()
 
@@ -335,7 +335,7 @@ def test_worker_call_ollama_normalizes_force_keep_alive(monkeypatch):
         def json(self):
             return {"message": {"content": "ok"}}
 
-    def fake_post(url, json, timeout):
+    def fake_post(url, json, timeout, **kwargs):
         captured["payload"] = json
         return FakeResp()
 
@@ -363,7 +363,7 @@ def test_worker_call_ollama_omits_keep_alive_without_env(monkeypatch):
         def json(self):
             return {"message": {"content": "ok"}}
 
-    monkeypatch.setattr(worker.requests, "post", lambda url, json, timeout: captured.update({"payload": json}) or FakeResp())
+    monkeypatch.setattr(worker.requests, "post", lambda url, json, timeout, **kwargs: captured.update({"payload": json}) or FakeResp())
 
     config = worker.WorkerConfig(
         provider="ollama",

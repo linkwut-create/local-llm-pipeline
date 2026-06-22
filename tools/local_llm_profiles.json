@@ -351,7 +351,10 @@
       "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8002/v1",
       "_service": "gemma4-26b-llama",
       "_port": 8002,
-      "_benchmark": "2026-06-21: loads 16s. Gemma4 26B MoE (4B active), Q8_K_XL. Good mid-size generalist."
+      "_benchmark": "2026-06-21: loads 16s. Gemma4 26B MoE (4B active), Q8_K_XL. Good mid-size generalist.",
+      "_model_family": "moe",
+      "_residency": "on_demand",
+      "_constraints": "MoE profile. Must not be resident; start only for explicit on-demand tasks."
     },
     "gemma4_26b": {
       "model": "gemma4:26b",
@@ -603,6 +606,8 @@
       "_community_reputation": "Qwen3.6 27B GGUF resident on zero12. Managed by qwen36-llama.service (user systemd). Uses Radeon 8060S APU via ROCm — RTX 5070 Ti is free.",
       "_constraints": "Not for commit gate (65-162s, >30s target). --reasoning auto causes unbounded reasoning. Content only at max_tokens>=1024. Worker handles empty content via reasoning_content fallback.",
       "_reasoning_behavior": "--reasoning auto: content empty when max_tokens<=768. reasoning_content 2-4x max_tokens. Timeout risk above 2048.",
+      "_model_family": "dense",
+      "_residency": "resident_priority_1",
       "_service": "qwen36-llama",
       "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
       "_port": 8001
@@ -634,6 +639,8 @@
         "rewrite-text",
         "contextual-analyze"
       ],
+      "_model_family": "dense",
+      "_residency": "resident_priority_1",
       "_service": "qwen36-llama",
       "_port": 8001,
       "candidates": [
@@ -857,8 +864,10 @@
       "_backend_class": "openai-compatible",
       "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. No reasoning overhead — direct code generation.",
-      "_constraints": "Commit gate OK (under 30s). 16K ctx. Direct coder model, no reasoning delays.",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
+      "_constraints": "MoE qwen3-coder 30B-A3B. On-demand only; do not enable as a resident service. Exclude model load time from task latency measurements.",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env. Start qwen3-coder-llama.service only for explicit on-demand tasks.",
+      "_model_family": "moe",
+      "_residency": "on_demand",
       "_service": "qwen3-coder-llama",
       "_port": 8003
     },
@@ -888,8 +897,10 @@
       "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
       "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. Fast code review, no reasoning overhead.",
       "_commit_gate_allowed": true,
-      "_constraints": "Commit gate. Latency target: under 30s. No reasoning model.",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
+      "_constraints": "Commit gate profile backed by MoE qwen3-coder 30B-A3B. On-demand only; do not keep resident. Measure gate latency after service prewarm, not during model load.",
+      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env. Start qwen3-coder-llama.service only for explicit on-demand review gates.",
+      "_model_family": "moe",
+      "_residency": "on_demand",
       "_service": "qwen3-coder-llama",
       "_port": 8003
     },
@@ -925,6 +936,8 @@
       "_benchmark": "2026-06-21: Gemma4 31B Q8_0 via llama.cpp. 6s load. Has reasoning but lighter than Qwen3.6. Good for summarization and docs.",
       "_constraints": "8K context. Has reasoning — worker handles via content fallback. Not for code generation or commit gate.",
       "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
+      "_model_family": "dense",
+      "_residency": "resident_priority_2",
       "_service": "gemma4-31b-llama",
       "_port": 8004
     },
@@ -1039,27 +1052,42 @@
       "launch_example": "llama-server -m <target_gguf> --mtp-head <drafter_gguf> --spec-type mtp -ngl 99 --port 8080"
     },
     "llama_cpp_resident": {
-      "description": "llama.cpp resident Qwen3.6 27B service on zero12. Managed by systemd (qwen36-llama.service). Access via LiteLLM proxy (port 4000) or direct (port 8001).",
+      "description": "llama.cpp resident dense-model policy on zero12. Priority 1 is qwen36-llama.service (Qwen3.6 27B dense). Priority 2 is gemma4-31b-llama.service (Gemma 4 31B dense). MoE models are on-demand only.",
       "profiles": [
         "qwen3.6_llamacpp",
         "qwen3.6_llamacpp_direct",
+        "gemma4_31b_llamacpp"
+      ],
+      "on_demand_profiles": [
         "code_worker_llamacpp",
         "commit_reviewer_llamacpp",
-        "gemma4_31b_llamacpp",
         "diff_reviewer_llamacpp",
         "deep_reasoning_llamacpp",
         "translation_llamacpp",
         "gemma4_26b_llamacpp"
       ],
-      "service": "qwen36-llama.service (user systemd, enabled)",
-      "endpoints": {
-        "litellm": "http://127.0.0.1:4000/v1 — LiteLLM proxy wrapping llama.cpp",
-        "direct": "http://127.0.0.1:8001/v1 — llama.cpp server direct"
+      "services": {
+        "resident_priority_1": "qwen36-llama.service (user systemd, enabled)",
+        "resident_priority_2": "gemma4-31b-llama.service (user systemd, enabled)",
+        "on_demand_moe": "qwen3-coder-llama.service and other MoE services stay disabled/inactive until explicitly started"
       },
-      "model": "qwen3.6-27b.sha256-19a2f473.gguf",
-      "context": 16384,
-      "acceleration": "ROCm (Radeon 8060S APU) — RTX 5070 Ti free",
-      "launch_example": "llama-server -m <gguf> --host 127.0.0.1 --port 8001 -c 16384 -t 16 -ngl auto --reasoning auto"
+      "endpoints": {
+        "litellm": "http://127.0.0.1:4000/v1 - LiteLLM proxy wrapping llama.cpp",
+        "qwen36_direct": "http://127.0.0.1:8001/v1 - Qwen3.6 27B dense direct",
+        "gemma31_direct": "http://127.0.0.1:8004/v1 - Gemma 4 31B dense direct"
+      },
+      "models": {
+        "resident_priority_1": "qwen3.6-27b.sha256-19a2f473.gguf",
+        "resident_priority_2": "gemma-4-31B-it-Q8_0.gguf",
+        "on_demand_moe": "qwen3-coder-30b and other MoE profiles"
+      },
+      "context": {
+        "qwen36": 16384,
+        "gemma31": 8192
+      },
+      "acceleration": "ROCm (Radeon 8060S APU); RTX 5070 Ti free",
+      "policy": "Keep only dense priority 1 and dense priority 2 resident. All other profiles, especially MoE profiles, are on-demand and must not be enabled as resident services.",
+      "launch_example": "llama-server -m <gguf> --host 127.0.0.1 --port <port> -c <context> -t <threads> -ngl auto"
     }
   },
   "_notes": {

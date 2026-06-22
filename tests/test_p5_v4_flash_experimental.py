@@ -139,7 +139,7 @@ def test_router_falls_back_to_task_default_without_override():
     from local_llm_router import resolve_profile  # noqa: E402
 
     profile_name, model, risk = resolve_profile("summarize-file", None, None)
-    assert profile_name == "fast_summary"
+    assert profile_name == "gemma4_26b_llamacpp"
     assert profile_name != "v4_flash_local_experimental"
 
 

@@ -237,7 +237,7 @@ def test_draft_commit_message_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker"
+    assert t["default_profile"] == "code_worker_llamacpp"
 
 
 def test_draft_commit_message_prompt_exists():
@@ -272,7 +272,7 @@ def test_draft_pr_summary_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker"
+    assert t["default_profile"] == "code_worker_llamacpp"
 
 
 def test_draft_pr_summary_prompt_exists():
@@ -325,7 +325,7 @@ def test_draft_changelog_entry_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker"
+    assert t["default_profile"] == "code_worker_llamacpp"
 
 
 def test_draft_changelog_entry_prompt_exists():
@@ -380,7 +380,7 @@ def test_find_related_files_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker"
+    assert t["default_profile"] == "code_worker_llamacpp"
 
 
 def test_find_related_files_prompt_exists():

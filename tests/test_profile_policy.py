@@ -85,14 +85,17 @@ def test_commit_reviewer_policy():
 
 
 def test_only_commit_reviewer_is_commit_gate_allowed():
-    """Hard invariant: exactly one profile (commit_reviewer) has
-    commit_gate_allowed=true. The derivation reads `_commit_gate_allowed`
-    from each profile dict; any other profile gaining this flag would
-    expand commit gate's surface and should be reviewed."""
+    """Invariant: only commit gate profiles have commit_gate_allowed=true.
+
+    The original commit_reviewer (Ollama qwen3-coder:30b) is joined by
+    commit_reviewer_llamacpp (llama.cpp qwen3-coder:30b) as part of the
+    llama.cpp backend migration. Both are allowed; any additional profile
+    gaining this flag must be reviewed before acceptance.
+    """
     profiles = load_profiles()["profiles"]
     allowed = [name for name in profiles if derive_policy(name)["commit_gate_allowed"]]
-    assert allowed == ["commit_reviewer"], (
-        f"commit_gate_allowed must be exclusive to commit_reviewer, got: {allowed}"
+    assert allowed == ["commit_reviewer", "commit_reviewer_llamacpp"], (
+        f"commit_gate_allowed must be exclusive to commit gate profiles, got: {allowed}"
     )
 
 
@@ -305,6 +308,7 @@ VALID_BACKEND_CLASSES = {
     "ollama_heavy_manual",
     "ollama_mtp_pending",
     "llamacpp_unconfigured",
+    "openai-compatible",
     "unavailable",
     "placeholder",
     "cloud_deepseek",

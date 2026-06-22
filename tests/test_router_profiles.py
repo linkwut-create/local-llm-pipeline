@@ -212,6 +212,59 @@ def test_resolve_ollama_base_url_normalizes_ollama_host(monkeypatch):
     assert router._resolve_ollama_base_url() == "http://127.0.0.1:11436"
 
 
+def test_openai_models_probe_uses_api_key_header(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_API_KEY", "test-key")
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"data": [{"id": "qwen3-coder-30b"}]}).encode("utf-8")
+
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["authorization"] = req.get_header("Authorization")
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(router, "urlopen", fake_urlopen)
+
+    assert router._get_openai_models_from_api("http://example.test:4000/v1") == [
+        "qwen3-coder-30b"
+    ]
+    assert seen == {"authorization": "Bearer test-key", "timeout": 5}
+
+
+def test_llamacpp_probe_uses_api_key_header(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_API_KEY", "test-key")
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["authorization"] = req.get_header("Authorization")
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(router, "urlopen", fake_urlopen)
+
+    assert router.probe_llamacpp_endpoint("http://example.test:4000/v1", timeout=3)
+    assert seen == {"authorization": "Bearer test-key", "timeout": 3}
+
+
 def test_resolve_profile_candidates_list():
     """Profile resolution should return a profile with candidates for fallback."""
     _, model, _ = router.resolve_profile("summarize-file", None, None)
@@ -247,6 +300,39 @@ def test_env_override_in_mtp_profiles():
         assert "LOCAL_LLM_BASE_URL" in env, "llama.cpp profile should set LOCAL_LLM_BASE_URL in _env"
 
 
+def test_llamacpp_resident_policy_is_dense_only():
+    data = _load_profiles()
+    profiles = data["profiles"]
+    policy = data["_backends"]["llama_cpp_resident"]
+
+    assert policy["profiles"] == [
+        "qwen3.6_llamacpp",
+        "qwen3.6_llamacpp_direct",
+        "gemma4_31b_llamacpp",
+    ]
+    assert profiles["qwen3.6_llamacpp"]["_model_family"] == "dense"
+    assert profiles["qwen3.6_llamacpp"]["_residency"] == "resident_priority_1"
+    assert profiles["qwen3.6_llamacpp_direct"]["_residency"] == "resident_priority_1"
+    assert profiles["gemma4_31b_llamacpp"]["_model_family"] == "dense"
+    assert profiles["gemma4_31b_llamacpp"]["_residency"] == "resident_priority_2"
+
+
+def test_moe_llamacpp_profiles_are_on_demand():
+    data = _load_profiles()
+    profiles = data["profiles"]
+    policy = data["_backends"]["llama_cpp_resident"]
+
+    for profile_name in (
+        "code_worker_llamacpp",
+        "commit_reviewer_llamacpp",
+        "gemma4_26b_llamacpp",
+    ):
+        assert profile_name not in policy["profiles"]
+        assert profile_name in policy["on_demand_profiles"]
+        assert profiles[profile_name]["_model_family"] == "moe"
+        assert profiles[profile_name]["_residency"] == "on_demand"
+
+
 # --- Hard Router fallback safety tests (v0.9.5) ---
 
 FAKE_PROFILES = {
@@ -265,6 +351,15 @@ def _fake_subprocess_success(cmd, **kwargs):
     m = MagicMock()
     m.returncode = 0
     return m
+
+
+class _FakeStdin:
+    def __init__(self, data: bytes):
+        self.buffer = MagicMock()
+        self.buffer.read = MagicMock(return_value=data)
+
+    def isatty(self):
+        return False
 
 
 def test_router_fallback_to_candidate_when_requested_missing(monkeypatch):
@@ -303,6 +398,60 @@ def test_router_errors_when_candidates_all_missing(monkeypatch):
     assert exc.value.code == 1, (
         "should exit 1 when candidates exhausted — must not fall back to unrelated model"
     )
+
+
+def test_router_preserves_worker_option_values_with_stdin(monkeypatch):
+    fake_profiles = {
+        "profiles": {
+            "test_profile": {
+                "model": "test-model",
+                "risk_level": "low",
+            },
+        },
+    }
+    fake_tasks = {"tasks": {"review-diff": {"default_profile": "test_profile"}}}
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["input"] = kwargs.get("input")
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    monkeypatch.setattr(
+        router, "load_json",
+        lambda path: fake_profiles if "profiles" in str(path) else fake_tasks,
+    )
+    monkeypatch.setattr(router, "get_available_models", lambda: ["test-model"])
+    monkeypatch.setattr(router, "is_profile_healthy", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(router, "_ensure_model_running", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(router.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"diff --git a/x b/x\n"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "router.py",
+            "review-diff",
+            "--stdin",
+            "--profile",
+            "test_profile",
+            "--timeout",
+            "240",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        router.main()
+
+    assert exc.value.code == 0
+    assert captured["input"] == "diff --git a/x b/x\n"
+    assert captured["cmd"][1:3] == [str(router.WORKER_PATH), "review-diff"]
+    assert "--stdin" in captured["cmd"]
+    timeout_index = captured["cmd"].index("--timeout")
+    assert captured["cmd"][timeout_index + 1] == "240"
+    assert "240" not in captured["cmd"][:timeout_index]
 
 
 # --- commit_reviewer profile (v0.9.5) ---
@@ -461,12 +610,26 @@ class TestExistingTaskResolutionStillWorks:
 
 def test_cli_no_traceback():
     import subprocess
-    r = subprocess.run(["py","-3","tools/router_explain.py","review diff","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    r = subprocess.run(
+        [sys.executable, "tools/router_explain.py", "review diff", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0, r.stderr
     assert "Traceback" not in r.stdout
 
 
 def test_cli_json_parseable():
     import subprocess, json
-    r = subprocess.run(["py","-3","tools/router_explain.py","review diff","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    r = subprocess.run(
+        [sys.executable, "tools/router_explain.py", "review diff", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert r.returncode == 0, r.stderr
     data = json.loads(r.stdout.strip())
     assert "task_type" in data

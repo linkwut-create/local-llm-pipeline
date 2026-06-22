@@ -196,9 +196,11 @@ def _config(provider="ollama"):
     cfg.base_url = "http://localhost:11434"
     cfg.model = "qwen3-coder:30b"
     cfg.max_output_chars = 3000
+    cfg.max_output_tokens = 0
     cfg.timeout = 30
     cfg.provider = provider
     cfg.stream = False
+    cfg.api_key = ""
     return cfg
 
 

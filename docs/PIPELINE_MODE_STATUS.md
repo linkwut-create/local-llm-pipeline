@@ -1,11 +1,11 @@
 # PIPELINE_MODE_STATUS.md — v2 Completion Tracker
 
-> **Last updated**: 2026-06-19 (F1 secrets/.env PreToolUse hard deny)
-> **Git**: local branch ahead of origin; F1 hook security hardening complete locally; no push/tag/release
-> **Tests**: 191 targeted route/hook/committee/residency/model-call tests passed for F1
-> **Review gates**: F1 local review-diff PASS; fast debate PASS with no high-confidence findings
+> **Last updated**: 2026-06-22 (resident model priority clarified: dense first, MoE on-demand)
+> **Git**: local branch ahead of origin; local hook audit import fallback, debate routing, and router probe fixes are uncommitted; no push/tag/release
+> **Tests**: 399 targeted router/hook/audit/debate/MCP-server tests passed; full router profile tests now pass with `sys.executable` instead of Windows `py -3`
+> **Review gates**: hook audit fallback final diff review PASS; dense two-model debate PASS; `commit_reviewer_llamacpp` review-diff completed through LiteLLM -> llama.cpp:8003 with qwen-coder started on demand
 > **Full checks**: `tools/run_checks.py` 12/13 PASS; pytest collector error remains in `tools/test_all_models.py::test_model_with_task` (missing `model` fixture)
-> **Codex CLI**: project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`, pinned to the local zero12 tunnel at `127.0.0.1:11436`
+> **Codex CLI**: project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`; current process env may override project config with zero12 Ollama at `193.168.2.2:11434`
 
 ## Recent Progress
 
@@ -16,6 +16,11 @@
 - B2/B3 route committee prompt hardening is complete locally: Qwen and Gemma now receive role-specific prompts while sharing the same JSON output schema.
 - B4/B5 route committee validator hardening is complete locally: artifact merges are deterministic and generated route.json output is validated before write.
 - F1 secrets/.env protection is locally complete and E2E-pending: PreToolUse now hard-denies direct file and shell access to `.env`, private key, token, and credentials paths before route enforcement.
+- Debate default route stabilization is in progress: default debate rounds now avoid unavailable Qwen3.6 MTP profiles and use `commit_reviewer`, `fast_summary`, then `reasoning_checker`.
+- Inference migration for qwen-coder is complete at the route level: LiteLLM `qwen3-coder-30b` routes to `openai/qwen3-coder-30b.sha256-13b998bb.gguf`, and local `commit_reviewer_llamacpp` completed a real review-diff through the `127.0.0.1:4000` tunnel after the qwen-coder service was started on demand. Operational policy is now explicit: qwen-coder is MoE/A3B and must be on-demand, not resident.
+- Resident model priority: dense 27B Qwen route first, Gemma 4 31B dense second, all other models on-demand. If docs say `qwen3.5 27b`, verify against the actual zero12 service/model name before renaming the existing `qwen36-llama.service`.
+- Router OpenAI-compatible health probes now send `LOCAL_LLM_API_KEY` as a bearer token, so authenticated LiteLLM endpoints are no longer misclassified as unreachable.
+- `local_review_diff` commit-gate timeout now assumes a prewarmed route: llama.cpp-backed profiles are explicitly started and waited on before the timed review subprocess starts, so model loading is not counted as review generation time.
 - Next route committee slice after F1 remains A6/C1/E1: E2E hook loop test, task session directory stabilization, or adjudication input schema.
 
 ## Module Completion Overview

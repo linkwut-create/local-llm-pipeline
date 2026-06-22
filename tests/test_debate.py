@@ -2,6 +2,7 @@
 
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,7 +27,7 @@ def test_fast_mode_uses_two_profiles():
 
 def test_default_profiles_order():
     assert debate.DEFAULT_ROUND_PROFILES == [
-        "qwen3.6_27b_mtp", "reasoning_checker", "deep_reviewer"
+        "commit_reviewer", "fast_summary", "reasoning_checker"
     ]
 
 
@@ -40,14 +41,23 @@ def test_debate_round_profiles_exist():
         assert p in profiles["profiles"], f"profile '{p}' missing from profiles.json"
 
 
-def test_unavailable_mtp_not_in_default_rounds():
-    """J-L3: qwen3.6_35b_moe_mtp must NOT be in default debate chain."""
+def test_unavailable_profiles_not_in_default_rounds():
+    """J-L3: unavailable profiles must NOT be in the default debate chain."""
+    profiles = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))["profiles"]
+    for profile_name in debate.DEFAULT_ROUND_PROFILES:
+        backend_class = profiles[profile_name].get("_backend_class")
+        assert backend_class != "unavailable"
+
+
+def test_retired_mtp_profiles_not_in_default_rounds():
+    """J-L3: retired MTP profiles stay out of the default debate chain."""
+    assert "qwen3.6_27b_mtp" not in debate.DEFAULT_ROUND_PROFILES
     assert "qwen3.6_35b_moe_mtp" not in debate.DEFAULT_ROUND_PROFILES
 
 
-def test_deep_reviewer_is_round_3():
-    """J-L3: deep_reviewer is the default third-round debate profile."""
-    assert debate.DEFAULT_ROUND_PROFILES[2] == "deep_reviewer"
+def test_reasoning_checker_is_round_3():
+    """J-L3: reasoning_checker remains the default third-round debate profile."""
+    assert debate.DEFAULT_ROUND_PROFILES[2] == "reasoning_checker"
 
 
 def test_debate_tasks_defined():
@@ -125,6 +135,33 @@ def test_run_round_graceful_failure():
     assert result["ok"] is False
     assert result["error"] is not None
     assert result["round"] == 1
+
+
+def test_run_round_uses_local_llm_api_key(monkeypatch):
+    seen = {}
+
+    def fake_call_model(_system, _user, config):
+        seen["api_key"] = config.api_key
+        return SimpleNamespace(content="ok", usage=None)
+
+    monkeypatch.setenv("LOCAL_LLM_API_KEY", "test-key")
+    monkeypatch.setattr(debate, "call_model", fake_call_model)
+
+    result = debate.run_round(
+        round_num=1,
+        task="review-diff",
+        original_input="test input",
+        prior_outputs=[],
+        profile_name="test_profile",
+        profiles={"test_profile": {"model": "test-model", "max_output_chars": 100}},
+        provider="openai-compatible",
+        timeout=5,
+        max_output_chars=100,
+        base_url="http://example.test/v1",
+    )
+
+    assert result["ok"] is True
+    assert seen["api_key"] == "test-key"
 
 
 def test_build_markdown_structure():

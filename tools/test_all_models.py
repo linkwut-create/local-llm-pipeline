@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+__test__ = False  # This is a standalone script, not a pytest test module.
+
 SCRIPT_DIR = Path(__file__).parent
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "193.168.2.2:11434")
 OLLAMA_URL = f"http://{OLLAMA_HOST}"
