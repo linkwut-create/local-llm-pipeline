@@ -20,8 +20,8 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 SHADOW_DIR = PROJECT_ROOT / ".local_llm_out" / "shadow_routes"
 
 
-def _load_records(since: str) -> list[dict]:
-    """Load shadow route records since a date. Returns all matching records."""
+def _load_records(since: str, exclude_before: str = None) -> list[dict]:
+    """Load shadow route records since a date, optionally excluding records before exclude_before."""
     records = []
     if not SHADOW_DIR.exists():
         return records
@@ -32,6 +32,13 @@ def _load_records(since: str) -> list[dict]:
     except ValueError:
         pass
 
+    exclude_dt = None
+    if exclude_before:
+        try:
+            exclude_dt = datetime.fromisoformat(exclude_before)
+        except ValueError:
+            pass
+
     for f in sorted(SHADOW_DIR.glob("*.jsonl")):
         # Filter by date prefix if since is a simple date
         if since_dt is None and len(since) == 10:
@@ -39,6 +46,13 @@ def _load_records(since: str) -> list[dict]:
             file_date = f.stem  # YYYYMMDD
             since_file = since.replace("-", "")
             if file_date < since_file:
+                continue
+
+        # Filter by exclude_before filename prefix
+        if exclude_dt is None and exclude_before and len(exclude_before) == 10:
+            file_date = f.stem  # YYYYMMDD
+            exclude_file = exclude_before.replace("-", "")
+            if file_date < exclude_file:
                 continue
 
         with open(f, encoding="utf-8") as fh:
@@ -53,6 +67,13 @@ def _load_records(since: str) -> list[dict]:
                         try:
                             rt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                             if rt.replace(tzinfo=None) < since_dt.replace(tzinfo=None):
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    if exclude_dt and ts:
+                        try:
+                            rt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            if rt.replace(tzinfo=None) < exclude_dt.replace(tzinfo=None):
                                 continue
                         except (ValueError, TypeError):
                             pass
@@ -71,9 +92,9 @@ def _count_distribution(records: list[dict], key: str) -> dict:
     return dict(sorted(dist.items(), key=lambda x: -x[1]))
 
 
-def status(since: str = "2026-06-13", target: int = 30) -> dict:
+def status(since: str = "2026-06-13", target: int = 30, exclude_before: str = None) -> dict:
     """Generate dogfood accumulation status report."""
-    records = _load_records(since)
+    records = _load_records(since, exclude_before=exclude_before)
     total = len(records)
 
     # Actual distribution
@@ -167,13 +188,15 @@ def main():
     )
     parser.add_argument("--since", default="2026-06-13",
                         help="Start date for records (default: 2026-06-13)")
+    parser.add_argument("--exclude-before", default=None,
+                        help="Exclude records before this date (YYYY-MM-DD or ISO)")
     parser.add_argument("--target", type=int, default=30,
                         help="Target record count (default: 30)")
     parser.add_argument("--json", action="store_true",
                         help="Output as JSON")
     args = parser.parse_args()
 
-    result = status(since=args.since, target=args.target)
+    result = status(since=args.since, target=args.target, exclude_before=args.exclude_before)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

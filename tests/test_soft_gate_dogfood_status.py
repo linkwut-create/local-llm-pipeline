@@ -149,6 +149,48 @@ def test_unknown_rate(tmp_path, monkeypatch):
     assert r["unknown_count"] == 1
 
 
+def test_exclude_before_filters_old_records(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_epoch"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "old misrouting", "router_task_type": "governance-integration",
+         "router_risk_level": "high", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": False,
+         "timestamp": "2026-06-13T10:00:00+00:00"},
+        {"task": "new ok", "router_task_type": "review-diff",
+         "router_risk_level": "medium", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-22T10:00:00+00:00"},
+    ])
+    r_all = status(since="2026-06-13", target=30)
+    assert r_all["records_total"] == 2
+    assert r_all["critical_misrouting"] == 1
+
+    r_filtered = status(since="2026-06-13", target=30,
+                        exclude_before="2026-06-20T00:00:00+00:00")
+    assert r_filtered["records_total"] == 1
+    assert r_filtered["critical_misrouting"] == 0
+    assert r_filtered["match_rate"] == 1.0
+
+
+def test_calibration_epoch_excludes_historical_misrouting(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_cal"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "historical governance", "router_task_type": "governance-integration",
+         "router_risk_level": "high", "router_privacy_status": "safe",
+         "actual_decision": "local", "match": False,
+         "timestamp": "2026-06-13T10:00:00+00:00"},
+        {"task": "current review", "router_task_type": "review-diff",
+         "router_risk_level": "medium", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-22T10:00:00+00:00"},
+    ])
+    assert status(since="2026-06-13", target=30)["critical_misrouting"] == 1
+    assert status(since="2026-06-13", target=30,
+                  exclude_before="2026-06-20T00:00:00+00:00")["critical_misrouting"] == 0
+
+
 # ═══════════════════════════════════════════════════════════════
 # 10-13: Safety + schema
 # ═══════════════════════════════════════════════════════════════
@@ -235,12 +277,12 @@ def test_router_type_distribution_keys():
 
 def test_cli_text_output_no_traceback():
     import subprocess
-    r = subprocess.run(["py","-3","tools/soft_gate_dogfood_status.py","--since","2026-06-13","--target","30"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    r = subprocess.run([sys.executable, "tools/soft_gate_dogfood_status.py", "--since", "2026-06-13", "--target", "30"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
     assert "Traceback" not in r.stdout
 
 def test_cli_json_warning_gate_false():
     import subprocess, json
-    r = subprocess.run(["py","-3","tools/soft_gate_dogfood_status.py","--since","2026-06-13","--target","30","--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
+    r = subprocess.run([sys.executable, "tools/soft_gate_dogfood_status.py", "--since", "2026-06-13", "--target", "30", "--json"], capture_output=True, text=True, timeout=15, cwd=str(Path(__file__).parent.parent))
     data = json.loads(r.stdout.strip())
     assert data["warning_gate_candidate"] is False
 
@@ -318,7 +360,7 @@ def test_json_output_includes_warning_gate_candidate(tmp_path, monkeypatch):
     ])
     import subprocess, json as _json
     r_proc = subprocess.run(
-        ["py", "-3", "tools/soft_gate_dogfood_status.py",
+        [sys.executable, "tools/soft_gate_dogfood_status.py",
          "--since", "2026-06-13", "--target", "30", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),

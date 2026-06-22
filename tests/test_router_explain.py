@@ -172,6 +172,31 @@ def test_classify_governance_changelog():
     assert r == "low"
 
 
+def test_classify_governance_status_report():
+    t, r, c = TaskClassifier.classify("prepare dogfood status report")
+    assert t == "governance-status", f"Expected governance-status, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_status_reporter():
+    t, r, c = TaskClassifier.classify("update status reporter for soft gate")
+    assert t == "governance-status", f"Expected governance-status, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_checkpoint_summary():
+    t, r, c = TaskClassifier.classify("generate checkpoint summary metrics")
+    assert t == "governance-status", f"Expected governance-status, got {t}"
+    assert r == "low"
+
+
+def test_classify_governance_status_does_not_catch_integration():
+    """Implementation-oriented governance tasks must remain governance-integration high."""
+    t, r, c = TaskClassifier.classify("design Claude Code soft gate integration")
+    assert t == "governance-integration", f"Expected governance-integration, got {t}"
+    assert r == "high"
+
+
 def test_classify_multi_service_feature():
     t, r, c = TaskClassifier.classify("add rate limiting to API gateway across 3 services")
     assert t == "draft-feature", f"Expected draft-feature, got {t}"
@@ -412,6 +437,15 @@ def test_engine_governance_docs():
     assert d.task_type == "governance-docs"
     assert d.risk_level == "low"
     assert d.recommended_local_profile == "docs_agent"
+
+
+def test_engine_governance_status():
+    engine = RouterEngine()
+    d = engine.analyze("prepare dogfood status report")
+    assert d.task_type == "governance-status"
+    assert d.risk_level == "low"
+    assert d.recommended_local_profile == "docs_agent"
+    assert d.recommended_execution_route == "flash_direct"
 
 
 def test_engine_multi_service_feature():

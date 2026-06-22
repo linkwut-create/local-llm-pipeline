@@ -118,6 +118,9 @@ class TaskClassifier:
         # API execution boundary: DeepSeek adapter, real-run, API key handling, provider call
         # Must come BEFORE interface-review and draft-feature to correctly escalate to high-risk
         ("api-execution-boundary", r"\bdeepseek\b.*\b(?:adapter|execution|api.call|real)\b|\b(?:real[\s-]run|guarded[\s-]real[\s-]run|execution[\s-]adapter|api[\s-]execution[\s-]boundary|api[\s-]call[\s-]boundary|cloud[\s-]execution[\s-]adapter|provider[\s-]api[\s-]call|api[\s-]call[\s-]seam)\b|\bapi[\s-]key[\s-](?:handling|reading|lookup|access)\b", "high"),
+        # Governance status/reporting/metrics — low-risk reporting about governance state.
+        # Must come BEFORE governance-integration so status reports don't escalate to Pro.
+        ("governance-status", r"\b(?:dogfood|soft[\s-]gate)\b[\s\w]{0,60}\b(?:status|report|reporter|metrics|summary|health|documentation|progress|phase)\b|\b(?:governance|router|checkpoint)\s+(?:status|report|metrics|summary|health)\b|\bstatus\s+(?:report|reporter|check)\b", "low"),
         # C1+C4: Governance integration & soft gate governance tasks
         # Covers: soft gate protocol, convergence audit, calibration plan,
         #   governance integration, control plane design, privacy/budget/ledger/router implementation
@@ -131,7 +134,7 @@ class TaskClassifier:
         # governance-docs BEFORE governance-integration (docs about governance = low risk)
         ("governance-docs", r"\bproblems\.md\b|\blongtodo\.md\b|\bagents\.md\b|\binterfaces\.md\b|\bclaude\.md\b|\bgrillme\.md\b|\bchangelog\.md\b|\brelease_notes\.md\b|\bgovernance\b|\baudit\b", "low"),
         # Governance integration — implementing/hardening/building governance components
-        ("governance-integration", r"\b(?:enable|disable|implement|add|build|integrate|wire|connect|harden|upgrade)\b.*\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b|\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b.*\b(?:implementation|integration|harden|build|setup|enable|deploy)\b|\bdogfood\b|\bcheckpoint\b.*\b(preparation|report|status)|\bcalibrat\b.*\brouter\b|\brouter\b.*\bcalibrat\b", "high"),
+        ("governance-integration", r"\b(?:enable|disable|implement|add|build|integrate|wire|connect|harden|upgrade)\b.*\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b|\b(?:soft[\s-]gate|privacy[\s-]gate|budget[\s-]guard|cost[\s-]ledger|shadow[\s-]rout)\b.*\b(?:implementation|integration|harden|build|setup|enable|deploy)\b|\bcheckpoint\b.*\bpreparation\b|\bcalibrat\b.*\brouter\b|\brouter\b.*\bcalibrat\b", "high"),
         # review-diff BEFORE architecture-review (more specific)
         ("review-diff", r"\breview\b.*\bdiff\b|\bdiff\b.*\breview\b|\bcommit\b.*\breview\b|\bpr\b.*\breview\b|\bprecommit\b|\bpre-commit\b", "medium"),
         ("deep-code-review", r"\bcode review\b|\bdeep\b.*\breview\b|\breview\b.*\bdeep\b|\breview\b.*\bchange\b|\breview\b.*\bcode\b|\b审查\b.*\b代码\b", "medium"),
@@ -193,7 +196,7 @@ class SmartClassifier:
         "review-diff", "deep-code-review", "architecture-review",
         "draft-fix", "draft-feature", "draft-refactor",
         "rewrite-text", "translate-text", "find-related-files",
-        "governance-docs", "governance-integration",
+        "governance-docs", "governance-integration", "governance-status",
         "interface-review", "security-review", "release-risk-review",
         "api-execution-boundary", "control-plane-boundary",
         "suggest-improvements",
@@ -586,6 +589,7 @@ class ProfileMapper:
         "summarize-file": "gemma4_26b_llamacpp",
         "summarize-tree": "gemma4_26b_llamacpp",
         "governance-docs": "docs_agent",
+        "governance-status": "docs_agent",
         "rewrite-text": "gemma4_31b_llamacpp",
         "suggest-improvements": "gemma4_26b_llamacpp",
         "draft-fix": "code_worker_llamacpp",
@@ -755,6 +759,7 @@ class TieringPolicy:
         "translate-text",
         "find-related-files",
         "governance-docs",
+        "governance-status",
         "suggest-improvements",
     }
 

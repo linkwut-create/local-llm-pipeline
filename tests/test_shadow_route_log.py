@@ -11,6 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 from shadow_route_log import log, list_records, stats, _auto_match, SHADOW_DIR
 
 
+@pytest.fixture(autouse=True)
+def _isolated_shadow_dir(tmp_path, monkeypatch):
+    """Keep unit-test probe records out of the production shadow-route log."""
+    monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
+
+
 # ── Auto-match logic ──
 
 def test_match_high_risk_pro():
