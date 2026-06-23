@@ -13,9 +13,9 @@
 ## 1. MCP Tool Contract
 
 ### Tool: local_check
-- **Purpose**: 环境健康检查。Ollama 连通性、模型可用性、profile 推荐
+- **Purpose**: 环境健康检查。OpenAI-compatible / llama.cpp 连通性、模型可用性、profile 推荐（Ollama 仅作为显式 fallback）
 - **Input**: 无必填参数
-- **Output**: `{ok: bool, ollama_connected: bool, models_available: int, recommendations: [str], advisory_only: true}`
+- **Output**: `{ok: bool, openai_compatible_connected: bool, ollama_connected: bool, models_available: int, recommendations: [str], advisory_only: true}`
 - **Side Effects**: 无
 - **LLM Call**: 无（纯启发式）
 - **Compatibility**: output 只能增字段
@@ -251,13 +251,13 @@
 - **Format**: JSON
 - **Schema**: 每个 profile 至少包含 `model`, `risk_level`, `use_for`
 - **Allowed risk_level values** (as of v0.12.0): `"low"`, `"medium"`, `"medium-high"`, `"high"`, `"experimental"`
-- **Allowed _backend_class values** (as of v0.12.0): `"ollama"`, `"ollama_heavy_manual"`, `"ollama_mtp_pending"`, `"llamacpp_unconfigured"`, `"unavailable"`, `"placeholder"`
+- **Allowed _backend_class values** (as of v0.13.0): `"ollama"`, `"ollama_heavy_manual"`, `"ollama_mtp_pending"`, `"openai-compatible"`, `"llamacpp_unconfigured"`, `"unavailable"`, `"placeholder"`
 - **Validation**: `py -3 tools/validate_configs.py`
 - **Compatibility**: 现有 profile 名不能删除或改名；只能增 profile；只能增字段
 
 ### Config Key: `_backend_class`
 - **Type**: string
-- **Default**: `"ollama"` (implicit for profiles without explicit class)
+- **Default**: `"openai-compatible"` (implicit for profiles without explicit class)
 - **Allowed Values**: see above
 - **Used By**: router (eligibility check), call ledger (backend field), health check
 - **Compatibility Notes**: 新增 backend class 需要更新 validate_configs 和 router eligibility
@@ -268,18 +268,31 @@
 - **Used By**: router (task → profile matching), validate_configs
 - **Compatibility**: use_for 值只能增（新增 task type）
 
-### Env Var: `LOCAL_LLM_BASE_URL` / `OLLAMA_HOST`
-- **Purpose**: 指定远程 Ollama 实例
+### Env Var: `LOCAL_LLM_BASE_URL`
+- **Purpose**: 指定 OpenAI-compatible 本地推理端点（默认 LiteLLM/llama.cpp）
+- **Type**: URL string
+- **Default**: `http://127.0.0.1:4000/v1`
+- **Used By**: worker, health check, residency daemon, route committee
+- **Compatibility**: 若 URL 包含 `:11434`，工具仍可选回 Ollama 行为
+
+### Env Var: `OLLAMA_HOST`
+- **Purpose**: 显式指定 Ollama 实例（embedding-only / legacy fallback）
 - **Type**: URL string
 - **Used By**: worker, health check, residency daemon
-- **Compatibility**: 行为不变 — 设置后所有工具使用远程 Ollama
+- **Compatibility**: 设置后相关工具使用 Ollama 作为显式 fallback，不再是默认后端
+
+### Env Var: `LOCAL_LLM_API_KEY`
+- **Purpose**: OpenAI-compatible 端点的 Bearer token
+- **Type**: string
+- **Used By**: worker, health check, residency daemon, route committee
+- **Compatibility**: 不存在时以匿名方式调用
 
 ### Env Var: `LOCAL_LLM_KEEP_ALIVE`
-- **Purpose**: 发送给 Ollama 的 `keep_alive` 时长，控制模型在显存中的保留时间
+- **Purpose**: 发送给 Ollama 的 `keep_alive` 时长（Ollama fallback 时），或作为 residency daemon 的 keepalive 策略提示
 - **Type**: duration string (e.g. `30m`, `2h`, `-1`) 或 truthy env
 - **Default**: 未设置时不发送（Ollama 使用默认值）
 - **Used By**: worker, debate, route committee, residency daemon
-- **Compatibility**: 新增可选变量；未设置时行为与 v0.13.0 完全一致
+- **Compatibility**: 对 openai-compatible 端点无原生 keepalive 语义，residency 通过周期性短请求模拟
 
 ### Env Var: `LOCAL_LLM_REQUEST_TIMEOUT`
 - **Purpose**: 覆盖本地模型 HTTP 调用的默认超时
@@ -291,7 +304,7 @@
 ### Env Var: `LOCAL_LLM_RESIDENT_MODELS`
 - **Purpose**: residency daemon 默认保持常驻的模型列表
 - **Type**: comma-separated model names
-- **Default**: `qwen3.6:27b,nemotron:30b,gemma4:31b-unsloth`
+- **Default**: `qwen3.6-deep,gemma4-31b`
 - **Used By**: `tools/local_llm_residency.py`
 - **Compatibility**: 新增可选变量
 
@@ -378,10 +391,12 @@
 - **Required Methods**: `call_model(prompt, model, ...) -> ModelCallResult`
 - **Input Format**: text prompt + model name
 - **Output Format**: `ModelCallResult(content: str, usage: dict | None)`
-- **Supported Providers**: `ollama`, `openai-compatible`, `deepseek`
+- **Supported Providers**: `openai-compatible` (default), `ollama` (explicit fallback/embedding), `deepseek`
+- **Default Endpoint**: `LOCAL_LLM_BASE_URL` → `http://127.0.0.1:4000/v1` (LiteLLM/llama.cpp)
 - **Error Handling**: 返回 `(None, error_info)` 而非 raise
 - **Timeout Rules**: worker 层 60s default, debate 层 120s, cloud 层 180s
 - **Fallback Rules**: 
+  - 默认后端为 openai-compatible；Ollama 仅在 `provider='ollama'` 或 `LOCAL_LLM_BASE_URL`/`OLLAMA_HOST` 指向 `:11434` 时触发
   - Timeout → lighter model
   - confidence=low | uncertain_points > 3 → 默认不升级（P3-C1/C2）
   - 可恢复 legacy 行为 via env knob
@@ -409,7 +424,7 @@
 ### Provider Registration (profiles)
 - **Entry Format**: `{"model": str, "risk_level": str, "use_for": [str], "_backend_class": str, ...}`
 - **Naming Convention**: `family_size_quant_variant` (e.g., `qwen3.6_14b_q8_ud`)
-- **Auto-eligibility**: `_backend_class == "ollama"` or `"ollama_mtp_pending"`
+- **Auto-eligibility**: `_backend_class == "openai-compatible"` or `"ollama"` or `"ollama_mtp_pending"`
 - **Manual-only**: `_backend_class == "ollama_heavy_manual"` or model with `risk_level == "experimental"`
 
 ---

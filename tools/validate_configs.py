@@ -20,6 +20,10 @@ PROFILES_PATH = SCRIPT_DIR / "local_llm_profiles.json"
 TASKS_PATH = SCRIPT_DIR / "local_llm_tasks.json"
 
 VALID_RISK_LEVELS = {"low", "medium", "medium-high", "high", "experimental"}
+VALID_BACKEND_CLASSES = {
+    "ollama", "ollama_heavy_manual", "ollama_mtp_pending", "openai-compatible",
+    "cloud_deepseek", "llamacpp_unconfigured", "unavailable", "placeholder",
+}
 
 DRAFT_TASKS = {"draft-fix", "draft-feature", "draft-refactor", "suggest-improvements"}
 
@@ -111,6 +115,25 @@ def validate_profiles(profiles_data: dict) -> tuple[list[str], list[str]]:
         temp = conf.get("temperature")
         if temp is not None and not isinstance(temp, (int, float)):
             errors.append(f"{prefix}: 'temperature' must be a number")
+
+        backend_class = conf.get("_backend_class")
+        if backend_class is not None and backend_class not in VALID_BACKEND_CLASSES:
+            errors.append(
+                f"{prefix}: invalid _backend_class '{backend_class}' "
+                f"(must be one of: {', '.join(sorted(VALID_BACKEND_CLASSES))})"
+            )
+
+    default_profile = profiles_data.get("default_profile", "")
+    if default_profile:
+        if default_profile not in profiles:
+            errors.append(f"default_profile '{default_profile}' does not exist in profiles.json")
+        else:
+            dp_backend = profiles[default_profile].get("_backend_class", "openai-compatible")
+            if dp_backend != "openai-compatible":
+                warnings.append(
+                    f"default_profile '{default_profile}' uses backend '{dp_backend}'; "
+                    f"default backend should be openai-compatible"
+                )
 
     return errors, warnings
 

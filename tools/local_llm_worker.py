@@ -407,7 +407,7 @@ def _load_ledger_extra_from_env() -> dict:
 
 @dataclass
 class WorkerConfig:
-    provider: str = "ollama"
+    provider: str = "openai-compatible"
     model: str = ""
     profile: str = ""
     base_url: str = ""
@@ -650,6 +650,42 @@ def _normalize_keep_alive(value: str) -> str | int:
     return value
 
 
+def _build_openai_compat_headers(config: WorkerConfig) -> dict:
+    """Return headers for an OpenAI-compatible request, injecting LOCAL_LLM_API_KEY."""
+    headers = {"Content-Type": "application/json"}
+    api_key = config.api_key or os.environ.get("LOCAL_LLM_API_KEY", "")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _openai_compat_request(config: WorkerConfig, payload: dict, stream: bool = False) -> "requests.Response":
+    """POST to the OpenAI-compatible /chat/completions endpoint.
+
+    This is the single HTTP wrapper shared by non-streaming and streaming paths.
+    It centralizes header/auth handling and timeout configuration.
+    """
+    url = f"{config.base_url}/chat/completions"
+    headers = _build_openai_compat_headers(config)
+    return requests.post(
+        url,
+        json=payload,
+        timeout=config.timeout,
+        headers=headers,
+        stream=stream,
+    )
+
+
+def _extract_openai_message(data: dict) -> dict:
+    """Extract the first message dict from an OpenAI-compatible response."""
+    if not isinstance(data, dict):
+        return {}
+    choices = data.get("choices") or []
+    if choices and isinstance(choices[0], dict):
+        return choices[0].get("message", {}) or {}
+    return {}
+
+
 def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResult":
     from model_call_result import ModelCallResult, normalize_usage
     url = f"{config.base_url}/api/chat"
@@ -680,7 +716,6 @@ def call_ollama(system: str, user: str, config: WorkerConfig) -> "ModelCallResul
 
 def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCallResult":
     from model_call_result import ModelCallResult, normalize_usage
-    url = f"{config.base_url}/chat/completions"
     payload = {
         "model": config.model,
         "messages": [
@@ -690,22 +725,15 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCa
         "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": False,
     }
-    headers = {}
-    if config.api_key:
-        headers["Authorization"] = f"Bearer {config.api_key}"
-    resp = requests.post(url, json=payload, timeout=config.timeout, headers=headers or None)
+    resp = _openai_compat_request(config, payload)
     resp.raise_for_status()
     data = resp.json()
-    content = ""
-    if isinstance(data, dict):
-        choices = data.get("choices") or []
-        if choices and isinstance(choices[0], dict):
-            msg = choices[0].get("message", {})
-            content = msg.get("content", "") or ""
-            # llama.cpp --reasoning auto: short max_tokens may return empty
-            # content with reasoning_content populated instead.
-            if not content:
-                content = msg.get("reasoning_content", "") or ""
+    msg = _extract_openai_message(data)
+    content = msg.get("content", "") or ""
+    # llama.cpp --reasoning auto: short max_tokens may return empty
+    # content with reasoning_content populated instead.
+    if not content:
+        content = msg.get("reasoning_content", "") or ""
     usage = normalize_usage("openai-compatible", data) if isinstance(data, dict) else None
     return ModelCallResult(content=content, usage=usage, raw_provider="openai-compatible")
 
@@ -740,7 +768,6 @@ def call_ollama_stream(system: str, user: str, config: WorkerConfig):
 
 def call_openai_compat_stream(system: str, user: str, config: WorkerConfig):
     """Yield content deltas from OpenAI-compatible streaming /v1/chat/completions (SSE)."""
-    url = f"{config.base_url}/chat/completions"
     payload = {
         "model": config.model,
         "messages": [
@@ -750,7 +777,7 @@ def call_openai_compat_stream(system: str, user: str, config: WorkerConfig):
         "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": True,
     }
-    resp = requests.post(url, json=payload, timeout=config.timeout, stream=True)
+    resp = _openai_compat_request(config, payload, stream=True)
     resp.raise_for_status()
     for line in resp.iter_lines():
         if not line or line.startswith(b":"):
@@ -1083,15 +1110,16 @@ def load_task_config(task_name: str) -> dict:
 
 
 def _resolve_provider(args_provider: str | None = None) -> str:
-    """Resolve provider: args > LOCAL_LLM_PROVIDER env > auto-detect > 'ollama'.
+    """Resolve provider: args > LOCAL_LLM_PROVIDER env > auto-detect > 'openai-compatible'.
 
-    Extracted from resolve_config() so debate can share the same logic
-    (v0.10.0-M P6-B3-B/H5 endpoint resolution unification).
+    Migrated default to openai-compatible (LiteLLM/llama.cpp gateway).
+    Ollama is selected only when explicitly requested or when LOCAL_LLM_BASE_URL
+    points to an Ollama port (:11434).
     """
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    auto_provider = "ollama"
-    if env_base and ":11434" not in env_base:
-        auto_provider = "openai-compatible"
+    auto_provider = "openai-compatible"
+    if env_base and ":11434" in env_base:
+        auto_provider = "ollama"
     return (
         args_provider
         or os.environ.get("LOCAL_LLM_PROVIDER")
@@ -1102,8 +1130,8 @@ def _resolve_provider(args_provider: str | None = None) -> str:
 def _resolve_endpoint(provider: str, args_base_url: str | None = None) -> str:
     """Resolve base URL for *provider*: args > LOCAL_LLM_BASE_URL > OLLAMA_HOST > default.
 
-    Extracted from resolve_config() so debate can share the same logic
-    (v0.10.0-M P6-B3-B/H5 endpoint resolution unification).
+    Default openai-compatible endpoint is the LiteLLM proxy (127.0.0.1:4000/v1).
+    Ollama default remains localhost:11434 for explicit ollama provider.
     """
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
     if provider == "ollama":
@@ -1111,7 +1139,7 @@ def _resolve_endpoint(provider: str, args_base_url: str | None = None) -> str:
         if ollama_host and not ollama_host.startswith("http"):
             ollama_host = f"http://{ollama_host}"
         return args_base_url or env_base or ollama_host or "http://localhost:11434"
-    return args_base_url or env_base or "http://localhost:8080/v1"
+    return args_base_url or env_base or "http://127.0.0.1:4000/v1"
 
 
 def resolve_config(args: argparse.Namespace) -> WorkerConfig:

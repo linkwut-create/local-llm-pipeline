@@ -509,12 +509,12 @@ def test_resolve_provider_from_env(monkeypatch):
     assert _resolve_provider(None) == "openai-compatible"
 
 
-def test_resolve_provider_default_ollama(monkeypatch):
-    """Default to ollama when nothing is set."""
+def test_resolve_provider_default_openai_compatible(monkeypatch):
+    """Default to openai-compatible when nothing is set."""
     from local_llm_worker import _resolve_provider
     monkeypatch.delenv("LOCAL_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
-    assert _resolve_provider(None) == "ollama"
+    assert _resolve_provider(None) == "openai-compatible"
 
 
 def test_resolve_endpoint_ollama_default(monkeypatch):
@@ -526,11 +526,11 @@ def test_resolve_endpoint_ollama_default(monkeypatch):
 
 
 def test_resolve_endpoint_openai_compat_default(monkeypatch):
-    """OpenAI-compatible default is localhost:8080/v1."""
+    """OpenAI-compatible default is LiteLLM gateway 127.0.0.1:4000/v1."""
     from local_llm_worker import _resolve_endpoint
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
     monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
-    assert _resolve_endpoint("openai-compatible") == "http://localhost:8080/v1"
+    assert _resolve_endpoint("openai-compatible") == "http://127.0.0.1:4000/v1"
 
 
 def test_resolve_endpoint_args_override(monkeypatch):
@@ -604,5 +604,5 @@ def test_worker_config_uses_shared_helpers(monkeypatch):
         stream=False,
     )
     cfg = resolve_config(args)
-    assert cfg.provider == "ollama"
-    assert cfg.base_url == "http://localhost:11434"
+    assert cfg.provider == "openai-compatible"
+    assert cfg.base_url == "http://127.0.0.1:4000/v1"

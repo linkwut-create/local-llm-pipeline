@@ -87,7 +87,7 @@
     },
     "release-risk-review": {
       "risk": "high",
-      "default_profile": "release_auditor",
+      "default_profile": "release_auditor_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -205,7 +205,7 @@
     },
     "debate-review-diff": {
       "risk": "medium-high",
-      "default_profile": "code_worker",
+      "default_profile": "code_worker_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -214,7 +214,7 @@
     },
     "debate-risk-analysis": {
       "risk": "high",
-      "default_profile": "reasoning_checker",
+      "default_profile": "deep_reasoning_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -223,7 +223,7 @@
     },
     "debate-architecture-review": {
       "risk": "high",
-      "default_profile": "deep_reviewer",
+      "default_profile": "deep_reasoning_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -232,7 +232,7 @@
     },
     "debate-failure-mode-analysis": {
       "risk": "medium-high",
-      "default_profile": "reasoning_checker",
+      "default_profile": "deep_reasoning_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -241,7 +241,7 @@
     },
     "health-report": {
       "risk": "low",
-      "default_profile": "fast_summary",
+      "default_profile": "qwen3.6_llamacpp",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,

@@ -33,8 +33,8 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Committee model configuration (env var overridable)
 # ═══════════════════════════════════════════════════════════════
 
-_LOCAL_ROUTE_QWEN_MODEL = os.environ.get("LOCAL_ROUTE_QWEN_MODEL", "qwen3.6:27b")
-_LOCAL_ROUTE_GEMMA_MODEL = os.environ.get("LOCAL_ROUTE_GEMMA_MODEL", "gemma4:31b-unsloth")
+_LOCAL_ROUTE_QWEN_MODEL = os.environ.get("LOCAL_ROUTE_QWEN_MODEL", "qwen3.6-deep")
+_LOCAL_ROUTE_GEMMA_MODEL = os.environ.get("LOCAL_ROUTE_GEMMA_MODEL", "gemma4-31b")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -539,7 +539,11 @@ def merge_judgements(qwen: RouteJudgement,
 # ═══════════════════════════════════════════════════════════════
 
 def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
-    """Call Ollama model via API (not CLI) to avoid terminal artifacts."""
+    """Call local model via OpenAI-compatible API (default: LiteLLM/llama.cpp).
+
+    Retains an Ollama fallback path when OLLAMA_HOST is set or the configured
+    base URL points at an Ollama endpoint (port 11434).
+    """
     import urllib.request as _ur
     import json as _json
 
@@ -551,38 +555,53 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
         except ValueError:
             pass
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"num_predict": 256, "temperature": 0.0},
-    }
-    keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
-    if keep_alive is not None:
-        payload["keep_alive"] = keep_alive
+    base = os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
+    ollama_host = os.environ.get("OLLAMA_HOST")
+    use_ollama = bool(ollama_host) or ":11434" in base
+
+    if use_ollama:
+        # Ollama native generate API
+        url = (ollama_host or base).rstrip("/") + "/api/generate"
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"num_predict": 256, "temperature": 0.0},
+        }
+        keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
+        headers = {"Content-Type": "application/json"}
+    else:
+        # OpenAI-compatible chat completions via LiteLLM -> llama.cpp
+        url = base.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "temperature": 0.0,
+            "max_tokens": 256,
+        }
+        headers = {"Content-Type": "application/json"}
+        api_key = os.environ.get("LOCAL_LLM_API_KEY")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
     body = _json.dumps(payload).encode("utf-8")
 
-    base = os.environ.get("OLLAMA_HOST", "http://193.168.2.2:11434")
-    url = base.rstrip("/") + "/api/generate"
-
     try:
-        req = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
+        req = _ur.Request(url, data=body, headers=headers)
         with _ur.urlopen(req, timeout=timeout) as resp:
             data = _json.loads(resp.read().decode("utf-8"))
-        return data.get("response", "").strip()
+        if use_ollama:
+            return data.get("response", "").strip()
+        choices = data.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            message = choices[0].get("message") or {}
+            return (message.get("content") or "").strip()
+        return ""
     except Exception:
-        # Fallback to CLI
-        try:
-            r = subprocess.run(
-                ["ollama", "run", model, prompt],
-                capture_output=True, text=True,
-                encoding="utf-8", errors="replace",
-                timeout=timeout,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
-            return (r.stdout or "").strip()
-        except Exception:
-            return ""
+        return ""
 
 
 def _call_model_with_retry(model: str, prompt: str, timeout: int = 120, max_retries: int = 1) -> str:

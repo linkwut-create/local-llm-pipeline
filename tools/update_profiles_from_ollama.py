@@ -2,6 +2,11 @@
 """
 Update local_llm_profiles.json based on currently available Ollama models.
 
+DEPRECATED (2026-06-23): This script is no longer part of the default
+local-llm-pipeline workflow. The default inference backend is now llama.cpp
+via LiteLLM. This script is retained only for embedding-only or legacy Ollama
+setups. For llama.cpp model discovery, use tools/local_llm_check.py instead.
+
 Scans `ollama list`, matches models to profiles using keyword heuristics,
 and writes an updated profiles.json. Existing manual overrides are preserved
 unless --reset is used.
@@ -286,6 +291,13 @@ def main():
     parser.add_argument("--apply", action="store_true",
                         help="Apply auto-tune recommendations with >20%% improvement (requires --auto-tune)")
     args = parser.parse_args()
+
+    print(
+        "DEPRECATED: update_profiles_from_ollama.py is no longer part of the default workflow. "
+        "The default backend is llama.cpp via LiteLLM. This script is retained only for "
+        "embedding-only or legacy Ollama setups.",
+        file=sys.stderr,
+    )
 
     if args.apply and not args.auto_tune:
         print("Error: --apply requires --auto-tune")

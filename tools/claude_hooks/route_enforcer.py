@@ -68,29 +68,89 @@ ROUTE_PERMISSIONS = {
 }
 
 
+# Task lifecycle status values
+TASK_STATUS_ACTIVE = "active"
+TASK_STATUS_COMPLETED = "completed"
+TASK_STATUS_CANCELLED = "cancelled"
+TASK_STATUS_FAILED = "failed"
+TASK_STATUS_DISCARDED = "discarded"
+TERMINAL_STATUSES = {
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_CANCELLED,
+    TASK_STATUS_FAILED,
+    TASK_STATUS_DISCARDED,
+}
+
+
+# Control statements. Prompts matching these should not create a new task.
+_CONTINUATION_KEYWORDS = (
+    "继续", "请继续", "接着", "往下", "推进",
+    "approve", "approved", "continue", "proceed", "go on", "move on", "carry on",
+)
+
+_CONTROL_STATEMENTS = {
+    "run_tests": ("运行测试", "run tests", "跑测试", "执行测试"),
+    "retry": ("重试", "retry", "再试一次"),
+    "accept": ("接受", "accept", "approved", "approve", "批准"),
+    "reject": ("拒绝", "reject", "decline"),
+    "stop": ("停止", "stop", "halt", "pause"),
+    "cancel": ("取消任务", "cancel", "cancel task", "abort"),
+    "new_task": ("新建任务", "new task", "start new task", "newtask"),
+}
+
+
 # ═══════════════════════════════════════════════════════════════
 # Task session management
 # ═══════════════════════════════════════════════════════════════
 
 def _tasks_dir() -> Path:
+    """Return the tasks directory, overridable via env var for tests."""
+    override = os.environ.get("LOCAL_LLM_TASKS_DIR")
+    if override:
+        return Path(override)
     return Path(".local_llm_out/tasks")
 
 
-def create_task_session(user_task: str) -> dict:
+def _project_root() -> str:
+    """Return the absolute project root."""
+    return str(Path.cwd().resolve())
+
+
+def _claude_session_id() -> str | None:
+    """Return a stable identifier for the current Claude Code session."""
+    return os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("PID")
+
+
+def create_task_session(
+    user_task: str,
+    *,
+    project_root: str | None = None,
+    claude_session_id: str | None = None,
+    parent_task_id: str | None = None,
+    is_test_task: bool = False,
+) -> dict:
     """Create a new task session. Returns {task_id, session_path, ...}."""
     task_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]
     session_dir = _tasks_dir() / task_id
     session_dir.mkdir(parents=True, exist_ok=True)
     (session_dir / "artifacts").mkdir(exist_ok=True)
 
+    now = datetime.now(timezone.utc).isoformat()
     session = {
         "task_id": task_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now,
+        "updated_at": now,
         "user_task": user_task[:2000],
         "phase": "planning",  # planning → routing → executing → complete
+        "status": TASK_STATUS_ACTIVE,
+        "project_root": project_root if project_root is not None else _project_root(),
+        "claude_session_id": claude_session_id if claude_session_id is not None else _claude_session_id(),
+        "parent_task_id": parent_task_id,
+        "is_test_task": bool(is_test_task),
         "plan_json_exists": False,
         "route_json_exists": False,
         "artifacts": [],
+        "messages": [],
     }
     (session_dir / "session.json").write_text(
         json.dumps(session, ensure_ascii=False, indent=2),
@@ -103,30 +163,151 @@ def create_task_session(user_task: str) -> dict:
     return session
 
 
-def get_active_task() -> dict | None:
-    """Find the most recent active task session by created_at."""
+def get_active_task(
+    project_root: str | None = None,
+    claude_session_id: str | None = None,
+) -> dict | None:
+    """Find the most recent active task session matching the current context.
+
+    Selection rules (all must match):
+      - status is not terminal (completed/cancelled/failed/discarded)
+      - not a test task
+      - project_root matches (if provided or inferrable)
+      - claude_session_id matches (if provided)
+
+    Returns the most recent by `updated_at`, falling back to `created_at`.
+    """
     tasks_dir = _tasks_dir()
     if not tasks_dir.exists():
         return None
+
+    target_project = project_root if project_root is not None else _project_root()
+    target_session = claude_session_id if claude_session_id is not None else _claude_session_id()
+
     sessions = []
     for sd in tasks_dir.iterdir():
         session_file = sd / "session.json"
-        if session_file.exists():
-            try:
-                data = json.loads(session_file.read_text(encoding="utf-8"))
-                if (
-                    isinstance(data, dict)
-                    and "user_task" in data
-                    and "task_id" in data
-                    and "created_at" in data
-                ):
-                    sessions.append(data)
-            except Exception:
-                continue
+        if not session_file.exists():
+            continue
+        try:
+            data = json.loads(session_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if not all(k in data for k in ("task_id", "user_task", "created_at", "status")):
+            continue
+        if data.get("is_test_task"):
+            continue
+        if data.get("status") in TERMINAL_STATUSES:
+            continue
+        if data.get("project_root", target_project) != target_project:
+            continue
+        if claude_session_id is not None and data.get("claude_session_id") != target_session:
+            continue
+        sessions.append(data)
+
     if not sessions:
         return None
-    sessions.sort(key=lambda s: s["created_at"], reverse=True)
+
+    sessions.sort(
+        key=lambda s: (s.get("updated_at") or s.get("created_at"), s.get("created_at", "")),
+        reverse=True,
+    )
     return sessions[0]
+
+
+def _load_session(task_id: str) -> dict | None:
+    """Load a session dict from disk."""
+    session_file = _tasks_dir() / task_id / "session.json"
+    if not session_file.exists():
+        return None
+    try:
+        data = json.loads(session_file.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def append_task_message(task_id: str, role: str, content: str) -> dict | None:
+    """Append a message to the task's message history and update timestamp."""
+    session = _load_session(task_id)
+    if session is None:
+        return None
+    messages = session.get("messages", [])
+    messages.append({
+        "role": role,
+        "content": content[:5000],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    _update_session(task_id, {
+        "messages": messages,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return _load_session(task_id)
+
+
+def set_task_status(task_id: str, status: str) -> dict | None:
+    """Set the task status. Must be a known status value."""
+    if status not in ({TASK_STATUS_ACTIVE} | TERMINAL_STATUSES):
+        raise ValueError(f"Unknown task status: {status}")
+    session = _load_session(task_id)
+    if session is None:
+        return None
+    updates = {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if status in TERMINAL_STATUSES:
+        updates["phase"] = "complete"
+    _update_session(task_id, updates)
+    return _load_session(task_id)
+
+
+def complete_task(task_id: str) -> dict | None:
+    """Mark a task as completed."""
+    return set_task_status(task_id, TASK_STATUS_COMPLETED)
+
+
+def cancel_task(task_id: str) -> dict | None:
+    """Mark a task as cancelled."""
+    return set_task_status(task_id, TASK_STATUS_CANCELLED)
+
+
+def resume_task(task_id: str) -> dict | None:
+    """Resume a previously terminal task by setting status back to active."""
+    return set_task_status(task_id, TASK_STATUS_ACTIVE)
+
+
+def _is_continuation_prompt(prompt: str) -> bool:
+    """Return True if the prompt is a continuation/control statement."""
+    text = prompt.strip().lower()
+    if not text:
+        return False
+    if text in _CONTINUATION_KEYWORDS:
+        return True
+    # Match control statements without requiring exact equality
+    for keywords in _CONTROL_STATEMENTS.values():
+        for kw in keywords:
+            if text == kw or text.startswith(kw + " "):
+                return True
+    return False
+
+
+def _detect_control_statement(prompt: str) -> str | None:
+    """Detect the control intent of a prompt.
+
+    Returns one of: run_tests, retry, accept, reject, stop, cancel, new_task,
+    or None for a normal task-like prompt.
+    """
+    text = prompt.strip().lower()
+    if not text:
+        return None
+    for intent, keywords in _CONTROL_STATEMENTS.items():
+        for kw in keywords:
+            if text == kw or text.startswith(kw + " ") or text.endswith(" " + kw):
+                return intent
+    # Generic continuation keywords append to active task.
+    if text in _CONTINUATION_KEYWORDS:
+        return "continue"
+    return None
 
 
 def load_route(task_id: str) -> dict | None:

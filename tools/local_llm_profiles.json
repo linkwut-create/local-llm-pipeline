@@ -323,6 +323,42 @@
       "_audition_date": "2026-06-12",
       "_backend_class": "ollama_heavy_manual"
     },
+    "release_auditor_llamacpp": {
+      "model": "deepseek-r1-32b",
+      "_strengths": [
+        "accuracy",
+        "deep-review",
+        "architecture",
+        "release-audit",
+        "engineering-judgment"
+      ],
+      "temperature": 0.1,
+      "max_context_tokens": 16384,
+      "max_chars": 60000,
+      "max_output_chars": 6000,
+      "max_output_tokens": 6144,
+      "use_for": [
+        "architecture-review",
+        "deep-code-review",
+        "risk-analysis",
+        "release-risk-review"
+      ],
+      "candidates": [
+        "qwen3.6_llamacpp_direct",
+        "qwen3.6_llamacpp",
+        "deep_reasoning_llamacpp"
+      ],
+      "risk_level": "high",
+      "_backend": "LiteLLM -> llama.cpp:8010",
+      "_backend_class": "openai-compatible",
+      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
+      "_benchmark": "2026-06-21: DeepSeek R1 distill 32B via llama.cpp. Release audit equivalent on llama.cpp backend.",
+      "_constraints": "Release audit only. Must never enter commit gate or default review path. Exclude model load time from task latency measurements.",
+      "_model_family": "dense",
+      "_residency": "on_demand",
+      "_service": "deepseek-r1-32b-llama",
+      "_port": 8010
+    },
     "gemma4_26b_llamacpp": {
       "model": "gemma-4-26B-A4B-it-UD-Q8_K_XL.gguf",
       "_strengths": [
@@ -1028,7 +1064,7 @@
       "_benchmark": "2026-06-21: loads 14s. GLM-4.7 Flash, translation and CJK."
     }
   },
-  "default_profile": "fast_summary",
+  "default_profile": "qwen3.6_llamacpp",
   "_backends": {
     "ollama": {
       "description": "Default backend. All profiles except mistral_119b work via Ollama.",

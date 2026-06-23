@@ -46,6 +46,18 @@ Quarantine: .quarantine/ (6 models with Q8 replacements)
 - MTP-compatible llama.cpp build
 - Ollama Qwen3.5 series removal
 
+## 更新 (2026-06-23) — llama.cpp 默认后端迁移完成
+
+- `tools/local_llm_worker.py`：默认 provider 改为 `openai-compatible`，默认 endpoint `http://127.0.0.1:4000/v1`；Ollama 仅在 `LOCAL_LLM_BASE_URL` 指向 `:11434` 或显式指定 `provider=ollama` 时触发。
+- `tools/local_route_committee.py`：`_call_model()` 改为 OpenAI-compatible `/v1/chat/completions`；默认模型改为 `qwen3.6-deep` / `gemma4-31b`。
+- `tools/local_llm_check.py`：默认优先探测 LiteLLM `/v1/models`，Ollama 降为显式 fallback。
+- `tools/local_llm_residency.py`：keepalive 改为 `/v1/chat/completions` 短请求；默认常驻模型改为 `qwen3.6-deep`、`gemma4-31b`。
+- `tools/local_llm_profiles.json`：`default_profile` 指向 `qwen3.6_llamacpp`（`_backend_class: openai-compatible`）。
+- `tools/local_llm_tasks.json`：debate 与 health-report 任务默认指向 `*_llamacpp` profile。
+- `tools/update_profiles_from_ollama.py`：标记为 deprecated/embedding-only。
+- `INTERFACES.md` / `tools/validate_configs.py`：`_backend_class` 允许 `openai-compatible`。
+- 性能基线（首次本地测量，LiteLLM 可达时）：待补充。
+
 ## 更新 (2026-06-22)
 
 - `qwen3-coder-llama.service` is installed as a user systemd service for explicit on-demand starts; it is disabled/inactive under the resident policy.

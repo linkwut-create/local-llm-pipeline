@@ -22,9 +22,11 @@ Usage:
 
 Environment variables:
     LOCAL_LLM_RESIDENT_MODELS   comma-separated model names
-    LOCAL_LLM_KEEP_ALIVE        duration string, e.g. 30m, 2h, -1
+    LOCAL_LLM_KEEP_ALIVE        duration string, e.g. 30m, 2h, -1 (Ollama fallback only)
     LOCAL_LLM_RESIDENCY_INTERVAL seconds between keepalive pings
-    OLLAMA_HOST                 Ollama endpoint (default http://localhost:11434)
+    LOCAL_LLM_BASE_URL          OpenAI-compatible endpoint (default http://127.0.0.1:4000/v1)
+    LOCAL_LLM_API_KEY           API key for the OpenAI-compatible endpoint
+    OLLAMA_HOST                 Ollama endpoint (fallback only)
 """
 
 from __future__ import annotations
@@ -51,9 +53,10 @@ except ImportError:
 # Defaults
 # ═══════════════════════════════════════════════════════════════════════════════
 
-DEFAULT_MODELS = ["qwen3.6:27b", "nemotron:30b", "gemma4:31b-unsloth"]
+DEFAULT_MODELS = ["qwen3.6-deep", "gemma4-31b"]
 DEFAULT_KEEP_ALIVE = "30m"
 DEFAULT_INTERVAL = 60
+DEFAULT_LLM_BASE_URL = "http://127.0.0.1:4000/v1"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 
@@ -161,8 +164,16 @@ def _terminate_process(pid: int) -> bool:
 # Ollama helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _llm_base_url() -> str:
+    """Resolve the primary OpenAI-compatible endpoint."""
+    base = os.environ.get("LOCAL_LLM_BASE_URL", "").strip()
+    if base:
+        return base.rstrip("/")
+    return DEFAULT_LLM_BASE_URL
+
+
 def _ollama_base_url() -> str:
-    """Resolve Ollama endpoint, mirroring local_llm_worker logic."""
+    """Resolve Ollama endpoint for fallback keepalive."""
     host = os.environ.get("OLLAMA_HOST", "").strip()
     if host:
         if not host.startswith(("http://", "https://")):
@@ -178,10 +189,51 @@ def _normalize_keep_alive_payload(value: str) -> str | int:
     return value
 
 
+def _is_ollama_endpoint(base_url: str) -> bool:
+    return ":11434" in base_url or ":11436" in base_url
+
+
 def _send_keepalive(model: str, keep_alive: str, base_url: str | None = None) -> dict[str, Any]:
     """Ping a model to keep it loaded. Returns {ok, model, keep_alive, error}."""
-    base = (base_url or _ollama_base_url()).rstrip("/")
-    url = f"{base}/api/generate"
+    base = (base_url or _llm_base_url()).rstrip("/")
+    if _is_ollama_endpoint(base):
+        return _send_keepalive_ollama(model, keep_alive, base)
+    return _send_keepalive_openai_compat(model, base)
+
+
+def _send_keepalive_openai_compat(model: str, base_url: str) -> dict[str, Any]:
+    """Keepalive via OpenAI-compatible /v1/chat/completions (LiteLLM/llama.cpp)."""
+    url = f"{base_url}/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": False,
+        "max_tokens": 1,
+        "temperature": 0.0,
+    }
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("LOCAL_LLM_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        if requests is not None:
+            resp = requests.post(url, json=payload, headers=headers, timeout=30)
+            resp.raise_for_status()
+            return {"ok": True, "model": model, "keep_alive": "n/a", "error": None}
+        # Fallback to urllib
+        import urllib.request as _ur
+        data = json.dumps(payload).encode("utf-8")
+        req = _ur.Request(url, data=data, headers=headers)
+        with _ur.urlopen(req, timeout=30) as resp:
+            resp.read()
+        return {"ok": True, "model": model, "keep_alive": "n/a", "error": None}
+    except Exception as exc:
+        return {"ok": False, "model": model, "keep_alive": "n/a", "error": str(exc)}
+
+
+def _send_keepalive_ollama(model: str, keep_alive: str, base_url: str) -> dict[str, Any]:
+    """Keepalive via Ollama /api/generate (fallback path)."""
+    url = f"{base_url}/api/generate"
     payload = {
         "model": model,
         "prompt": " ",
@@ -194,7 +246,6 @@ def _send_keepalive(model: str, keep_alive: str, base_url: str | None = None) ->
             resp = requests.post(url, json=payload, timeout=30)
             resp.raise_for_status()
             return {"ok": True, "model": model, "keep_alive": keep_alive, "error": None}
-        # Fallback to urllib
         import urllib.request as _ur
         data = json.dumps(payload).encode("utf-8")
         req = _ur.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -206,8 +257,18 @@ def _send_keepalive(model: str, keep_alive: str, base_url: str | None = None) ->
 
 
 def _unload_model(model: str, base_url: str | None = None) -> dict[str, Any]:
-    """Force a model to unload by sending keep_alive=0."""
-    return _send_keepalive(model, "0", base_url=base_url)
+    """Force a model to unload by sending keep_alive=0.
+
+    OpenAI-compatible servers do not expose an unload primitive; fall back to
+    the Ollama endpoint when OLLAMA_HOST is configured.
+    """
+    base = (base_url or _llm_base_url()).rstrip("/")
+    if _is_ollama_endpoint(base):
+        return _send_keepalive_ollama(model, "0", base)
+    ollama_base = _ollama_base_url()
+    if ollama_base:
+        return _send_keepalive_ollama(model, "0", ollama_base)
+    return {"ok": False, "model": model, "keep_alive": "0", "error": "unload requires an Ollama endpoint"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -366,7 +427,7 @@ def cmd_stop(args: argparse.Namespace) -> int:
                 if not result["ok"]:
                     print(f"  unload warning for {model}: {result['error']}", file=sys.stderr)
         else:
-            print(f"Stopping daemon (pid {pid}); models will follow Ollama's default keepalive.")
+            print(f"Stopping daemon (pid {pid}); models will follow the backend's default keepalive.")
         _terminate_process(pid)
     else:
         print(f"Daemon pid {pid} is not running; cleaning up stale state.")

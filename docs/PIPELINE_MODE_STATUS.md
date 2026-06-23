@@ -29,6 +29,18 @@ pytest tests/
 
 ---
 
+## Backend Migration Note (2026-06-23)
+
+The local inference backend has been migrated from Ollama to llama.cpp via the
+LiteLLM:4000 OpenAI-compatible gateway. This is a prerequisite for several
+pipeline-mode phases (model switching, reproducible hooks, cost evaluation) and
+is tracked in detail in `docs/INFERENCE_MIGRATION_STATUS.md`.
+
+- Default endpoint: `http://127.0.0.1:4000/v1`
+- Resident priority 1: `qwen3.6-deep` (llama.cpp:8001)
+- Resident priority 2: `gemma4-31b` (llama.cpp:8004)
+- Ollama is retained only for embedding models and explicit fallback.
+
 ## Phase Progress
 
 | Phase | Title | Status | Blocking Issues |

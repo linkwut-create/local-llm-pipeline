@@ -33,13 +33,15 @@ def test_benchmark_json_output_fields():
     assert required_fields.issubset(sample.keys())
 
 
-def test_benchmark_default_profile_is_fast_summary():
-    """Default benchmark should only run fast_summary, not all profiles."""
+def test_benchmark_default_profile_is_llamacpp():
+    """Default profile must be the llama.cpp-backed qwen3.6 profile."""
     data = _load_profiles()
-    default = data.get("default_profile", "fast_summary")
-    assert default == "fast_summary", (
-        f"Default profile should be fast_summary, got {default}"
+    default = data.get("default_profile", "qwen3.6_llamacpp")
+    assert default == "qwen3.6_llamacpp", (
+        f"Default profile should be qwen3.6_llamacpp, got {default}"
     )
+    profile = data["profiles"][default]
+    assert profile.get("_backend_class") == "openai-compatible"
 
 
 def test_benchmark_script_has_all_flag():

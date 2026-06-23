@@ -1,5 +1,6 @@
 """Tests for tools/claude_hooks/route_enforcer.py — hook enforcement logic."""
 import json
+import os
 import subprocess
 import sys
 import time
@@ -13,12 +14,26 @@ sys.path.insert(0, str(TOOLS_DIR))
 sys.path.insert(0, str(CLAUDE_HOOKS_DIR))
 
 
+@pytest.fixture(autouse=True)
+def isolated_tasks_dir(monkeypatch, tmp_path):
+    """Redirect task I/O to a per-test temporary directory.
+
+    Both in-process calls (via _tasks_dir reading LOCAL_LLM_TASKS_DIR) and
+    subprocess hook invocations (via _run_hook forwarding the env var) use
+    tmp_path, so tests never pollute the real .local_llm_out/tasks/ tree.
+    """
+    tasks_dir = tmp_path / "tasks"
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LOCAL_LLM_TASKS_DIR", str(tasks_dir))
+    yield tasks_dir
+
+
 def test_create_task_session():
     import route_enforcer as re
     session = re.create_task_session("test task")
     assert session["task_id"]
     assert session["phase"] == "planning"
-    assert (Path(".local_llm_out/tasks") / session["task_id"] / "session.json").exists()
+    assert (re._tasks_dir() / session["task_id"] / "session.json").exists()
 
 
 def test_get_active_task():
@@ -107,7 +122,8 @@ def test_user_prompt_short_input():
 
 def test_user_prompt_creates_context():
     from route_enforcer import on_user_prompt_submit
-    r = on_user_prompt_submit({"prompt": "fix null pointer in login"})
+    # Explicit new-task request creates a fresh task session.
+    r = on_user_prompt_submit({"prompt": "new task: fix null pointer in login"})
     assert "PLAN-ONLY" in r.get("additionalContext", "")
 
 
@@ -704,6 +720,9 @@ def _run_hook(payload):
         payload_str = json.dumps(payload)
     else:
         payload_str = str(payload)
+    env = os.environ.copy()
+    if "LOCAL_LLM_TASKS_DIR" in os.environ:
+        env["LOCAL_LLM_TASKS_DIR"] = os.environ["LOCAL_LLM_TASKS_DIR"]
     r = subprocess.run(
         [sys.executable, str(ROUTE_ENFORCER)],
         input=payload_str,
@@ -711,6 +730,7 @@ def _run_hook(payload):
         text=True,
         timeout=30,
         check=False,
+        env=env,
     )
     if not r.stdout.strip():
         return {}
@@ -723,7 +743,7 @@ class TestRouteEnforcerSubprocess:
     def test_user_prompt_submit_yields_plan_only(self):
         result = _run_hook({
             "hook_event_name": "UserPromptSubmit",
-            "prompt": "fix null pointer in the login handler",
+            "prompt": "new task: fix null pointer in the login handler",
         })
         assert "PLAN-ONLY" in result.get("additionalContext", "")
 
@@ -797,3 +817,234 @@ class TestRouteEnforcerSubprocess:
             "prompt": "some task without an event name",
         })
         assert result == {}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Phase 1 — Task lifecycle hardening
+# ═══════════════════════════════════════════════════════════════
+
+class TestTaskLifecycle:
+    """Verify task session reuse, isolation, and status rules."""
+
+    def test_first_substantive_prompt_creates_task(self):
+        import route_enforcer as re
+        r = re.on_user_prompt_submit({
+            "prompt": "implement user authentication",
+            "claude_session_id": "session-A",
+        })
+        assert "PLAN-ONLY" in r.get("additionalContext", "")
+        assert "TASK SESSION:" in r.get("additionalContext", "")
+
+    def test_continuation_prompt_appends_to_active_task(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement user authentication",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+
+        second = re.on_user_prompt_submit({
+            "prompt": "continue with the implementation and add tests",
+            "claude_session_id": "session-A",
+        })
+        assert second.get("additionalContext", "").startswith(f"[TASK SESSION: {task_id}]")
+        assert "Continuing active task" in second.get("additionalContext", "")
+
+        session = re._load_session(task_id)
+        assert len(session["messages"]) == 2
+        assert session["messages"][0]["role"] == "user"
+        assert "authentication" in session["messages"][0]["content"]
+        assert session["messages"][1]["role"] == "user"
+        assert "tests" in session["messages"][1]["content"]
+
+    def test_new_task_keyword_creates_separate_task(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "fix the login bug",
+            "claude_session_id": "session-A",
+        })
+        first_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+
+        second = re.on_user_prompt_submit({
+            "prompt": "new task: refactor the database layer",
+            "claude_session_id": "session-A",
+        })
+        second_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        assert first_id != second_id
+        assert "PLAN-ONLY" in second.get("additionalContext", "")
+
+    def test_completed_task_is_excluded_from_active(self):
+        import route_enforcer as re
+        s1 = re.create_task_session("completed task", claude_session_id="session-A")
+        re.complete_task(s1["task_id"])
+
+        s2 = re.create_task_session("active task", claude_session_id="session-A")
+        active = re.get_active_task(claude_session_id="session-A")
+        assert active is not None
+        assert active["task_id"] == s2["task_id"]
+
+    def test_cancelled_task_is_excluded_from_active(self):
+        import route_enforcer as re
+        s1 = re.create_task_session("cancelled task", claude_session_id="session-A")
+        re.cancel_task(s1["task_id"])
+
+        s2 = re.create_task_session("active task", claude_session_id="session-A")
+        active = re.get_active_task(claude_session_id="session-A")
+        assert active["task_id"] == s2["task_id"]
+
+    def test_project_root_isolation(self):
+        import route_enforcer as re
+        s1 = re.create_task_session(
+            "project one task",
+            claude_session_id="session-A",
+            project_root="/tmp/project-one",
+        )
+        s2 = re.create_task_session(
+            "project two task",
+            claude_session_id="session-A",
+            project_root="/tmp/project-two",
+        )
+        active = re.get_active_task(
+            claude_session_id="session-A",
+            project_root="/tmp/project-one",
+        )
+        assert active["task_id"] == s1["task_id"]
+
+    def test_claude_session_isolation(self):
+        import route_enforcer as re
+        s1 = re.create_task_session(
+            "session alpha task",
+            claude_session_id="session-alpha",
+        )
+        re.create_task_session(
+            "session beta task",
+            claude_session_id="session-beta",
+        )
+        active = re.get_active_task(claude_session_id="session-alpha")
+        assert active["task_id"] == s1["task_id"]
+
+    def test_test_tasks_do_not_pollute_active_selection(self):
+        import route_enforcer as re
+        re.create_task_session(
+            "test task",
+            claude_session_id="session-A",
+            is_test_task=True,
+        )
+        active = re.get_active_task(claude_session_id="session-A")
+        assert active is None
+
+
+class TestUserPromptControlStatements:
+    """Verify control statement detection and task actions."""
+
+    def test_continue_keyword_appends_message(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "继续",
+            "claude_session_id": "session-A",
+        })
+        assert f"[TASK SESSION: {task_id}]" in r.get("additionalContext", "")
+        assert "Continuing active task" in r.get("additionalContext", "")
+
+    def test_chinese_new_task_creates_session(self):
+        import route_enforcer as re
+        r = re.on_user_prompt_submit({
+            "prompt": "新建任务：实现 OAuth2 登录",
+            "claude_session_id": "session-A",
+        })
+        assert "PLAN-ONLY" in r.get("additionalContext", "")
+
+    def test_cancel_stops_active_task(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "取消任务",
+            "claude_session_id": "session-A",
+        })
+        assert "cancelled" in r.get("additionalContext", "").lower()
+        assert re.get_active_task(claude_session_id="session-A") is None
+        session = re._load_session(task_id)
+        assert session["status"] == "cancelled"
+
+    def test_stop_stops_active_task(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "stop",
+            "claude_session_id": "session-A",
+        })
+        assert "cancelled" in r.get("additionalContext", "").lower()
+        session = re._load_session(task_id)
+        assert session["status"] == "cancelled"
+
+    def test_accept_records_approval(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "接受",
+            "claude_session_id": "session-A",
+        })
+        assert "Approval recorded" in r.get("additionalContext", "")
+        session = re._load_session(task_id)
+        assert session["status"] == "active"
+
+    def test_run_tests_control_statement_appends(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "运行测试",
+            "claude_session_id": "session-A",
+        })
+        assert f"[TASK SESSION: {task_id}]" in r.get("additionalContext", "")
+        assert "Continuing active task" in r.get("additionalContext", "")
+
+    def test_retry_control_statement_appends(self):
+        import route_enforcer as re
+        re.on_user_prompt_submit({
+            "prompt": "implement login",
+            "claude_session_id": "session-A",
+        })
+        task_id = re.get_active_task(claude_session_id="session-A")["task_id"]
+        r = re.on_user_prompt_submit({
+            "prompt": "retry",
+            "claude_session_id": "session-A",
+        })
+        assert f"[TASK SESSION: {task_id}]" in r.get("additionalContext", "")
+        assert "Continuing active task" in r.get("additionalContext", "")
+
+    def test_short_prompt_ignored(self):
+        import route_enforcer as re
+        r = re.on_user_prompt_submit({
+            "prompt": "hi",
+            "claude_session_id": "session-A",
+        })
+        assert r == {}
+
+    def test_no_active_task_and_short_prompt_returns_empty(self):
+        import route_enforcer as re
+        r = re.on_user_prompt_submit({
+            "prompt": "ok",
+            "claude_session_id": "session-A",
+        })
+        assert r == {}

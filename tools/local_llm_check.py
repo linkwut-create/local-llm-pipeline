@@ -150,9 +150,18 @@ def check_ollama() -> CheckResult:
 
 
 def check_openai_compat() -> CheckResult:
+    """Check OpenAI-compatible server (direct llama.cpp fallback)."""
+    base = os.environ.get("LOCAL_LLM_BASE_URL", OPENAI_COMPAT_BASE)
+    # Strip a trailing /v1 so we can build the standard models endpoint
+    base_stripped = re.sub(r"/v1$", "", base)
+    endpoint = f"{base_stripped.rstrip('/')}/v1/models"
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("LOCAL_LLM_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         import requests
-        resp = requests.get(f"{OPENAI_COMPAT_BASE}/v1/models", timeout=5)
+        resp = requests.get(endpoint, headers=headers, timeout=5)
         resp.raise_for_status()
         data = resp.json()
         models = [m.get("id", m.get("name", "?")) for m in data.get("data", [])]
@@ -162,13 +171,23 @@ def check_openai_compat() -> CheckResult:
 
 
 def check_litellm() -> CheckResult:
-    """Check LiteLLM proxy (wraps llama.cpp + Ollama fallbacks)."""
+    """Check LiteLLM proxy (primary llama.cpp gateway).
+
+    Probes LOCAL_LLM_BASE_URL first; if unset or points at an Ollama
+    endpoint, falls back to the default LiteLLM proxy at :4000.
+    """
     base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
     if not base_url or ":11434" in base_url or ":11436" in base_url:
         base_url = LITELLM_BASE_DEFAULT
+    # LiteLLM exposes an OpenAI-compatible /v1/models endpoint
+    endpoint = f"{base_url.rstrip('/')}/v1/models"
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("LOCAL_LLM_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         import requests
-        resp = requests.get(f"{base_url.rstrip('/')}/models", timeout=5)
+        resp = requests.get(endpoint, headers=headers, timeout=5)
         resp.raise_for_status()
         data = resp.json()
         models = [m.get("id", m.get("name", "?")) for m in data.get("data", [])]
@@ -460,34 +479,37 @@ def main(argv: list[str] | None = None):
         status = "OK" if c.ok else "FAIL"
         print(f"  [{status:4s}] {c.name}: {c.detail}")
 
-    print_section("Ollama CLI")
-    cli_result = run_ollama_list()
-    print(f"  [{('OK' if cli_result.ok else 'FAIL'):4s}] {cli_result.detail}")
-
-    print_section("Ollama API")
-    api_result = check_ollama()
-    print(f"  [{('OK' if api_result.ok else 'FAIL'):4s}] {api_result.detail}")
+    print_section("LiteLLM Proxy (primary)")
+    litellm_result = check_litellm()
+    print(f"  [{('OK' if litellm_result.ok else 'FAIL'):4s}] {litellm_result.detail}")
 
     print_section("OpenAI-Compatible Server (llama.cpp direct)")
     oai_result = check_openai_compat()
     print(f"  [{('OK' if oai_result.ok else 'FAIL'):4s}] {oai_result.detail}")
 
-    print_section("LiteLLM Proxy (zero12)")
-    litellm_result = check_litellm()
-    print(f"  [{('OK' if litellm_result.ok else 'FAIL'):4s}] {litellm_result.detail}")
+    print_section("Ollama API")
+    api_result = check_ollama()
+    print(f"  [{('OK' if api_result.ok else 'FAIL'):4s}] {api_result.detail}")
+
+    print_section("Ollama CLI")
+    cli_result = run_ollama_list()
+    print(f"  [{('OK' if cli_result.ok else 'FAIL'):4s}] {cli_result.detail}")
 
     print_section("llama.cpp MTP Endpoints (zero12)")
     mtp_results = check_mtp_endpoints()
     for r in mtp_results:
         print(f"  [{('OK' if r.ok else 'FAIL'):4s}] {r.detail}")
 
+    # Prefer LiteLLM/llama.cpp models first; Ollama is the explicit fallback.
     all_models = []
-    if cli_result.ok and cli_result.data:
-        all_models = cli_result.data
+    if litellm_result.ok and litellm_result.data:
+        all_models = litellm_result.data
+    elif oai_result.ok and oai_result.data:
+        all_models = oai_result.data
     elif api_result.ok and api_result.data:
         all_models = api_result.data
-    elif litellm_result.ok and litellm_result.data:
-        all_models = litellm_result.data
+    elif cli_result.ok and cli_result.data:
+        all_models = cli_result.data
 
     if all_models:
         base_models = deduplicate_models(all_models)
@@ -513,7 +535,8 @@ def main(argv: list[str] | None = None):
     else:
         print_section("No Models Found")
         print("  Cannot recommend profiles without available models.")
-        print("  Ensure Ollama is running: ollama serve")
+        print("  Primary backend is LiteLLM/llama.cpp; ensure it is running.")
+        print("    Example: systemctl --user start litellm")
 
     print_section("Example Commands")
     examples = [
@@ -538,9 +561,9 @@ def main(argv: list[str] | None = None):
         if not any_backend:
             print("  CRITICAL: No LLM backend reachable.")
             print("  Options:")
-            print("    - Start Ollama: ollama serve")
             print("    - Start LiteLLM proxy: systemctl --user start litellm")
-            print("    - Start llama.cpp: llama-server ...")
+            print("    - Start llama.cpp server: llama-server --port 8001 ...")
+            print("    - Start Ollama (fallback only): ollama serve")
 
     if args.probe_workers:
         report = build_probe_report()
