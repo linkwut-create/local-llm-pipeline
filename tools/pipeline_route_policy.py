@@ -319,3 +319,43 @@ def is_tool_permitted(
             return False, reason
 
     return True, ""
+
+
+# ═══════════════════════════════════════════════════════════════
+# 7. Model roles and switch rules
+# ═══════════════════════════════════════════════════════════════
+
+MODEL_ROLES: dict[str, str] = {
+    "planner": "claude-fable-5",
+    "router_qwen": "qwen3.6-deep",
+    "router_gemma": "gemma4-31b",
+    "worker_local": "qwen3-coder:30b",
+    "worker_flash": "deepseek-v4-flash",
+    "adjudicator": "claude-fable-5",
+    "default": "claude-fable-5",
+}
+
+MODEL_SWITCH_RULES: dict[str, str | None] = {
+    "flash_direct": "deepseek-v4-flash",
+    "flash_subagent": None,
+    "plan_only": None, "direct": None, "local_only": None,
+    "pro_decision": None, "pro_execute_allowed": None,
+    "blocked": None, "ask_user": None,
+}
+
+PHASE_MODEL_ROLES: dict[str, str] = {
+    "planning": "planner",
+    "routing": "router_qwen",
+    "executing": "worker_local",
+    "adjudicating": "adjudicator",
+    "complete": "default",
+}
+
+
+def get_model_for_phase(phase: str) -> str:
+    role = PHASE_MODEL_ROLES.get(phase, "default")
+    return MODEL_ROLES.get(role, MODEL_ROLES["default"])
+
+
+def get_switch_target(route_type: str) -> str | None:
+    return MODEL_SWITCH_RULES.get(route_type)

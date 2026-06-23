@@ -38,6 +38,9 @@ from pipeline_route_policy import (
     classify_bash_command,
     check_bash_allowed,
     is_tool_permitted,
+    get_model_for_phase,
+    get_switch_target,
+    MODEL_ROLES,
 )
 
 
@@ -112,6 +115,15 @@ def create_task_session(
         "parent_task_id": parent_task_id, "is_test_task": bool(is_test_task),
         "plan_json_exists": False, "route_json_exists": False,
         "artifacts": [], "messages": [],
+    }
+    # Record initial model state (read from settings, never mutated)
+    current_model = _read_current_model()
+    session["model_state"] = {
+        "initial_model": current_model,
+        "current_model": current_model,
+        "target_model": None,
+        "model_switch_reason": None,
+        "model_switches": [],
     }
     (session_dir / "session.json").write_text(
         json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -559,9 +571,11 @@ def on_user_prompt_submit(payload: dict) -> dict:
         session = create_task_session(prompt_text, project_root=project_root,
                                       claude_session_id=claude_session_id)
         append_task_message(session["task_id"], "user", prompt_text)
+        initial_model = session.get("model_state", {}).get("initial_model", "claude-fable-5")
         return {
             "additionalContext": (
                 f"[TASK SESSION: {session['task_id']}]\n"
+                f"Model: {initial_model} | Phase: planning\n"
                 f"You are in PLAN-ONLY mode. Before any code changes, output:\n"
                 f"1. A plan.json describing what you will do\n"
                 f"2. Save it with: Write .local_llm_out/tasks/{session['task_id']}/plan.json\n"
@@ -571,12 +585,24 @@ def on_user_prompt_submit(payload: dict) -> dict:
         }
     task_id = active_task["task_id"]
     append_task_message(task_id, "user", prompt_text)
+
+    # Model-aware context: check if a model switch is pending
+    model_hint = ""
+    ms = active_task.get("model_state", {})
+    target = ms.get("target_model")
+    if target and target != _read_current_model():
+        model_hint = (
+            f"\nModel switch pending: {ms.get('previous_model', '?')} -> {target} "
+            f"({ms.get('model_switch_reason', 'route requirement')}). "
+            f"Consider running /model to switch."
+        )
+
     if control_intent in ("stop", "cancel"):
         cancel_task(task_id)
-        return {"additionalContext": f"[TASK SESSION: {task_id}]\nTask cancelled."}
+        return {"additionalContext": f"[TASK SESSION: {task_id}]\nTask cancelled.{model_hint}"}
     if control_intent == "accept":
-        return {"additionalContext": f"[TASK SESSION: {task_id}]\nApproval recorded."}
-    return {"additionalContext": f"[TASK SESSION: {task_id}]\nContinuing active task."}
+        return {"additionalContext": f"[TASK SESSION: {task_id}]\nApproval recorded.{model_hint}"}
+    return {"additionalContext": f"[TASK SESSION: {task_id}]\nContinuing active task.{model_hint}"}
 
 
 def on_pre_tool_use(payload: dict) -> dict:
@@ -741,42 +767,42 @@ def _run_route_committee(task_id: str, user_task: str) -> bool:
         return False
 
 
-def _is_flash_session() -> bool:
+def _read_current_model() -> str:
+    """Read the current session model from settings (read-only, never mutates)."""
     try:
         sf = Path('.claude/settings.local.json')
         if sf.exists():
             settings = json.loads(sf.read_text(encoding='utf-8'))
             if isinstance(settings, dict):
-                return settings.get('model', '') == 'deepseek-v4-flash'
+                return settings.get('model', '') or 'claude-fable-5'
     except Exception:
         pass
-    return False
+    return 'claude-fable-5'
 
 
-def _apply_model_switch(route_type: str) -> None:
-    _ROUTE_MODEL_MAP = {
-        'flash_direct': 'deepseek-v4-flash',
-        'flash_subagent': 'deepseek-v4-flash',
-    }
-    target_model = _ROUTE_MODEL_MAP.get(route_type)
-    if target_model is None:
+def _is_flash_session() -> bool:
+    """Check if the current session is already on Flash."""
+    return _read_current_model() == 'deepseek-v4-flash'
+
+
+def _record_model_switch(task_id: str, target_model: str, reason: str) -> None:
+    """Record a pending model switch in session.json (never mutates global settings)."""
+    session = _load_session(task_id)
+    if session is None:
         return
-    settings_file = Path('.claude/settings.local.json')
-    try:
-        if settings_file.exists():
-            settings = json.loads(settings_file.read_text(encoding='utf-8'))
-        else:
-            settings = {}
-        if not isinstance(settings, dict):
-            settings = {}
-        if settings.get('model', '') == target_model:
-            return
-        settings['model'] = target_model
-        settings_file.write_text(
-            json.dumps(settings, ensure_ascii=False, indent=2) + '\n',
-            encoding='utf-8')
-    except Exception:
-        pass
+    ms = session.get("model_state", {})
+    switches = ms.get("model_switches", [])
+    switches.append({
+        "from": ms.get("current_model", "unknown"),
+        "to": target_model, "reason": reason,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    ms["previous_model"] = ms.get("current_model")
+    ms["current_model"] = target_model
+    ms["target_model"] = target_model
+    ms["model_switch_reason"] = reason
+    ms["model_switches"] = switches
+    _update_session(task_id, {"model_state": ms})
 
 
 def on_stop(payload: dict) -> dict:
@@ -802,9 +828,17 @@ def on_stop(payload: dict) -> dict:
     route = load_route(task_id)
     if route is not None:
         route_type = route.get("recommended_route", "")
-        if route_type.startswith("flash_"):
-            _apply_model_switch(route_type)
-            return {"decision": "allow", "reason": f"Route '{route_type}' -> model set to deepseek-v4-flash."}
+        target = get_switch_target(route_type)
+        if target is not None:
+            _record_model_switch(task_id, target, f"route '{route_type}' requires Flash")
+            return {
+                "decision": "allow",
+                "reason": (
+                    f"Route '{route_type}' requests model switch to {target}. "
+                    f"Use /model to switch, or restart the session. "
+                    f"Model switch recorded in session.json."
+                ),
+            }
     return {}
 
 

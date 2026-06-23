@@ -1356,3 +1356,102 @@ class TestAllowedToolsAuthority:
         # (direct allows Read)
         allowed, _ = re.check_tool_allowed("Read", session["task_id"])
         assert allowed is True
+
+
+# ═══════════════════════════════════════════════════════════════
+# Phase 5: Model switch lifecycle
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestModelRoles:
+    """Tests for MODEL_ROLES and model switch rules."""
+
+    def test_model_roles_have_all_keys(self):
+        from pipeline_route_policy import MODEL_ROLES
+        for key in ("planner", "router_qwen", "router_gemma",
+                     "worker_local", "worker_flash", "adjudicator", "default"):
+            assert key in MODEL_ROLES, f"missing {key}"
+
+    def test_get_switch_target_flash_direct(self):
+        from pipeline_route_policy import get_switch_target
+        assert get_switch_target("flash_direct") == "deepseek-v4-flash"
+
+    def test_get_switch_target_flash_subagent_is_none(self):
+        from pipeline_route_policy import get_switch_target
+        assert get_switch_target("flash_subagent") is None
+
+    def test_get_switch_target_pro_decision_is_none(self):
+        from pipeline_route_policy import get_switch_target
+        assert get_switch_target("pro_decision") is None
+
+    def test_get_model_for_phase(self):
+        from pipeline_route_policy import get_model_for_phase, MODEL_ROLES
+        assert get_model_for_phase("planning") == MODEL_ROLES["planner"]
+        assert get_model_for_phase("adjudicating") == MODEL_ROLES["adjudicator"]
+
+    def test_get_model_for_unknown_phase(self):
+        from pipeline_route_policy import get_model_for_phase, MODEL_ROLES
+        assert get_model_for_phase("garbage") == MODEL_ROLES["default"]
+
+
+class TestModelStateTracking:
+    """Tests for model_state in session.json."""
+
+    def test_create_task_records_model_state(self):
+        import route_enforcer as re
+        session = re.create_task_session("test model tracking")
+        ms = session.get("model_state", {})
+        assert "initial_model" in ms
+        assert "current_model" in ms
+        assert "model_switches" in ms
+        assert ms["target_model"] is None
+        assert ms["model_switch_reason"] is None
+
+    def test_record_model_switch_updates_state(self):
+        import route_enforcer as re
+        session = re.create_task_session("test switch")
+        task_id = session["task_id"]
+        re._record_model_switch(task_id, "deepseek-v4-flash", "route requires Flash")
+        updated = re._load_session(task_id)
+        ms = updated.get("model_state", {})
+        assert ms["target_model"] == "deepseek-v4-flash"
+        assert ms["model_switch_reason"] == "route requires Flash"
+        assert len(ms["model_switches"]) == 1
+
+    def test_on_user_prompt_new_task_injects_model_context(self):
+        import route_enforcer as re
+        r = re.on_user_prompt_submit({
+            "prompt": "implement OAuth2 login flow",
+            "claude_session_id": "session-model-test",
+        })
+        ctx = r.get("additionalContext", "")
+        assert "PLAN-ONLY" in ctx
+        assert "Model:" in ctx
+        assert "Phase: planning" in ctx
+
+    def test_on_stop_flash_direct_records_switch(self):
+        import route_enforcer as re, json
+        session = re.create_task_session("flash task",
+            claude_session_id="session-flash-test")
+        task_id = session["task_id"]
+        p = re._tasks_dir() / task_id / "route.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"recommended_route": "flash_direct"}), encoding="utf-8")
+        result = re.on_stop({})
+        updated = re._load_session(task_id)
+        ms = updated.get("model_state", {})
+        assert ms["target_model"] == "deepseek-v4-flash", f"got {ms}"
+        assert len(ms["model_switches"]) == 1
+
+    def test_on_stop_non_flash_route_no_switch(self):
+        import route_enforcer as re, json
+        session = re.create_task_session("pro task",
+            claude_session_id="session-pro-test")
+        task_id = session["task_id"]
+        p = re._tasks_dir() / task_id / "route.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"recommended_route": "pro_decision"}), encoding="utf-8")
+        re.on_stop({})
+        updated = re._load_session(task_id)
+        ms = updated.get("model_state", {})
+        assert ms.get("target_model") is None
