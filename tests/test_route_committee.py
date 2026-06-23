@@ -142,8 +142,9 @@ def test_merge_privacy_blocked():
 
 def test_all_routes_have_permissions():
     from local_route_committee import ROUTE_PERMISSIONS
-    expected = {"local_only", "flash_direct", "flash_subagent",
-                "pro_decision", "blocked", "ask_user"}
+    expected = {"plan_only", "direct", "local_only", "flash_direct",
+                "flash_subagent", "pro_decision", "pro_execute_allowed",
+                "blocked", "ask_user"}
     assert set(ROUTE_PERMISSIONS.keys()) == expected
 
 
@@ -223,4 +224,4 @@ def test_validate_route_output_rejects_invalid_route():
             "pro_audit_requested": False,
         },
     })
-    assert "invalid recommended_route: 'invalid'" in errors
+    assert any("unknown route" in e for e in errors), f"got: {errors}"

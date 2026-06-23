@@ -42,6 +42,10 @@ from pipeline_route_policy import (
     get_switch_target,
     MODEL_ROLES,
 )
+from pipeline_artifact_store import (
+    save_artifact as _artifact_save,
+    list_artifacts as _artifact_list,
+)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -79,10 +83,8 @@ _CONTROL_STATEMENTS = {
 # ═══════════════════════════════════════════════════════════════
 
 def _tasks_dir() -> Path:
-    override = os.environ.get("LOCAL_LLM_TASKS_DIR")
-    if override:
-        return Path(override)
-    return Path(".local_llm_out/tasks")
+    from pipeline_artifact_store import tasks_dir
+    return tasks_dir()
 
 
 def _project_root() -> str:
@@ -279,41 +281,22 @@ def _mark_plan_written(task_id: str) -> None:
 
 
 def save_artifact(task_id: str, name: str, content: str) -> Path:
-    art_file = _tasks_dir() / task_id / "artifacts" / name
-    art_file.write_text(content, encoding="utf-8")
-    _update_session(task_id, {"artifacts": _get_artifacts(task_id) + [name]})
-    return art_file
+    """Save an artifact via the canonical artifact store."""
+    path = _artifact_save(task_id, name, content, artifact_type="generic", tool_name="")
+    _update_session(task_id, {"artifacts": _get_artifacts(task_id) + [path.name]})
+    return path
 
 
 def save_artifact_indexed(task_id: str, name: str, content: str,
                           artifact_type: str = "generic",
                           tool_name: str = "",
                           metadata: dict | None = None) -> Path:
-    art_path = save_artifact(task_id, name, content)
-    entry = {
-        "name": name, "type": artifact_type, "tool": tool_name,
-        "size_bytes": len(content.encode("utf-8")),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if metadata:
-        entry["meta"] = metadata
-    _update_artifact_index(task_id, entry)
-    return art_path
-
-
-def _update_artifact_index(task_id: str, entry: dict) -> None:
-    index_file = _tasks_dir() / task_id / "artifacts" / "artifact_index.json"
-    try:
-        if index_file.exists():
-            index = json.loads(index_file.read_text(encoding="utf-8"))
-            if not isinstance(index, list):
-                index = []
-        else:
-            index = []
-        index.append(entry)
-        index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    """Save an indexed artifact via the canonical artifact store."""
+    return _artifact_save(
+        task_id, name, content,
+        artifact_type=artifact_type, tool_name=tool_name,
+        metadata=metadata,
+    )
 
 
 def _classify_bash_artifact(command: str) -> str:

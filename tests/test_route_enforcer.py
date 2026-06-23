@@ -13,6 +13,17 @@ CLAUDE_HOOKS_DIR = TOOLS_DIR / "claude_hooks"
 sys.path.insert(0, str(TOOLS_DIR))
 sys.path.insert(0, str(CLAUDE_HOOKS_DIR))
 
+import pipeline_artifact_store as _astore
+
+
+def _mock_tasks_dir(tmp_path):
+    """Helper: mock both route_enforcer and artifact store tasks dir."""
+    import route_enforcer as re
+    mp = pytest.MonkeyPatch()
+    mp.setattr(re, "_tasks_dir", lambda: tmp_path)
+    mp.setattr(_astore, "tasks_dir", lambda: tmp_path)
+    return mp
+
 
 @pytest.fixture(autouse=True)
 def isolated_tasks_dir(monkeypatch, tmp_path):
@@ -268,6 +279,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Read",
@@ -282,6 +294,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Read",
@@ -295,6 +308,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Read",
@@ -308,6 +322,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Read",
@@ -322,6 +337,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Read",
@@ -340,6 +356,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("flash secrets task")
             _write_route(tmp_path, s["task_id"], "flash_subagent")
@@ -357,6 +374,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "MultiEdit",
@@ -371,6 +389,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Grep",
@@ -385,6 +404,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Glob",
@@ -399,6 +419,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Bash",
@@ -413,6 +434,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Bash",
@@ -427,6 +449,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Bash",
@@ -441,6 +464,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "PowerShell",
@@ -455,6 +479,7 @@ class TestSecretsProtection:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             r = re.on_pre_tool_use({
                 "tool_name": "Bash",
@@ -472,6 +497,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("test flash")
             assert re.is_flash_authorized(s["task_id"]) is False
@@ -482,6 +508,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("test flash")
             re.set_flash_authorized(s["task_id"])
@@ -526,6 +553,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("flash task")
             _write_route(tmp_path, s["task_id"], "flash_direct")
@@ -541,6 +569,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("flash task")
             _write_route(tmp_path, s["task_id"], "flash_subagent")
@@ -555,6 +584,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("flash task")
             _write_route(tmp_path, s["task_id"], "flash_subagent")
@@ -569,6 +599,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("artifact test")
             re.on_post_tool_use({"tool_name": "Read", "tool_input": {"file_path": "test.py"}, "tool_response": {"output": "content"}})
@@ -587,6 +618,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("bash test")
             re.on_post_tool_use({"tool_name": "Bash", "tool_input": {"command": "pytest -q"}, "tool_response": {"output": "3 passed"}})
@@ -603,6 +635,7 @@ class TestFlashAuthorization:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("edit test")
             re.on_post_tool_use({"tool_name": "Edit", "tool_input": {"file_path": "src/app.py", "new_string": "fixed"}, "tool_response": {}})
@@ -670,6 +703,7 @@ class TestArtifactHelpers:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("multi artifact")
             re.save_artifact_indexed(s["task_id"], "a.txt", "A", artifact_type="test_run", tool_name="Bash")
@@ -686,6 +720,7 @@ class TestArtifactHelpers:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("local task")
             _write_route(tmp_path, s["task_id"], "local_only")
@@ -700,6 +735,7 @@ class TestArtifactHelpers:
         import route_enforcer as re
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(re, "_tasks_dir", lambda: tmp_path)
+        monkeypatch.setattr(_astore, "tasks_dir", lambda: tmp_path)
         try:
             s = re.create_task_session("pro task")
             _write_route(tmp_path, s["task_id"], "pro_decision")

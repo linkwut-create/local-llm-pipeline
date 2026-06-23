@@ -288,6 +288,10 @@ def is_tool_permitted(
     if isinstance(allowed_tools_override, list) and allowed_tools_override:
         if tool_name in allowed_tools_override:
             return True, ""
+        # Wildcard matching for override list too
+        override_prefixes = [a[:-1] for a in allowed_tools_override if a.endswith("*")]
+        if any(tool_name.startswith(p) for p in override_prefixes):
+            return True, ""
         return False, (
             f"Tool '{tool_name}' not in route.json allowed_tools. "
             f"Allowed: {allowed_tools_override}"
