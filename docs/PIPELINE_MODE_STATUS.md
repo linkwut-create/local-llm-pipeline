@@ -2,7 +2,7 @@
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
 > **Updated**: 2026-06-23  
-> **Current phase**: Phase 0 — Baseline Audit & Documentation Calibration  
+> **Current phase**: Phase 1 — Task Lifecycle Fix  
 
 ---
 
@@ -11,10 +11,10 @@
 | Item | Value |
 |------|-------|
 | Branch | `master` |
-| HEAD | `0d052fd` |
-| Commit message | `fix: isolate shadow-route log from test probes and repair epoch filter` |
-| Working tree | Clean (no uncommitted source changes) |
-| Docs changed in this phase | `docs/PIPELINE_MODE_ROADMAP.md` (new), `docs/PIPELINE_MODE_BACKLOG.md` (new), `docs/PIPELINE_MODE_STATUS.md` (this file) |
+| HEAD | `f768a7b` |
+| Commit message | `docs: establish pipeline mode v2 execution baseline` |
+| Working tree | Clean |
+| Phase 0 commit | `docs/PIPELINE_MODE_ROADMAP.md` (rewritten), `docs/PIPELINE_MODE_BACKLOG.md` (new), `docs/PIPELINE_MODE_STATUS.md` (rewritten) |
 
 ### Test Baseline
 
@@ -33,8 +33,8 @@ pytest tests/
 
 | Phase | Title | Status | Blocking Issues |
 |-------|-------|--------|-----------------|
-| 0 | Baseline Audit & Documentation Calibration | 🔧 In progress | None |
-| 1 | Task Lifecycle Fix | ⬜ Not started | Depends on Phase 0 commit |
+| 0 | Baseline Audit & Documentation Calibration | ✅ Done | None |
+| 1 | Task Lifecycle Fix | 🔧 In progress | None |
 | 2 | Tool Permission Enforcement Fix | ⬜ Not started | Depends on Phase 1 |
 | 3 | Unified Route Policy | ⬜ Not started | Depends on Phase 2 |
 | 4 | Route Committee Hardening | ⬜ Not started | Depends on Phase 3 |
@@ -64,16 +64,23 @@ pytest tests/
 * [x] `docs/PIPELINE_MODE_ROADMAP.md` written.
 * [x] `docs/PIPELINE_MODE_BACKLOG.md` written.
 * [x] `docs/PIPELINE_MODE_STATUS.md` written (this file).
+* [x] Precommit advisory and shadow route log recorded.
+* [x] Phase 0 docs committed (`f768a7b`).
+* [x] STATUS updated post-commit.
 
 ### In Progress
 
-* Final consistency review across the three docs.
-* Precommit advisory and shadow route log for audit trail.
-* Staging and commit of Phase 0 docs.
+* None.
 
 ### Not Started (Phase 0)
 
 * None.
+
+### Phase 0 Observations
+
+* The active task selected by `get_active_task()` was an unrelated old task directory, requiring manual `route.json` creation.
+* A route name not present in `ROUTE_PERMISSIONS` (`pro_execute_allowed`) caused a fail-closed deadlock where all writes were blocked. This validates Known Issue #2 and will be fixed in Phase 2/3.
+* The deadlock was resolved by manually changing `route.json` to `pro_decision`, which current HEAD recognizes.
 
 ---
 

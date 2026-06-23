@@ -36,8 +36,8 @@
 | 0.8 | Audit cost ledger | ✅ DONE | JSONL ledger, mock pricing, budget guard skeleton. Ready for integration. |
 | 0.9 | Run baseline tests | ✅ DONE | `pytest tests/` → 2923 passed, 1 skipped (555.83 s). |
 | 0.10 | Write `docs/PIPELINE_MODE_ROADMAP.md` | ✅ DONE | Phase 0–16 order, architecture, route taxonomy, Definition of Done. |
-| 0.11 | Create `docs/PIPELINE_MODE_BACKLOG.md` | 🔧 IN PROGRESS | This file. |
-| 0.12 | Write `docs/PIPELINE_MODE_STATUS.md` | ⬜ TODO | Real HEAD, test counts, blockers, scope. |
+| 0.11 | Create `docs/PIPELINE_MODE_BACKLOG.md` | ✅ DONE | This file. |
+| 0.12 | Write `docs/PIPELINE_MODE_STATUS.md` | ✅ DONE | Updated post-commit. |
 
 ### Acceptance Criteria
 
