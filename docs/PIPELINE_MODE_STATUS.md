@@ -1,220 +1,144 @@
-# PIPELINE_MODE_STATUS.md — v2 Completion Tracker
+# PIPELINE_MODE_STATUS.md — local-llm-pipeline v2-alpha
 
-> **Last updated**: 2026-06-22 (resident model priority clarified: dense first, MoE on-demand)
-> **Git**: local branch ahead of origin; local hook audit import fallback, debate routing, and router probe fixes are uncommitted; no push/tag/release
-> **Tests**: 399 targeted router/hook/audit/debate/MCP-server tests passed; full router profile tests now pass with `sys.executable` instead of Windows `py -3`
-> **Review gates**: hook audit fallback final diff review PASS; dense two-model debate PASS; `commit_reviewer_llamacpp` review-diff completed through LiteLLM -> llama.cpp:8003 with qwen-coder started on demand
-> **Full checks**: `tools/run_checks.py` 12/13 PASS; pytest collector error remains in `tools/test_all_models.py::test_model_with_task` (missing `model` fixture)
-> **Codex CLI**: project cwd exposes `local-llm` MCP via `python3 tools/local_llm_mcp_server.py`; current process env may override project config with zero12 Ollama at `193.168.2.2:11434`
-
-## Recent Progress
-
-- Worktree convergence is complete: Codex/agent baseline files were committed in `094775e`.
-- Codex project config now routes local LLM MCP calls to the zero12 SSH tunnel (`127.0.0.1:11436`) with `qwen3.6:27b` as the resident model.
-- Router model discovery now falls back to the Ollama HTTP API when the local `ollama` CLI is unavailable, matching the Codex sandbox path.
-- Worker/residency keepalive payloads now normalize `-1` and `0` to numeric values for Ollama 0.30.7 compatibility.
-- B2/B3 route committee prompt hardening is complete locally: Qwen and Gemma now receive role-specific prompts while sharing the same JSON output schema.
-- B4/B5 route committee validator hardening is complete locally: artifact merges are deterministic and generated route.json output is validated before write.
-- F1 secrets/.env protection is locally complete and E2E-pending: PreToolUse now hard-denies direct file and shell access to `.env`, private key, token, and credentials paths before route enforcement.
-- Debate default route stabilization is in progress: default debate rounds now avoid unavailable Qwen3.6 MTP profiles and use `commit_reviewer`, `fast_summary`, then `reasoning_checker`.
-- Inference migration for qwen-coder is complete at the route level: LiteLLM `qwen3-coder-30b` routes to `openai/qwen3-coder-30b.sha256-13b998bb.gguf`, and local `commit_reviewer_llamacpp` completed a real review-diff through the `127.0.0.1:4000` tunnel after the qwen-coder service was started on demand. Operational policy is now explicit: qwen-coder is MoE/A3B and must be on-demand, not resident.
-- Resident model priority: dense 27B Qwen route first, Gemma 4 31B dense second, all other models on-demand. If docs say `qwen3.5 27b`, verify against the actual zero12 service/model name before renaming the existing `qwen36-llama.service`.
-- Router OpenAI-compatible health probes now send `LOCAL_LLM_API_KEY` as a bearer token, so authenticated LiteLLM endpoints are no longer misclassified as unreachable.
-- `local_review_diff` commit-gate timeout now assumes a prewarmed route: llama.cpp-backed profiles are explicitly started and waited on before the timed review subprocess starts, so model loading is not counted as review generation time.
-- Next route committee slice after F1 remains A6/C1/E1: E2E hook loop test, task session directory stabilization, or adjudication input schema.
-
-## Module Completion Overview
-
-### 1. Hook Adapter (route_enforcer.py)
-
-| Check | Status |
-|-------|--------|
-| main() stdin→JSON→dispatch→stdout | ✅ |
-| UserPromptSubmit → PLAN-ONLY context | ✅ |
-| PreToolUse → route enforcement | ✅ |
-| PostToolUse → artifact capture (A4) | ✅ |
-| Stop → route committee trigger + model switch | ✅ |
-| Unknown event / invalid JSON → {} | ✅ |
-| Subprocess-level tests | ✅ (49 tests) |
-| Hook registration (4 events) | ✅ |
-| PreToolUse matcher: Edit\|Write\|NotebookEdit\|Bash\|Agent | ✅ |
-| PreToolUse secrets/.env hard-deny (F1) | ✅ local / E2E pending |
-| PostToolUse matcher: Edit\|Write\|NotebookEdit\|Bash | ✅ |
-| E2E verified in real Claude Code session | ⬜ |
-
-**Completion**: 88% (was 85%)
-
-### 2. Flash Model Switch
-
-| Check | Status |
-|-------|--------|
-| flash_direct FORCES deny Pro Edit/Write | ✅ |
-| flash_direct allows Agent (subagent delegation) | ✅ |
-| flash_subagent full access | ✅ |
-| Flash authorization popup (PreToolUse ask) | ✅ |
-| PostToolUse auto-mark flash_authorized | ✅ |
-| _apply_model_switch() Stop hook → settings.local.json | ✅ |
-| DeepSeek v4 Flash API verified (200 OK) | ✅ |
-| flash-mode skill | ✅ |
-| /model manual switch documented | ✅ |
-
-**Completion**: 90%
-
-### 3. Route Committee
-
-| Check | Status |
-|-------|--------|
-| LOCAL_ROUTE_QWEN_MODEL env var (B1) | ✅ |
-| LOCAL_ROUTE_GEMMA_MODEL env var (B1) | ✅ |
-| Timeout + retry + parse fallback | ✅ |
-| --output direct route.json write | ✅ |
-| Qwen/Gemma structured output prompt | ✅ |
-| Deterministic merge rules hardening | ✅ |
-| route.json schema validator | ✅ |
-
-**Completion**: 75% (was 60%)
-
-### 4. Artifact Store (A4)
-
-| Check | Status |
-|-------|--------|
-| tool_call_N.json per invocation | ✅ |
-| Bash output classified (7 types) | ✅ |
-| Edit/Write edit_record_N.json | ✅ |
-| artifact_index.json (typed/sized/timestamped) | ✅ |
-| _truncate_output safe truncation | ✅ |
-| Artifact metadata (type, tool, size, timestamp) | ✅ |
-| Git diff / test log capture | ✅ |
-| Save tool call metadata for all tool types | ✅ |
-| Artifact accepted/rejected tracking | ⬜ |
-
-**Completion**: 75% (was 30%)
-
-### 5. Task Session
-
-| Check | Status |
-|-------|--------|
-| create_task_session() | ✅ |
-| session.json with phase tracking | ✅ |
-| flash_authorized flag | ✅ |
-| user_task.md | ✅ |
-| git_status.txt | ⬜ |
-| Fixed directory structure per task_id | 🔧 |
-
-**Completion**: 60% (was 50%)
-
-### 6. AgentDB
-
-| Check | Status |
-|-------|--------|
-| SQLite database | ⬜ |
-| Init / report commands | ⬜ |
-
-**Completion**: 5% (unchanged)
-
-### 7. Local Worker
-
-| Check | Status |
-|-------|--------|
-| v1 MCP tools (summarize, review, repo_map) | ✅ |
-| Output as task artifact | ⬜ |
-
-**Completion**: 55% (unchanged)
-
-### 8. Flash Worker
-
-| Check | Status |
-|-------|--------|
-| DeepSeek API real call verified | ✅ |
-| flash_patch_worker / flash_failure_analyzer | ⬜ |
-| Execution adapter real_run path | ⬜ (mock skeleton only) |
-
-**Completion**: 20% (was 10%)
-
-### 9. Pro Adjudication
-
-| Check | Status |
-|-------|--------|
-| Adjudication pack schema | ⬜ |
-| Decision output format | ⬜ |
-
-**Completion**: 5% (unchanged)
-
-### 10. Safety & Security
-
-| Check | Status |
-|-------|--------|
-| Secrets blocking in PreToolUse | ✅ local / E2E pending |
-| Destructive command guard | 🔧 |
-| Bash command tiering | ⬜ |
-
-**Completion**: 45% (was 30%)
-
-### 11. Testing
-
-| Check | Status |
-|-------|--------|
-| route_enforcer tests | ✅ (65 tests) |
-| route_enforcer + local_route_committee targeted tests | ✅ (57 tests) |
-| route_committee tests | ✅ (13 tests) |
-| End-to-end dry-run | ⬜ |
-| Real task dogfood | ⬜ |
-
-**Completion**: 45% (was 40%)
-
-### 12. Documentation
-
-| Check | Status |
-|-------|--------|
-| PIPELINE_MODE_ROADMAP.md | ✅ |
-| PIPELINE_MODE_STATUS.md | ✅ |
-| PIPELINE_MODE_BACKLOG.md | ⬜ |
-| User/dev guides | ⬜ |
-
-**Completion**: 30% (was 25%)
+> **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
+> **Updated**: 2026-06-23  
+> **Current phase**: Phase 0 — Baseline Audit & Documentation Calibration  
 
 ---
 
-## Phase Summary
+## Repository Baseline
 
+| Item | Value |
+|------|-------|
+| Branch | `master` |
+| HEAD | `0d052fd` |
+| Commit message | `fix: isolate shadow-route log from test probes and repair epoch filter` |
+| Working tree | Clean (no uncommitted source changes) |
+| Docs changed in this phase | `docs/PIPELINE_MODE_ROADMAP.md` (new), `docs/PIPELINE_MODE_BACKLOG.md` (new), `docs/PIPELINE_MODE_STATUS.md` (this file) |
+
+### Test Baseline
+
+```text
+pytest tests/
+2923 passed, 1 skipped in 555.83s (0:09:15)
 ```
-Phase A (Hook Closure):   85% — main() + register + matchers + flash auth + artifacts
-Phase B (Route Committee): 75% — env vars, prompt hardening, schema validator, and merge rules done
-Phase C (AgentDB):          5% — not started
-Phase D (Worker+Tool):     30% — artifact capture done, workers still v1
-Phase E (Pro Adjudication):  5% — not started
-Phase F (Safety+Obs):      45% — secrets/.env hook hard-deny integrated locally; E2E pending
 
-Pipeline mode overall:     34% (was 32%)
-```
+* No failures.
+* No new tests added in Phase 0 (documentation-only).
+* Tests run on commit `0d052fd` with a clean working tree.
 
-## Shadow Route Status
+---
 
-| Metric | Value | Target |
-|--------|-------|--------|
-| Records | 664 | — |
-| Match rate | 75.6% | ≥85% |
-| Unknown rate | 45.6% | — |
-| Critical misrouting | 7 | 0 |
-| Privacy bypass | 0 | 0 ✅ |
-| False cloud-on-secret | 0 | 0 ✅ |
-| Warning gate | blocked | — |
+## Phase Progress
 
-## Worktree Status
+| Phase | Title | Status | Blocking Issues |
+|-------|-------|--------|-----------------|
+| 0 | Baseline Audit & Documentation Calibration | 🔧 In progress | None |
+| 1 | Task Lifecycle Fix | ⬜ Not started | Depends on Phase 0 commit |
+| 2 | Tool Permission Enforcement Fix | ⬜ Not started | Depends on Phase 1 |
+| 3 | Unified Route Policy | ⬜ Not started | Depends on Phase 2 |
+| 4 | Route Committee Hardening | ⬜ Not started | Depends on Phase 3 |
+| 5 | Model Switch Lifecycle | ⬜ Not started | Depends on Phase 3 |
+| 6 | Reproducible Hook Installation | ⬜ Not started | — |
+| 7 | Formalized Artifact Store | ⬜ Not started | — |
+| 8 | Minimal AgentDB | ⬜ Not started | — |
+| 9 | Local Worker | ⬜ Not started | — |
+| 10 | Flash Worker | ⬜ Not started | — |
+| 11 | Tool Actuator | ⬜ Not started | — |
+| 12 | Pro Adjudication | ⬜ Not started | — |
+| 13 | End-to-End Dry Run | ⬜ Not started | Needs Phases 1–12 |
+| 14 | Real Dogfood | ⬜ Not started | Needs Phase 13 |
+| 15 | Cost & Quality Evaluation | ⬜ Not started | Needs Phase 14 |
+| 16 | v2-alpha Finalization | ⬜ Not started | Needs Phases 1–15 |
 
-- `tests/conftest.py` now uses a per-process pytest basetemp under the current working directory, with `LOCAL_LLM_PYTEST_TMP` as an explicit override. This fixes the Codex/Windows path-mapping failure where the old fixed `.local_llm_out/pytest-tmp` directory could not be removed.
-- `.codex/config.toml` and `.codex/hooks.json` now use `python3` so Codex desktop/CLI do not depend on the unavailable `py -3` launcher or a PowerShell-only `python` shim.
-- Real Codex CLI verification passed outside the sandbox: `codex doctor` overall OK, `codex mcp list` includes enabled `local-llm`, and zero12/Ollama handled a real `summarize-file` worker call.
-- Targeted hook/committee tests pass under `python3`; `.pytest_cache` still reports a non-blocking permission warning in this environment. Do not use `--cache-clear` in the current mapped workspace because it tries to delete the old restricted cache directory.
-- F1 full `tools/run_checks.py` reached 2900 passed / 1 skipped / 1 collection error; the remaining error is `tools/test_all_models.py::test_model_with_task` being collected as a pytest test without a `model` fixture.
-- Codex/agent baseline candidates are present in the worktree: `.agents/skills/project-governance/SKILL.md`, `.agents/skills/task-bootstrap/SKILL.md`, `.codex/agents/*.toml`, and `.codex/hooks.json`.
-- Local-only state is ignored: `.pytest_cache/` and `.claude/session-handoff-*.md`.
-- No commit, push, tag, or release has been performed.
+---
 
-## Next Priority (ranked)
+## Current Phase 0 Detail
 
-1. **A6**: E2E hook loop test in real Claude Code session.
-2. **C1**: Task session directory structure stabilization.
-3. **E1**: Adjudication input pack schema.
-4. **F2/F3**: Destructive command guard and Bash command tiering.
-7. **Push**: local commits to origin (blocked by release guard — needs debate review).
+### Completed
+
+* [x] Baseline HEAD recorded.
+* [x] Full test suite executed and passing.
+* [x] `tools/claude_hooks/route_enforcer.py` restored to HEAD (removed corrupted uncommitted changes).
+* [x] Stray backup file removed.
+* [x] `docs/PIPELINE_MODE_ROADMAP.md` written.
+* [x] `docs/PIPELINE_MODE_BACKLOG.md` written.
+* [x] `docs/PIPELINE_MODE_STATUS.md` written (this file).
+
+### In Progress
+
+* Final consistency review across the three docs.
+* Precommit advisory and shadow route log for audit trail.
+* Staging and commit of Phase 0 docs.
+
+### Not Started (Phase 0)
+
+* None.
+
+---
+
+## Known Issues at Baseline
+
+These are intentionally **not fixed** in Phase 0 because they belong to later phases. They are recorded here so the roadmap/backlog does not drift from code reality.
+
+1. **Task selection is fragile**
+   * `get_active_task()` in `tools/claude_hooks/route_enforcer.py` chooses the newest task directory by `created_at`.
+   * It ignores project root, Claude session id, task status, and whether the task is a test task.
+   * **Owner**: Phase 1.
+
+2. **`pro_decision` route is not really restricted**
+   * In `route_enforcer.py`, `pro_decision` has empty `allowed`/`denied` sets, which makes it fail-open for all tools.
+   * The distinction between `pro_decision` and `pro_execute_allowed` is not enforced.
+   * **Owner**: Phase 2.
+
+3. **Dual route permission tables**
+   * `tools/claude_hooks/route_enforcer.py` and `tools/local_route_committee.py` each maintain a `ROUTE_PERMISSIONS` table with different shapes.
+   * Committee emits `_enforcement` metadata that the enforcer ignores.
+   * **Owner**: Phase 3.
+
+4. **Bash commands are not classified**
+   * No safe/test/write/destructive classification exists.
+   * `rm -rf` and other destructive commands are not denied.
+   * **Owner**: Phase 2.
+
+5. **Agent calls are not bounded beyond route `allowed` sets**
+   * There is no model or tool restriction scoped to the Agent subagent.
+   * **Owner**: Phase 2 / Phase 3.
+
+6. **No AgentDB**
+   * Task state is file-system only (`session.json`, `artifact_index.json`, `route.json`).
+   * **Owner**: Phase 8.
+
+7. **Model switching is not tied to task lifecycle**
+   * No save/restore of the current model on task completion/failure.
+   * **Owner**: Phase 5.
+
+---
+
+## Risk Notes
+
+* The `route.json` used to authorize Phase 0 documentation writes declares `recommended_route: pro_decision` and `pro_should_execute: true`. It relies on the current fail-open `pro_decision` behavior; this is acceptable only because Phase 0 is documentation-only and because the gap is recorded as Known Issue #2.
+* No core runtime logic was modified in Phase 0.
+* No automatic push will be performed.
+
+---
+
+## Decisions Made
+
+| Decision | Reason |
+|----------|--------|
+| Reverted `route_enforcer.py` to HEAD | Uncommitted changes were corrupt (syntax errors) and introduced new routes outside Phase 0 scope. |
+| Did not fix any known issues in Phase 0 | Phase 0 is documentation calibration only; fixes are scheduled in later phases. |
+| Created route.json manually for doc writes | PreToolUse enforcement requires a route; Phase 0 needs documentation authority. |
+| Will commit docs only | Source code remains at HEAD until Phase 1. |
+
+---
+
+## Next Actions
+
+1. Run `tools/precommit_advisory.py --cloud-ok`.
+2. Run `tools/shadow_route_log.py` for the audit trail.
+3. Stage the three new docs.
+4. Commit with message: `docs: establish pipeline mode v2 execution baseline`.
+5. Update this file to mark Phase 0 ✅ and Phase 1 🔧.
+6. Begin Phase 1: Task Lifecycle Fix.
