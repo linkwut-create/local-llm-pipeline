@@ -495,6 +495,19 @@ def merge_judgements(qwen: RouteJudgement,
 # Committee
 # ═══════════════════════════════════════════════════════════════
 
+def _resolve_committee_endpoint() -> str:
+    """Resolve the LiteLLM/llama.cpp base URL for committee model calls.
+
+    Uses the same resolver as the worker so the committee always targets
+    the same backend, whether invoked from MCP or CLI.
+    """
+    try:
+        from local_llm_worker import _resolve_endpoint
+        return _resolve_endpoint("openai-compatible")
+    except Exception:
+        return os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
+
+
 def _check_model_availability(model: str, base_url: str | None = None,
                                timeout: int = 5) -> tuple[bool, str]:
     """Check if a model endpoint is reachable via /v1/models or health check.
@@ -504,7 +517,7 @@ def _check_model_availability(model: str, base_url: str | None = None,
     import urllib.request as _ur
     import json as _json
 
-    base = base_url or os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
+    base = base_url or _resolve_committee_endpoint()
     # Try /v1/models first (OpenAI-compatible)
     models_url = base.rstrip("/") + "/models"
     try:
@@ -559,11 +572,11 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
         except ValueError:
             pass
 
-    base = os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
+    base = os.environ.get("LOCAL_LLM_BASE_URL") or _resolve_committee_endpoint()
     url = base.rstrip("/") + "/chat/completions"
     payload = {
         "model": model, "messages": [{"role": "user", "content": prompt}],
-        "stream": False, "temperature": 0.0, "max_tokens": 256,
+        "stream": False, "temperature": 0.0, "max_tokens": 1024,
     }
     headers = {"Content-Type": "application/json"}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")

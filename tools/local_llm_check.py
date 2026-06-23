@@ -35,9 +35,15 @@ _MTP_ENDPOINTS = [
 
 
 def resolve_ollama_base_url() -> tuple[str, str]:
-    """Resolve Ollama base URL from env vars. Returns (base_url, source_description)."""
+    """Resolve Ollama base URL from env vars. Returns (base_url, source_description).
+
+    Only returns LOCAL_LLM_BASE_URL when it looks like an Ollama endpoint
+    (port :11434 or :11436). Otherwise falls through to OLLAMA_HOST or the
+    default — prevents LiteLLM URLs (e.g. :4400) from being probed with
+    Ollama's /api/tags endpoint.
+    """
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    if env_base:
+    if env_base and (":11434" in env_base or ":11436" in env_base):
         return env_base, "LOCAL_LLM_BASE_URL"
     ollama_host = os.environ.get("OLLAMA_HOST", "")
     if ollama_host:
@@ -179,8 +185,11 @@ def check_litellm() -> CheckResult:
     base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
     if not base_url or ":11434" in base_url or ":11436" in base_url:
         base_url = LITELLM_BASE_DEFAULT
+    # Strip trailing /v1 so we can build the standard /v1/models endpoint
+    # without doubling (e.g. http://host:4400/v1 → /v1/v1/models).
+    base_stripped = re.sub(r"/v1$", "", base_url)
     # LiteLLM exposes an OpenAI-compatible /v1/models endpoint
-    endpoint = f"{base_url.rstrip('/')}/v1/models"
+    endpoint = f"{base_stripped.rstrip('/')}/v1/models"
     headers = {"Content-Type": "application/json"}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")
     if api_key:
