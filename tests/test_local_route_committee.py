@@ -144,7 +144,8 @@ def test_double_parse_failure_fallback_to_pro(monkeypatch):
     import local_route_committee as committee
 
     # Both models return non-JSON garbage
-    monkeypatch.setattr(committee, "_call_model", lambda model, prompt, timeout=90: "not json")
+    monkeypatch.setattr(committee, "_call_model", lambda model, prompt, timeout=90: ("not json", {"ok": False}))
+    monkeypatch.setattr(committee, "_check_model_availability", lambda model, base_url=None, timeout=5: (True, "mock"))
     monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
         "git_status": "clean",
         "recent_commits": "abc123 test",
@@ -166,15 +167,16 @@ def test_single_parse_failure_uses_other_model(monkeypatch):
 
     def fake_call(model, prompt, timeout=90):
         if "qwen" in model:
-            return "not json"
+            return "not json", {"ok": False}
         return (
             '{"delegability":"high","recommended_route":"flash_subagent",'
             '"local_preprocessing_required":false,"pro_should_execute":false,'
             '"pro_should_adjudicate":false,"risk_level":"low",'
             '"privacy_status":"safe","reason":"looks safe","required_artifacts":[]}'
-        )
+        ), {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "_check_model_availability", lambda model, base_url=None, timeout=5: (True, "mock"))
     monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
         "git_status": "clean",
         "recent_commits": "abc123 test",
@@ -218,9 +220,10 @@ def test_convene_uses_role_specific_prompts(monkeypatch):
 
     def fake_call(model, prompt, timeout=90):
         prompts[model] = prompt
-        return valid_json
+        return valid_json, {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "_check_model_availability", lambda model, base_url=None, timeout=5: (True, "mock"))
     monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
         "git_status": "clean",
         "recent_commits": "abc123 test",
@@ -264,12 +267,13 @@ def test_convene_merges_different_role_judgements(monkeypatch):
     def fake_call(model, prompt, timeout=90):
         if model == committee._LOCAL_ROUTE_QWEN_MODEL:
             assert "Qwen engineering delegate" in prompt
-            return qwen_json
+            return qwen_json, {"ok": True}
         assert model == committee._LOCAL_ROUTE_GEMMA_MODEL
         assert "Gemma risk and privacy reviewer" in prompt
-        return gemma_json
+        return gemma_json, {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "_check_model_availability", lambda model, base_url=None, timeout=5: (True, "mock"))
     monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
         "git_status": "clean",
         "recent_commits": "abc123 test",
@@ -301,9 +305,10 @@ def test_convene_escapes_fallback_plan_json(monkeypatch):
 
     def fake_call(model, prompt, timeout=90):
         prompts[model] = prompt
-        return valid_json
+        return valid_json, {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
+    monkeypatch.setattr(committee, "_check_model_availability", lambda model, base_url=None, timeout=5: (True, "mock"))
     monkeypatch.setattr(committee, "build_evidence_pack", lambda repo_root=".": {
         "git_status": "clean",
         "recent_commits": "abc123 test",
@@ -337,12 +342,12 @@ def test_call_model_with_retry_retries_once(monkeypatch):
     def fake_call(model, prompt, timeout=90):
         calls.append(model)
         if len(calls) == 1:
-            return "not json"
-        return valid_json
+            return "not json", {"ok": False}
+        return valid_json, {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
 
-    raw = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90)
+    raw, metrics_list = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90)
     assert raw == valid_json
     assert len(calls) == 2
 
@@ -354,11 +359,11 @@ def test_call_model_with_retry_respects_max_retries_zero(monkeypatch):
 
     def fake_call(model, prompt, timeout=90):
         calls.append(model)
-        return "not json"
+        return "not json", {"ok": False}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
 
-    raw = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90, max_retries=0)
+    raw, metrics_list = committee._call_model_with_retry("qwen3.6:27b", "prompt", timeout=90, max_retries=0)
     assert raw == "not json"
     assert len(calls) == 1
 
@@ -369,10 +374,9 @@ def test_invalid_committee_timeout_env_is_ignored(monkeypatch):
     monkeypatch.setenv("LOCAL_LLM_COMMITTEE_TIMEOUT", "not-a-number")
 
     def fake_call(model, prompt, timeout=90):
-        # The timeout passed should fall back to the function default (90 here)
-        return f"timeout={timeout}"
+        return f"timeout={timeout}", {"ok": True}
 
     monkeypatch.setattr(committee, "_call_model", fake_call)
-    raw = committee._call_model("qwen3.6:27b", "prompt")
+    raw, metrics = committee._call_model("qwen3.6:27b", "prompt")
     assert "timeout=90" in raw
 

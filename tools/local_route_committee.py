@@ -495,16 +495,65 @@ def merge_judgements(qwen: RouteJudgement,
 # Committee
 # ═══════════════════════════════════════════════════════════════
 
-def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
-    """Call local model via OpenAI-compatible API (default: LiteLLM/llama.cpp).
+def _check_model_availability(model: str, base_url: str | None = None,
+                               timeout: int = 5) -> tuple[bool, str]:
+    """Check if a model endpoint is reachable via /v1/models or health check.
 
-    Retains an Ollama fallback path when OLLAMA_HOST is set or the configured
-    base URL points at an Ollama endpoint (port 11434).
+    Returns (available: bool, detail: str).
     """
     import urllib.request as _ur
     import json as _json
 
-    # Allow env override for very slow local GPUs
+    base = base_url or os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
+    # Try /v1/models first (OpenAI-compatible)
+    models_url = base.rstrip("/") + "/models"
+    try:
+        req = _ur.Request(models_url, headers={"Content-Type": "application/json"})
+        api_key = os.environ.get("LOCAL_LLM_API_KEY")
+        if api_key:
+            req.add_header("Authorization", f"Bearer {api_key}")
+        with _ur.urlopen(req, timeout=timeout) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        model_ids = []
+        if isinstance(data, dict):
+            for item in data.get("data") or []:
+                if isinstance(item, dict) and item.get("id"):
+                    model_ids.append(item["id"])
+        if model in model_ids:
+            return True, f"model '{model}' found in {len(model_ids)} available models"
+        if not model_ids:
+            return True, "endpoint reachable (model list empty or unexpected format)"
+        return True, f"endpoint reachable ({len(model_ids)} models, '{model}' not in list)"
+    except Exception as e:
+        # Fallback: try /health
+        try:
+            health_url = base.rstrip("/v1").rstrip("/") + "/health"
+            req = _ur.Request(health_url)
+            with _ur.urlopen(req, timeout=timeout) as resp:
+                if resp.status == 200:
+                    return True, "health check passed"
+        except Exception:
+            pass
+        return False, f"endpoint not reachable: {e}"
+
+
+def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
+    """Call local model via OpenAI-compatible API (default: LiteLLM/llama.cpp).
+
+    Returns ``(text: str, metrics: dict)`` where *metrics* includes
+    ``model``, ``latency_sec``, ``input_chars``, ``output_chars``,
+    ``ok``, and ``error``.
+    """
+    import urllib.request as _ur
+    import json as _json
+    import time as _time
+
+    t0 = _time.monotonic()
+    metrics = {
+        "model": model, "latency_sec": 0.0, "input_chars": len(prompt),
+        "output_chars": 0, "ok": False, "error": None,
+    }
+
     env_timeout = os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT")
     if env_timeout:
         try:
@@ -517,12 +566,9 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
     use_ollama = bool(ollama_host) or ":11434" in base
 
     if use_ollama:
-        # Ollama native generate API
         url = (ollama_host or base).rstrip("/") + "/api/generate"
         payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
+            "model": model, "prompt": prompt, "stream": False,
             "options": {"num_predict": 256, "temperature": 0.0},
         }
         keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
@@ -530,14 +576,10 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
             payload["keep_alive"] = keep_alive
         headers = {"Content-Type": "application/json"}
     else:
-        # OpenAI-compatible chat completions via LiteLLM -> llama.cpp
         url = base.rstrip("/") + "/chat/completions"
         payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "temperature": 0.0,
-            "max_tokens": 256,
+            "model": model, "messages": [{"role": "user", "content": prompt}],
+            "stream": False, "temperature": 0.0, "max_tokens": 256,
         }
         headers = {"Content-Type": "application/json"}
         api_key = os.environ.get("LOCAL_LLM_API_KEY")
@@ -545,30 +587,41 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> str:
             headers["Authorization"] = f"Bearer {api_key}"
 
     body = _json.dumps(payload).encode("utf-8")
+    text = ""
 
     try:
         req = _ur.Request(url, data=body, headers=headers)
         with _ur.urlopen(req, timeout=timeout) as resp:
             data = _json.loads(resp.read().decode("utf-8"))
         if use_ollama:
-            return data.get("response", "").strip()
-        choices = data.get("choices") or []
-        if choices and isinstance(choices[0], dict):
-            message = choices[0].get("message") or {}
-            return (message.get("content") or "").strip()
-        return ""
-    except Exception:
-        return ""
+            text = data.get("response", "").strip()
+        else:
+            choices = data.get("choices") or []
+            if choices and isinstance(choices[0], dict):
+                message = choices[0].get("message") or {}
+                text = (message.get("content") or "").strip()
+        metrics["ok"] = True
+        metrics["output_chars"] = len(text)
+    except Exception as e:
+        metrics["error"] = str(e)[:200]
+    finally:
+        metrics["latency_sec"] = round(_time.monotonic() - t0, 3)
+
+    return text, metrics
 
 
-def _call_model_with_retry(model: str, prompt: str, timeout: int = 120, max_retries: int = 1) -> str:
-    """Call a model and retry once if the response is not parseable."""
-    raw = _call_model(model, prompt, timeout=timeout)
+def _call_model_with_retry(model: str, prompt: str, timeout: int = 120,
+                            max_retries: int = 1) -> tuple[str, list[dict]]:
+    """Call a model, retry once if unparseable. Returns (text, metrics_list)."""
+    all_metrics: list[dict] = []
+    raw, m1 = _call_model(model, prompt, timeout=timeout)
+    all_metrics.append(m1)
     parsed = _parse_judgement(raw, model)
     if not parsed.parse_failed or max_retries <= 0:
-        return raw
-    raw = _call_model(model, prompt, timeout=timeout)
-    return raw
+        return raw, all_metrics
+    raw, m2 = _call_model(model, prompt, timeout=timeout)
+    all_metrics.append(m2)
+    return raw, all_metrics
 
 
 def _parse_judgement(raw: str, model: str) -> RouteJudgement:
@@ -639,92 +692,198 @@ def _parse_judgement(raw: str, model: str) -> RouteJudgement:
     )
 
 
+def _save_committee_artifacts(
+    task_id: str | None,
+    evidence_pack: dict,
+    qwen_prompt: str, gemma_prompt: str,
+    raw_qwen: str, raw_gemma: str,
+    cross_raw_qwen: str, cross_raw_gemma: str,
+    decision: RouteDecision,
+    metrics: list[dict],
+) -> Path | None:
+    """Save committee inputs/outputs to the task artifact directory."""
+    if not task_id:
+        return None
+    import time as _time
+    tasks_dir = Path(".local_llm_out/tasks") / task_id
+    committee_dir = tasks_dir / "committee"
+    committee_dir.mkdir(parents=True, exist_ok=True)
+    ts = _time.strftime("%Y%m%d_%H%M%S")
+
+    (committee_dir / "evidence_pack.json").write_text(
+        json.dumps(evidence_pack, ensure_ascii=False, indent=2), encoding="utf-8")
+    (committee_dir / "qwen_initial_prompt.txt").write_text(qwen_prompt, encoding="utf-8")
+    (committee_dir / "gemma_initial_prompt.txt").write_text(gemma_prompt, encoding="utf-8")
+    (committee_dir / "qwen_initial.json").write_text(raw_qwen, encoding="utf-8")
+    (committee_dir / "gemma_initial.json").write_text(raw_gemma, encoding="utf-8")
+    if cross_raw_qwen:
+        (committee_dir / "qwen_cross_review.json").write_text(cross_raw_qwen, encoding="utf-8")
+    if cross_raw_gemma:
+        (committee_dir / "gemma_cross_review.json").write_text(cross_raw_gemma, encoding="utf-8")
+    (committee_dir / "decision.json").write_text(
+        json.dumps(decision.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (committee_dir / "metrics.json").write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    return committee_dir
+
+
 def convene(task_description: str,
             plan_json: str = "{}",
             evidence_pack: dict | None = None,
-            repo_root: str | Path = ".") -> RouteDecision:
+            repo_root: str | Path = ".",
+            task_id: str | None = None) -> RouteDecision:
     """Convene the local route committee.
 
-    Qwen 27B and Gemma 31B independently judge the routing, then
-    deterministic rules merge their judgements into one decision.
-
-    Args:
-        task_description: The user's task.
-        plan_json: Pro's plan.json (if available).
-        evidence_pack: Pre-built evidence pack (or None to auto-build).
-        repo_root: Repo root for auto-building evidence pack.
+    Qwen 27B + Gemma 31B independently judge routing, then one round of
+    controlled cross-review resolves disagreements. Deterministic merge
+    rules produce the final route decision.
 
     Returns:
-        RouteDecision with merged judgement and enforced permissions.
+        RouteDecision with merged judgement, metrics, and saved artifacts.
     """
-    # Build evidence pack if not provided
+    import concurrent.futures as _cf
+    import time as _time
+
+    all_metrics: list[dict] = []
+
+    # Build evidence pack
     if evidence_pack is None:
         evidence_pack = build_evidence_pack(repo_root)
     evidence_text = format_evidence_pack(evidence_pack)
 
     plan_text = plan_json or json.dumps(
-        {"task": task_description[:500]},
-        ensure_ascii=False,
-    )
-    qwen_prompt = build_route_prompt(
-        QWEN_ROLE_INSTRUCTIONS,
-        plan_text,
-        evidence_text,
-    )
-    gemma_prompt = build_route_prompt(
-        GEMMA_ROLE_INSTRUCTIONS,
-        plan_text,
-        evidence_text,
-    )
+        {"task": task_description[:500]}, ensure_ascii=False)
 
-    # Allow env override for slow GPUs; default 120s per model call
+    qwen_prompt = build_route_prompt(QWEN_ROLE_INSTRUCTIONS, plan_text, evidence_text)
+    gemma_prompt = build_route_prompt(GEMMA_ROLE_INSTRUCTIONS, plan_text, evidence_text)
+
+    # Phase 4: Check model availability
+    qwen_avail, qwen_avail_detail = _check_model_availability(_LOCAL_ROUTE_QWEN_MODEL)
+    gemma_avail, gemma_avail_detail = _check_model_availability(_LOCAL_ROUTE_GEMMA_MODEL)
+    all_metrics.append({
+        "step": "availability", "timestamp": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        "qwen_available": qwen_avail, "qwen_detail": qwen_avail_detail,
+        "gemma_available": gemma_avail, "gemma_detail": gemma_avail_detail,
+    })
+
     model_timeout = int(os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT", 120))
-    result_timeout = model_timeout + 30  # headroom for threading overhead
+    result_timeout = model_timeout + 30
 
-    import concurrent.futures as _cf
+    # --- Round 1: Independent judgements (parallel) ---
+    raw_qwen, raw_gemma = "", ""
+    qwen_metrics_list, gemma_metrics_list = [], []
+    cross_raw_qwen, cross_raw_gemma = "", ""
 
     with _cf.ThreadPoolExecutor(max_workers=2) as pool:
-        future_qwen = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_QWEN_MODEL, qwen_prompt, model_timeout)
-        future_gemma = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_GEMMA_MODEL, gemma_prompt, model_timeout)
+        fq = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_QWEN_MODEL, qwen_prompt, model_timeout)
+        fg = pool.submit(_call_model_with_retry, _LOCAL_ROUTE_GEMMA_MODEL, gemma_prompt, model_timeout)
         try:
-            raw_qwen = future_qwen.result(timeout=result_timeout)
+            raw_qwen, qwen_metrics_list = fq.result(timeout=result_timeout)
         except Exception:
-            raw_qwen = ""
+            raw_qwen, qwen_metrics_list = "", [{"error": "timeout or exception"}]
         try:
-            raw_gemma = future_gemma.result(timeout=result_timeout)
+            raw_gemma, gemma_metrics_list = fg.result(timeout=result_timeout)
         except Exception:
-            raw_gemma = ""
+            raw_gemma, gemma_metrics_list = "", [{"error": "timeout or exception"}]
+
+    for m in qwen_metrics_list:
+        m["role"] = "qwen"; m["round"] = "initial"
+        all_metrics.append(m)
+    for m in gemma_metrics_list:
+        m["role"] = "gemma"; m["round"] = "initial"
+        all_metrics.append(m)
 
     qwen = _parse_judgement(raw_qwen, _LOCAL_ROUTE_QWEN_MODEL)
     gemma = _parse_judgement(raw_gemma, _LOCAL_ROUTE_GEMMA_MODEL)
 
-    # If both models could not be parsed even after retry, fall back to pro_decision
-    # rather than deadlocking the session with ask_user.
+    # --- Round 2: Controlled cross-review (one round only) ---
+    if not qwen.parse_failed and not gemma.parse_failed:
+        if qwen.recommended_route != gemma.recommended_route:
+            # Each model reads the other's conclusion, outputs only disagreement
+            cross_qwen_prompt = (
+                f"{QWEN_ROLE_INSTRUCTIONS}\n\n"
+                f"Your initial judgement: {json.dumps(qwen.to_dict())}\n\n"
+                f"Gemma's judgement: {json.dumps(gemma.to_dict())}\n\n"
+                f"If you still disagree, explain specifically why. "
+                f"If you agree with Gemma after review, state 'CONVERGED: <route>'."
+                f"\nOutput ONLY valid JSON per schema:\n{ROUTE_JUDGEMENT_SCHEMA}"
+            )
+            cross_gemma_prompt = (
+                f"{GEMMA_ROLE_INSTRUCTIONS}\n\n"
+                f"Your initial judgement: {json.dumps(gemma.to_dict())}\n\n"
+                f"Qwen's judgement: {json.dumps(qwen.to_dict())}\n\n"
+                f"If you still disagree, explain specifically why. "
+                f"If you agree with Qwen after review, state 'CONVERGED: <route>'."
+                f"\nOutput ONLY valid JSON per schema:\n{ROUTE_JUDGEMENT_SCHEMA}"
+            )
+
+            with _cf.ThreadPoolExecutor(max_workers=2) as pool:
+                fcq = pool.submit(_call_model, _LOCAL_ROUTE_QWEN_MODEL, cross_qwen_prompt, model_timeout)
+                fcg = pool.submit(_call_model, _LOCAL_ROUTE_GEMMA_MODEL, cross_gemma_prompt, model_timeout)
+                try:
+                    cross_raw_qwen, cm_qwen = fcq.result(timeout=result_timeout)
+                except Exception:
+                    cross_raw_qwen, cm_qwen = "", {"error": "cross-review timeout"}
+                try:
+                    cross_raw_gemma, cm_gemma = fcg.result(timeout=result_timeout)
+                except Exception:
+                    cross_raw_gemma, cm_gemma = "", {"error": "cross-review timeout"}
+
+            cm_qwen["role"] = "qwen"; cm_qwen["round"] = "cross"
+            cm_gemma["role"] = "gemma"; cm_gemma["round"] = "cross"
+            all_metrics.append(cm_qwen)
+            all_metrics.append(cm_gemma)
+
+            # Parse cross-review outputs
+            cross_qwen_parsed = _parse_judgement(cross_raw_qwen, _LOCAL_ROUTE_QWEN_MODEL)
+            cross_gemma_parsed = _parse_judgement(cross_raw_gemma, _LOCAL_ROUTE_GEMMA_MODEL)
+            if not cross_qwen_parsed.parse_failed:
+                qwen = cross_qwen_parsed
+            if not cross_gemma_parsed.parse_failed:
+                gemma = cross_gemma_parsed
+
+    # --- Merge ---
+
     if qwen.parse_failed and gemma.parse_failed:
-        return RouteDecision(
+        decision = RouteDecision(
             delegability="low",
             recommended_route="pro_decision",
             local_preprocessing_required=False,
-            pro_should_execute=True,
-            pro_should_adjudicate=True,
-            risk_level="medium",
-            privacy_status="safe",
+            pro_should_execute=True, pro_should_adjudicate=True,
+            risk_level="medium", privacy_status="safe",
             reason="Local committee could not parse either model response; falling back to pro_decision.",
             required_artifacts=[],
-            qwen_judgement=qwen.to_dict(),
-            gemma_judgement=gemma.to_dict(),
-            agreement=False,
-            escalated=True,
+            qwen_judgement=qwen.to_dict(), gemma_judgement=gemma.to_dict(),
+            agreement=False, escalated=True,
             escalated_reason="both models unparseable after retry",
         )
+        decision.metrics = all_metrics  # type: ignore[attr-defined]
+        _save_committee_artifacts(task_id, evidence_pack,
+            qwen_prompt, gemma_prompt, raw_qwen, raw_gemma,
+            cross_raw_qwen, cross_raw_gemma, decision, all_metrics)
+        return decision
 
-    # If exactly one model failed, use the other alone
     if qwen.parse_failed and not gemma.parse_failed:
-        return _single_model_decision(gemma)
+        decision = _single_model_decision(gemma)
+        decision.metrics = all_metrics  # type: ignore[attr-defined]
+        _save_committee_artifacts(task_id, evidence_pack,
+            qwen_prompt, gemma_prompt, raw_qwen, raw_gemma,
+            cross_raw_qwen, cross_raw_gemma, decision, all_metrics)
+        return decision
     if gemma.parse_failed and not qwen.parse_failed:
-        return _single_model_decision(qwen)
+        decision = _single_model_decision(qwen)
+        decision.metrics = all_metrics  # type: ignore[attr-defined]
+        _save_committee_artifacts(task_id, evidence_pack,
+            qwen_prompt, gemma_prompt, raw_qwen, raw_gemma,
+            cross_raw_qwen, cross_raw_gemma, decision, all_metrics)
+        return decision
 
-    return merge_judgements(qwen, gemma)
+    decision = merge_judgements(qwen, gemma)
+    decision.metrics = all_metrics  # type: ignore[attr-defined]
+    _save_committee_artifacts(task_id, evidence_pack,
+        qwen_prompt, gemma_prompt, raw_qwen, raw_gemma,
+        cross_raw_qwen, cross_raw_gemma, decision, all_metrics)
+    return decision
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -754,78 +913,6 @@ def validate_route_output(output: dict) -> list[str]:
     """Validate a full route.json payload (delegates to policy module)."""
     from pipeline_route_policy import validate_route_json
     return validate_route_json(output)
-    if not isinstance(output, dict):
-        return ["route output must be an object"]
-
-    errors: list[str] = []
-    required_fields = {
-        "delegability",
-        "recommended_route",
-        "local_preprocessing_required",
-        "pro_should_execute",
-        "pro_should_adjudicate",
-        "risk_level",
-        "privacy_status",
-        "reason",
-        "required_artifacts",
-        "qwen_judgement",
-        "gemma_judgement",
-        "agreement",
-        "escalated",
-        "escalated_reason",
-        "pro_audit_requested",
-        "_enforcement",
-    }
-    missing = sorted(required_fields - set(output))
-    if missing:
-        errors.append(f"missing fields: {', '.join(missing)}")
-
-    route = output.get("recommended_route")
-    if route not in VALID_ROUTES:
-        errors.append(f"invalid recommended_route: {route!r}")
-    if output.get("delegability") not in VALID_DELEGABILITY:
-        errors.append(f"invalid delegability: {output.get('delegability')!r}")
-    if output.get("risk_level") not in VALID_RISK_LEVELS:
-        errors.append(f"invalid risk_level: {output.get('risk_level')!r}")
-    if output.get("privacy_status") not in VALID_PRIVACY_STATUSES:
-        errors.append(f"invalid privacy_status: {output.get('privacy_status')!r}")
-
-    for field in (
-        "local_preprocessing_required",
-        "pro_should_execute",
-        "pro_should_adjudicate",
-        "agreement",
-        "escalated",
-        "pro_audit_requested",
-    ):
-        if field in output and not isinstance(output.get(field), bool):
-            errors.append(f"{field} must be bool")
-
-    if "reason" in output and not isinstance(output.get("reason"), str):
-        errors.append("reason must be string")
-    if "escalated_reason" in output and not isinstance(output.get("escalated_reason"), str):
-        errors.append("escalated_reason must be string")
-    if "required_artifacts" in output and not _is_list_of_strings(output.get("required_artifacts")):
-        errors.append("required_artifacts must be a list of strings")
-    if "qwen_judgement" in output and not isinstance(output.get("qwen_judgement"), dict):
-        errors.append("qwen_judgement must be object")
-    if "gemma_judgement" in output and not isinstance(output.get("gemma_judgement"), dict):
-        errors.append("gemma_judgement must be object")
-
-    enforcement = output.get("_enforcement")
-    if isinstance(enforcement, dict):
-        if not _is_list_of_strings(enforcement.get("allowed")):
-            errors.append("_enforcement.allowed must be a list of strings")
-        if not _is_list_of_strings(enforcement.get("denied")):
-            errors.append("_enforcement.denied must be a list of strings")
-        if not isinstance(enforcement.get("cloud_ok"), bool):
-            errors.append("_enforcement.cloud_ok must be bool")
-        if not isinstance(enforcement.get("pro_audit_requested"), bool):
-            errors.append("_enforcement.pro_audit_requested must be bool")
-    elif "_enforcement" in output:
-        errors.append("_enforcement must be object")
-
-    return errors
 
 
 def main():
@@ -888,6 +975,7 @@ def main():
     if args.json or args.output:
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
+        permissions = _route_permissions_for(decision.recommended_route)
         print(f"Task: {task[:80]}")
         print(f"Route: {decision.recommended_route}")
         print(f"Risk: {decision.risk_level}")

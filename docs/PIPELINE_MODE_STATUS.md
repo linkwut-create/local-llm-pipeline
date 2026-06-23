@@ -2,7 +2,7 @@
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
 > **Updated**: 2026-06-23  
-> **Current phase**: Phase 3 — Unified Route Policy  
+> **Current phase**: Phase 4 — Route Committee Hardening  
 
 ---
 
@@ -11,15 +11,15 @@
 | Item | Value |
 |------|-------|
 | Branch | `master` |
-| HEAD | `30ace01` |
-| Commit message | `fix: close route enforcement bypasses (Phase 2)` |
-| Working tree | Clean (after Phase 2 commit) |
+| HEAD | `eb5b871` |
+| Commit message | `refactor: centralize pipeline route policy (Phase 3)` |
+| Working tree | Modified (Phase 4 in progress) |
 
-### Test Baseline (Phase 1+2)
+### Test Baseline
 
 ```text
-pytest tests/test_route_enforcer.py tests/test_local_route_committee.py
-135 passed in 2.34s
+pytest tests/test_route_enforcer.py tests/test_local_route_committee.py tests/test_pipeline_route_policy.py
+167 passed in 2.37s
 ```
 
 ---
@@ -28,12 +28,11 @@ pytest tests/test_route_enforcer.py tests/test_local_route_committee.py
 
 | Phase | Title | Status | Blocking Issues |
 |-------|-------|--------|-----------------|
-| 0 | Baseline Audit & Documentation Calibration | ✅ Done | None |
+| 0 | Baseline Audit | ✅ Done | None |
 | 1 | Task Lifecycle Fix | ✅ Done | None |
-| 2 | Tool Permission Enforcement Fix | ✅ Done | None |
-| 3 | Unified Route Policy | 🔧 In progress | Depends on Phase 2 |
-| 3 | Unified Route Policy | ⬜ Not started | Depends on Phase 2 |
-| 4 | Route Committee Hardening | ⬜ Not started | Depends on Phase 3 |
+| 2 | Tool Permission Enforcement | ✅ Done | None |
+| 3 | Unified Route Policy | ✅ Done | None |
+| 4 | Route Committee Hardening | 🔧 In progress | None |
 | 5 | Model Switch Lifecycle | ⬜ Not started | Depends on Phase 3 |
 | 6 | Reproducible Hook Installation | ⬜ Not started | — |
 | 7 | Formalized Artifact Store | ⬜ Not started | — |
