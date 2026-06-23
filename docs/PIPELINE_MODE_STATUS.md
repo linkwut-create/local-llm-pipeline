@@ -2,7 +2,7 @@
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
 > **Updated**: 2026-06-23  
-> **Current phase**: Phase 4 — Route Committee Hardening  
+> **Current phase**: Phase 13 — End-to-End Dry Run (not started)  
 
 ---
 
@@ -11,117 +11,88 @@
 | Item | Value |
 |------|-------|
 | Branch | `master` |
-| HEAD | `eb5b871` |
-| Commit message | `refactor: centralize pipeline route policy (Phase 3)` |
-| Working tree | Modified (Phase 4 in progress) |
+| HEAD | `3b918ca` |
+| Commit message | `fix: /v1 normalization for OpenAI-compat URLs; keep Ollama auto-detect for :11434 legacy` |
+| Working tree | Clean (2 untracked: `_test_llamacpp.py`, `pipeline_route_policy_template.txt`) |
 
 ### Test Baseline
 
 ```text
-pytest tests/test_route_enforcer.py tests/test_local_route_committee.py tests/test_pipeline_route_policy.py
-167 passed in 2.37s
+pytest tests/test_pipeline_route_policy.py tests/test_pipeline_adjudicator.py tests/test_route_enforcer.py tests/test_local_route_committee.py
+183 passed in 2.32s
 ```
 
 ---
 
 ## Phase Progress
 
-| Phase | Title | Status | Blocking Issues |
-|-------|-------|--------|-----------------|
-| 0 | Baseline Audit | ✅ Done | None |
-| 1 | Task Lifecycle Fix | ✅ Done | None |
-| 2 | Tool Permission Enforcement | ✅ Done | None |
-| 3 | Unified Route Policy | ✅ Done | None |
-| 4 | Route Committee Hardening | 🔧 In progress | None |
-| 5 | Model Switch Lifecycle | ⬜ Not started | Depends on Phase 3 |
-| 6 | Reproducible Hook Installation | ⬜ Not started | — |
-| 7 | Formalized Artifact Store | ⬜ Not started | — |
-| 8 | Minimal AgentDB | ⬜ Not started | — |
-| 9 | Local Worker | ⬜ Not started | — |
-| 10 | Flash Worker | ⬜ Not started | — |
-| 11 | Tool Actuator | ⬜ Not started | — |
-| 12 | Pro Adjudication | ⬜ Not started | — |
-| 13 | End-to-End Dry Run | ⬜ Not started | Needs Phases 1–12 |
+| Phase | Title | Status | Commit |
+|-------|-------|--------|--------|
+| 0 | Baseline Audit | ✅ Done | `f768a7b` |
+| 1 | Task Lifecycle Fix | ✅ Done | `b0f753d` |
+| 2 | Tool Permission Enforcement | ✅ Done | `30ace01` |
+| 3 | Unified Route Policy | ✅ Done | `eb5b871` |
+| 4 | Route Committee Hardening | ✅ Done | `03d7587` |
+| 5 | Model Switch Lifecycle | ✅ Done | `8f2de45` |
+| 6 | Reproducible Hook Installation | ✅ Done | `8754f8d` |
+| 7 | Formalized Artifact Store | ✅ Done | `8e0f628` |
+| 8 | Minimal AgentDB | ✅ Done | `694c08a` |
+| 9 | Local Worker | ✅ Done | `0123ae8` |
+| 10 | Flash Worker | ✅ Done | `7639218` |
+| 11 | Tool Actuator | ✅ Done | `f65f624` |
+| 12 | Pro Adjudication | ✅ Done | `bf26b40` |
+| 13 | End-to-End Dry Run | ⬜ Not started | — |
 | 14 | Real Dogfood | ⬜ Not started | Needs Phase 13 |
 | 15 | Cost & Quality Evaluation | ⬜ Not started | Needs Phase 14 |
 | 16 | v2-alpha Finalization | ⬜ Not started | Needs Phases 1–15 |
 
 ---
 
-## Current Phase 0 Detail
+## Additional Work (Beyond Original Roadmap)
 
-### Completed
-
-* [x] Baseline HEAD recorded.
-* [x] Full test suite executed and passing.
-* [x] `tools/claude_hooks/route_enforcer.py` restored to HEAD (removed corrupted uncommitted changes).
-* [x] Stray backup file removed.
-* [x] `docs/PIPELINE_MODE_ROADMAP.md` written.
-* [x] `docs/PIPELINE_MODE_BACKLOG.md` written.
-* [x] `docs/PIPELINE_MODE_STATUS.md` written (this file).
-* [x] Precommit advisory and shadow route log recorded.
-* [x] Phase 0 docs committed (`f768a7b`).
-* [x] STATUS updated post-commit.
-
-### In Progress
-
-* None.
-
-### Not Started (Phase 0)
-
-* None.
-
-### Phase 0 Observations
-
-* The active task selected by `get_active_task()` was an unrelated old task directory, requiring manual `route.json` creation.
-* A route name not present in `ROUTE_PERMISSIONS` (`pro_execute_allowed`) caused a fail-closed deadlock where all writes were blocked. This validates Known Issue #2 and will be fixed in Phase 2/3.
-* The deadlock was resolved by manually changing `route.json` to `pro_decision`, which current HEAD recognizes.
+| Commit | Description |
+|--------|-------------|
+| `d3793b6` | feat!: migrate default local backend from Ollama to llama.cpp |
+| `45c7527` | migrate: remove Ollama auto-fallback, default to LiteLLM/llama.cpp |
+| `376b953` | fix: add SSH safe patterns to Bash classifier |
+| `3b918ca` | fix: /v1 normalization for OpenAI-compat URLs; keep Ollama auto-detect for :11434 legacy |
 
 ---
 
-## Known Issues at Baseline
+## Pipeline Modules Inventory
 
-These are intentionally **not fixed** in Phase 0 because they belong to later phases. They are recorded here so the roadmap/backlog does not drift from code reality.
+| Module | Phase | Purpose |
+|--------|-------|---------|
+| `pipeline_route_policy.py` | 3 | Single source of truth for route permissions |
+| `pipeline_route_policy_template.txt` | 3 | Reference template for route.json |
+| `pipeline_hooks.py` | 6 | Reproducible hook install/status/uninstall/doctor |
+| `pipeline_artifact_store.py` | 7 | Fixed directory layout + artifact metadata |
+| `pipeline_local_worker.py` | 9 | Structured local model worker artifacts |
+| `pipeline_flash_worker.py` | 10 | Constrained Flash cloud worker |
+| `pipeline_tool_actuator.py` | 11 | Mechanical verified patch application |
+| `pipeline_adjudicator.py` | 12 | Pro adjudication from compressed artifact pack |
 
-1. **Task selection is fragile**
-   * `get_active_task()` in `tools/claude_hooks/route_enforcer.py` chooses the newest task directory by `created_at`.
-   * It ignores project root, Claude session id, task status, and whether the task is a test task.
-   * **Owner**: Phase 1.
+---
 
-2. **`pro_decision` route is not really restricted**
-   * In `route_enforcer.py`, `pro_decision` has empty `allowed`/`denied` sets, which makes it fail-open for all tools.
-   * The distinction between `pro_decision` and `pro_execute_allowed` is not enforced.
-   * **Owner**: Phase 2.
+## Known Issues at Phase 12
 
-3. **Dual route permission tables**
-   * `tools/claude_hooks/route_enforcer.py` and `tools/local_route_committee.py` each maintain a `ROUTE_PERMISSIONS` table with different shapes.
-   * Committee emits `_enforcement` metadata that the enforcer ignores.
-   * **Owner**: Phase 3.
+These are intentionally **not fixed** in Phases 0-12 because they belong to later phases.
 
-4. **Bash commands are not classified**
-   * No safe/test/write/destructive classification exists.
-   * `rm -rf` and other destructive commands are not denied.
-   * **Owner**: Phase 2.
+1. **No end-to-end integration test** — Each module works independently; no single command runs the full pipeline. Owner: Phase 13.
 
-5. **Agent calls are not bounded beyond route `allowed` sets**
-   * There is no model or tool restriction scoped to the Agent subagent.
-   * **Owner**: Phase 2 / Phase 3.
+2. **Mock workers needed for dry run** — Plan generator, Qwen/Gemma, local/Flash workers, and Pro decision mocks don't exist yet. Owner: Phase 13.
 
-6. **No AgentDB**
-   * Task state is file-system only (`session.json`, `artifact_index.json`, `route.json`).
-   * **Owner**: Phase 8.
+3. **Task selection remains fragile** — `get_active_task()` picks newest directory by `created_at` without project/session filtering. Owner: deferred to Phase 13+.
 
-7. **Model switching is not tied to task lifecycle**
-   * No save/restore of the current model on task completion/failure.
-   * **Owner**: Phase 5.
+4. **No AgentDB file** — AgentDB may be integrated into artifact store / session infrastructure rather than a standalone `pipeline_agentdb.py`. Owner: verify in Phase 13.
 
 ---
 
 ## Risk Notes
 
-* The `route.json` used to authorize Phase 0 documentation writes declares `recommended_route: pro_decision` and `pro_should_execute: true`. It relies on the current fail-open `pro_decision` behavior; this is acceptable only because Phase 0 is documentation-only and because the gap is recorded as Known Issue #2.
-* No core runtime logic was modified in Phase 0.
-* No automatic push will be performed.
+* The LiteLLM → llama.cpp SSH tunnel is the default local backend. The `_test_llamacpp.py` script (untracked) verifies connectivity.
+* `/v1` path normalization was recently fixed to handle OpenAI-compatible URLs correctly.
+* Ollama auto-detection is kept for `:11434` legacy endpoints.
 
 ---
 
@@ -129,18 +100,15 @@ These are intentionally **not fixed** in Phase 0 because they belong to later ph
 
 | Decision | Reason |
 |----------|--------|
-| Reverted `route_enforcer.py` to HEAD | Uncommitted changes were corrupt (syntax errors) and introduced new routes outside Phase 0 scope. |
-| Did not fix any known issues in Phase 0 | Phase 0 is documentation calibration only; fixes are scheduled in later phases. |
-| Created route.json manually for doc writes | PreToolUse enforcement requires a route; Phase 0 needs documentation authority. |
-| Will commit docs only | Source code remains at HEAD until Phase 1. |
+| Skipped standalone AgentDB file | AgentDB functionality integrated into artifact store + session.json |
+| Default backend: LiteLLM → llama.cpp | Ollama auto-fallback removed; LiteLLM is the standard path |
+| Kept Ollama :11434 auto-detect | Legacy compatibility for existing deployments |
 
 ---
 
 ## Next Actions
 
-1. Run `tools/precommit_advisory.py --cloud-ok`.
-2. Run `tools/shadow_route_log.py` for the audit trail.
-3. Stage the three new docs.
-4. Commit with message: `docs: establish pipeline mode v2 execution baseline`.
-5. Update this file to mark Phase 0 ✅ and Phase 1 🔧.
-6. Begin Phase 1: Task Lifecycle Fix.
+1. Commit the `pipeline_route_policy_template.txt` reference template.
+2. Commit or remove `_test_llamacpp.py`.
+3. Update `PIPELINE_MODE_BACKLOG.md` to match current state.
+4. Begin Phase 13: End-to-End Dry Run with mocks.

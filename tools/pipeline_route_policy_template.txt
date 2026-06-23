@@ -1,0 +1,158 @@
+# Pipeline Route Policy Template
+# =============================================================================
+# Single source of truth: tools/pipeline_route_policy.py
+# This file is a reference template — copy and customize for new task routes.
+# All fields except recommended_route are optional and have safe defaults.
+# =============================================================================
+
+# --- Minimal route.json (only required field) ---
+{
+  "recommended_route": "pro_decision"
+}
+
+# --- Full route.json with all fields ---
+{
+  "recommended_route": "pro_decision",
+  "risk_level": "medium",
+  "privacy_status": "safe",
+  "delegability": "high",
+  "allowed_tools": ["Read", "Grep", "Glob", "Bash", "PowerShell"],
+  "blocked_tools": ["Edit", "Write"],
+  "bash_policy": "readonly_or_test",
+  "plan_sha256": "abc123...",
+  "task_id": "20260623_120000_abc12345",
+  "created_at": "2026-06-23T12:00:00+08:00",
+  "_enforcement": {
+    "model_switch": "deepseek-v4-flash",
+    "max_files": 10,
+    "timeout_seconds": 300
+  }
+}
+
+# =============================================================================
+# Valid Routes (recommended_route)
+# =============================================================================
+#
+# plan_only           — Planning only. Read + search only, no bash/write/agent.
+# direct              — User-approved full local execution. Write allowed.
+# local_only          — Local execution only. No write/edit/agent, task tools ok.
+# flash_direct        — Flash cloud model reads/proposes, cannot write directly.
+# flash_subagent      — Flash subagent with full tool access (including Agent).
+# pro_decision        — Pro reads evidence and adjudicates. Cannot edit directly.
+# pro_execute_allowed — Pro authorized to execute. Destructive commands blocked.
+# blocked             — Task blocked. All tools denied.
+# ask_user            — Pending human approval. Read-only, no bash/write/agent.
+#
+# Legacy names (auto-migrated):
+#   claude_code_pro → pro_execute_allowed
+#   manual_confirm  → ask_user
+#   pro_only        → pro_decision
+
+# =============================================================================
+# Risk Levels (risk_level)
+# =============================================================================
+#
+# low      — Trivial change, well-understood area, no security impact.
+# medium   — Non-trivial change, cross-file, moderate risk.
+# high     — Security boundary, hook/gate/router, DB schema, release boundary.
+# critical — Production data, auth/crypto, deployment config, secrets.
+
+# =============================================================================
+# Privacy Status (privacy_status)
+# =============================================================================
+#
+# safe         — No secrets, no PII, no private data in scope.
+# needs_review — Possible secrets or PII; controller must verify.
+# blocked      — Contains secrets/PII; must not be sent to cloud models.
+
+# =============================================================================
+# Delegability (delegability)
+# =============================================================================
+#
+# high    — Safe to delegate to local/flash workers.
+# medium  — Partially delegable; Pro should review key decisions.
+# low     — Mostly requires Pro judgment; delegate only rote tasks.
+# blocked — Cannot delegate; Pro must handle entirely.
+
+# =============================================================================
+# Bash Policies (bash_policy)
+# =============================================================================
+#
+# deny_all         — No bash commands allowed.
+# readonly_or_test — safe_readonly + safe_test only.
+# allow_safe       — readonly + test + workspace_write + dependency_change.
+# allow_all        — All commands allowed (including destructive, network).
+#
+# Bash classification tiers (from pipeline_route_policy.classify_bash_command):
+#   safe_readonly     — git status/log/diff, ls, cat, grep, head, etc.
+#   safe_test         — pytest, npm test, cargo test, go test, python script.py
+#   workspace_write   — git add/commit/checkout, cp, mv, mkdir, sed, tee, New-Item
+#   dependency_change — pip install, npm install, cargo install, apt install
+#   network_or_remote — git push/pull, ssh, scp, rsync, curl|sh, gh release
+#   destructive       — rm -rf, git reset --hard, format C:, chmod 777, dd if=
+
+# =============================================================================
+# Tool Family Expansions
+# =============================================================================
+#
+# The wildcard "Task" in allowed/denied sets expands to:
+#   TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, TaskStop
+#
+# MCP wildcard patterns (prefix*):
+#   "mcp__local-llm__*"  — matches all local-llm MCP tools
+#   "mcp__git__*"         — matches all git MCP tools
+
+# =============================================================================
+# Per-Route Quick Reference
+# =============================================================================
+#
+# Route              | Write | Bash            | Agent | Cloud | Max Files
+# -------------------|-------|-----------------|-------|-------|----------
+# plan_only          | NO    | deny_all        | NO    | NO    | 3
+# direct             | YES   | allow_safe      | NO    | NO    | ∞
+# local_only         | NO    | readonly_or_test| NO    | NO    | 10
+# flash_direct       | NO    | readonly_or_test| YES   | YES   | 20
+# flash_subagent     | YES   | allow_safe      | YES   | YES   | 50
+# pro_decision       | NO    | readonly_or_test| NO    | YES   | ∞
+# pro_execute_allowed| YES   | allow_safe      | YES   | YES   | ∞
+# blocked            | NO    | deny_all        | NO    | NO    | 0
+# ask_user           | NO    | readonly_or_test| NO    | NO    | 3
+
+# =============================================================================
+# Example: Low-risk local task
+# =============================================================================
+{
+  "recommended_route": "local_only",
+  "risk_level": "low",
+  "privacy_status": "safe",
+  "delegability": "high",
+  "bash_policy": "readonly_or_test"
+}
+
+# =============================================================================
+# Example: High-risk production change requiring Pro
+# =============================================================================
+{
+  "recommended_route": "pro_decision",
+  "risk_level": "high",
+  "privacy_status": "safe",
+  "delegability": "low",
+  "bash_policy": "readonly_or_test",
+  "allowed_tools": ["Read", "Grep", "Glob", "Bash", "TaskCreate", "TaskUpdate"]
+}
+
+# =============================================================================
+# Example: Pro-authorized execution with constraints
+# =============================================================================
+{
+  "recommended_route": "pro_execute_allowed",
+  "risk_level": "medium",
+  "privacy_status": "safe",
+  "delegability": "medium",
+  "bash_policy": "allow_safe",
+  "_enforcement": {
+    "model_switch": null,
+    "max_files": 20,
+    "timeout_seconds": 600
+  }
+}
