@@ -116,43 +116,55 @@ def test_cloud_ok_default_false():
 # CLI regression tests
 # ═══════════════════════════════════════════════════════════════
 
-def test_cli_runs_no_crash():
-    import subprocess
+def test_cli_runs_no_crash(tmp_path):
+    import subprocess, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/precommit_advisory.py"],
+        [sys.executable, "tools/precommit_advisory.py"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     assert r.returncode == 0
 
 
-def test_cli_cloud_ok_runs():
-    import subprocess
+def test_cli_cloud_ok_runs(tmp_path):
+    import subprocess, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/precommit_advisory.py", "--cloud-ok"],
+        [sys.executable, "tools/precommit_advisory.py", "--cloud-ok"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     assert r.returncode == 0
 
 
-def test_cli_json_output():
-    import subprocess, json
+def test_cli_json_output(tmp_path):
+    import subprocess, json, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/precommit_advisory.py", "--json"],
+        [sys.executable, "tools/precommit_advisory.py", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     data = json.loads(r.stdout.strip())
     assert "advisory_only" in data
 
 
-def test_cli_no_traceback():
-    import subprocess
+def test_cli_no_traceback(tmp_path):
+    import subprocess, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/precommit_advisory.py"],
+        [sys.executable, "tools/precommit_advisory.py"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     assert "Traceback" not in r.stdout
 

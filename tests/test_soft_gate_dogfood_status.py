@@ -10,9 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 from soft_gate_dogfood_status import status, _load_records, _count_distribution
 
 
-def _write_records(dir_path: Path, records: list[dict]):
+def _write_records(dir_path: Path, records: list[dict], fname: str = "20260613.jsonl"):
     dir_path.mkdir(parents=True, exist_ok=True)
-    fname = "20260613.jsonl"
     with open(dir_path / fname, "w", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -171,6 +170,42 @@ def test_exclude_before_filters_old_records(tmp_path, monkeypatch):
     assert r_filtered["records_total"] == 1
     assert r_filtered["critical_misrouting"] == 0
     assert r_filtered["match_rate"] == 1.0
+
+
+def test_exclude_before_date_uses_file_prefix_for_missing_timestamps(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_epoch_file"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "old missing timestamp", "router_task_type": "governance-integration",
+         "router_risk_level": "high", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": False},
+    ], fname="20260613.jsonl")
+    _write_records(sd, [
+        {"task": "new ok", "router_task_type": "review-diff",
+         "router_risk_level": "medium", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-22T10:00:00+00:00"},
+    ], fname="20260622.jsonl")
+
+    records = _load_records(since="2026-06-13", exclude_before="2026-06-20")
+
+    assert [r["task"] for r in records] == ["new ok"]
+
+
+def test_exclude_before_keeps_exact_boundary_record(tmp_path, monkeypatch):
+    sd = tmp_path / "shadow_epoch_boundary"
+    monkeypatch.setattr("soft_gate_dogfood_status.SHADOW_DIR", sd)
+    _write_records(sd, [
+        {"task": "boundary", "router_task_type": "review-diff",
+         "router_risk_level": "medium", "router_privacy_status": "safe",
+         "actual_decision": "local-first", "match": True,
+         "timestamp": "2026-06-20T00:00:00+00:00"},
+    ])
+
+    records = _load_records(since="2026-06-13",
+                            exclude_before="2026-06-20T00:00:00+00:00")
+
+    assert [r["task"] for r in records] == ["boundary"]
 
 
 def test_calibration_epoch_excludes_historical_misrouting(tmp_path, monkeypatch):

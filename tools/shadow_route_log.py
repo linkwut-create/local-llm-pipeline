@@ -16,13 +16,16 @@ Design:
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-SHADOW_DIR = PROJECT_ROOT / ".local_llm_out" / "shadow_routes"
+SHADOW_DIR = Path(
+    os.environ.get("LOCAL_LLM_SHADOW_DIR", PROJECT_ROOT / ".local_llm_out" / "shadow_routes")
+)
 OUTPUT_DIR = PROJECT_ROOT / ".local_llm_out"
 
 # Ensure router_explain importable
@@ -34,6 +37,19 @@ _engine = RouterEngine()
 CANONICAL_ACTUALS = {"local", "local-first", "flash-fallback", "pro-review", "cloud-blocked", "defer"}
 LEGACY_ACTUALS = {"local-only"}
 VALID_ACTUALS = CANONICAL_ACTUALS | LEGACY_ACTUALS
+
+# Unit-test probe tasks that should never pollute the production shadow log.
+# Tests must patch SHADOW_DIR, but this guard protects against accidental leaks.
+_PROBE_TASK_PATTERNS = (
+    re.compile(r"^test\s+\w+", re.IGNORECASE),
+    re.compile(r"^canon\s+local\b", re.IGNORECASE),
+    re.compile(r"^legacy\b", re.IGNORECASE),
+)
+
+
+def _is_probe_task(task: str) -> bool:
+    """Return True if the task description is an obvious unit-test probe."""
+    return any(p.search(task) is not None for p in _PROBE_TASK_PATTERNS)
 
 
 def _ensure_dir():
@@ -61,6 +77,12 @@ def _auto_match(router_risk: str, router_cloud: bool, actual: str) -> bool:
 def log(task: str, actual: str = "", notes: str = "", cloud_ok: bool = False) -> dict:
     """Record one shadow routing entry. Returns the record dict."""
     _ensure_dir()
+
+    if _is_probe_task(task):
+        return {
+            "error": "probe task skipped",
+            "written": False,
+        }
 
     decision = _engine.analyze(task)
 

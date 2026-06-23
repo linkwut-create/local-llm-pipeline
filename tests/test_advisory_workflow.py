@@ -125,34 +125,43 @@ def test_decision_only_allowed_values():
             f"Bad decision {r['recommended_controller_decision']} for {task}"
 
 
-def test_cli_runs_no_crash():
-    import subprocess
+def test_cli_runs_no_crash(tmp_path):
+    import subprocess, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/advisory_workflow.py", "review diff", "--cloud-ok"],
+        [sys.executable, "tools/advisory_workflow.py", "review diff", "--cloud-ok"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     assert r.returncode == 0
 
 
-def test_cli_json_output():
-    import subprocess, json
+def test_cli_json_output(tmp_path):
+    import subprocess, json, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/advisory_workflow.py", "review diff", "--json"],
+        [sys.executable, "tools/advisory_workflow.py", "review diff", "--json"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     data = json.loads(r.stdout.strip())
     assert "advisory_only" in data
     assert data["advisory_only"] is True
 
 
-def test_cli_no_traceback():
-    import subprocess
+def test_cli_no_traceback(tmp_path):
+    import subprocess, os
+    env = os.environ.copy()
+    env["LOCAL_LLM_SHADOW_DIR"] = str(tmp_path / "shadow_routes")
     r = subprocess.run(
-        ["py", "-3", "tools/advisory_workflow.py", "review diff"],
+        [sys.executable, "tools/advisory_workflow.py", "review diff"],
         capture_output=True, text=True, timeout=15,
         cwd=str(Path(__file__).parent.parent),
+        env=env,
     )
     assert "Traceback" not in r.stdout
 

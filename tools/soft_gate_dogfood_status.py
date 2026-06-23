@@ -49,7 +49,7 @@ def _load_records(since: str, exclude_before: str = None) -> list[dict]:
                 continue
 
         # Filter by exclude_before filename prefix
-        if exclude_dt is None and exclude_before and len(exclude_before) == 10:
+        if exclude_dt is not None and exclude_before and len(exclude_before) == 10:
             file_date = f.stem  # YYYYMMDD
             exclude_file = exclude_before.replace("-", "")
             if file_date < exclude_file:

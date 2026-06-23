@@ -83,7 +83,7 @@ def test_log_no_actual(tmp_path, monkeypatch):
 
 def test_output_under_local_llm_out(tmp_path, monkeypatch):
     monkeypatch.setattr("shadow_route_log.SHADOW_DIR", tmp_path / "shadow_routes")
-    log("test task")
+    log("sample routing task")
     assert (tmp_path / "shadow_routes").exists()
     files = list((tmp_path / "shadow_routes").glob("*.jsonl"))
     assert len(files) == 1
@@ -143,41 +143,41 @@ def test_stats_empty():
 # ═══════════════════════════════════════════════════════════════
 
 def test_valid_actual_local():
-    r = log(task="test local", actual="local")
+    r = log(task="verify local routing", actual="local")
     assert "error" not in r
 
 
 def test_valid_actual_pro_review():
-    r = log(task="test pro", actual="pro-review")
+    r = log(task="verify pro-review routing", actual="pro-review")
     assert "error" not in r
 
 
 def test_invalid_actual_rejected():
-    r = log(task="test bad", actual="invalid-value")
+    r = log(task="verify invalid rejection", actual="invalid-value")
     assert "error" in r
     assert r["written"] is False
 
 
 def test_empty_actual_allowed():
-    r = log(task="test empty", actual="")
+    r = log(task="verify empty actual", actual="")
     assert "error" not in r
 
 
 def test_invalid_not_written_to_jsonl(tmp_path, monkeypatch):
     sd = tmp_path / "shadow_val"
     monkeypatch.setattr("shadow_route_log.SHADOW_DIR", sd)
-    log(task="test bad write", actual="garbage-actual")
+    log(task="invalid actual write check", actual="garbage-actual")
     # Verify no file was created
     assert not sd.exists() or not list(sd.glob("*.jsonl"))
 
 
 def test_canonical_local_accepted():
-    r = log(task="canon local", actual="local")
+    r = log(task="canonical local decision", actual="local")
     assert "error" not in r
 
 
 def test_legacy_local_only_accepted():
-    r = log(task="legacy", actual="local-only")
+    r = log(task="accept legacy local-only actual", actual="local-only")
     assert "error" not in r
 
 
@@ -190,6 +190,14 @@ def test_invalid_error_mentions_canonical():
 def test_invalid_error_includes_local_first():
     r = log(task="bad2", actual="nope")
     assert "local-first" in r["error"]
+
+
+def test_probe_task_skipped():
+    """Unit-test probe tasks must be rejected by the production guard."""
+    r = log(task="test local", actual="local")
+    assert "error" in r
+    assert "probe" in r["error"].lower()
+    assert r["written"] is False
 
 
 # ═══════════════════════════════════════════════════════════════
