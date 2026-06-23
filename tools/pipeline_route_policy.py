@@ -219,6 +219,7 @@ _BASH_SAFE_READONLY = [
     r'^(python|py)\s+--version', r'^(which|where|Get-Command)\b',
     r'^(head|tail|wc|sort|uniq|tree|du)\b',
     r'\bgit\s+log\b.*--oneline',
+    r'^ssh\s+\S+\s+(echo|systemctl|curl|ls|cat|hostname|whoami|python3?)\b',
     r'^(Get-ChildItem|Get-Content|Get-Location|Test-Path|Resolve-Path)\b',
     r'(pip|npm|cargo|gem)\s+(list|show|info|freeze|outdated|audit)\b',
 ]
