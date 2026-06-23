@@ -1110,35 +1110,21 @@ def load_task_config(task_name: str) -> dict:
 
 
 def _resolve_provider(args_provider: str | None = None) -> str:
-    """Resolve provider: args > LOCAL_LLM_PROVIDER env > auto-detect > 'openai-compatible'.
+    """Resolve provider: args > LOCAL_LLM_PROVIDER env > 'openai-compatible'.
 
-    Migrated default to openai-compatible (LiteLLM/llama.cpp gateway).
-    Ollama is selected only when explicitly requested or when LOCAL_LLM_BASE_URL
-    points to an Ollama port (:11434).
+    All local inference goes through LiteLLM/llama.cpp OpenAI-compatible API.
+    Ollama is no longer auto-detected or used as default.
     """
-    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    auto_provider = "openai-compatible"
-    if env_base and ":11434" in env_base:
-        auto_provider = "ollama"
     return (
         args_provider
         or os.environ.get("LOCAL_LLM_PROVIDER")
-        or auto_provider
+        or "openai-compatible"
     )
 
 
 def _resolve_endpoint(provider: str, args_base_url: str | None = None) -> str:
-    """Resolve base URL for *provider*: args > LOCAL_LLM_BASE_URL > OLLAMA_HOST > default.
-
-    Default openai-compatible endpoint is the LiteLLM proxy (127.0.0.1:4000/v1).
-    Ollama default remains localhost:11434 for explicit ollama provider.
-    """
+    """Resolve base URL: args > LOCAL_LLM_BASE_URL > LiteLLM default."""
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    if provider == "ollama":
-        ollama_host = os.environ.get("OLLAMA_HOST", "")
-        if ollama_host and not ollama_host.startswith("http"):
-            ollama_host = f"http://{ollama_host}"
-        return args_base_url or env_base or ollama_host or "http://localhost:11434"
     return args_base_url or env_base or "http://127.0.0.1:4000/v1"
 
 

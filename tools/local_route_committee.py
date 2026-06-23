@@ -538,11 +538,9 @@ def _check_model_availability(model: str, base_url: str | None = None,
 
 
 def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
-    """Call local model via OpenAI-compatible API (default: LiteLLM/llama.cpp).
+    """Call local model via OpenAI-compatible API (LiteLLM/llama.cpp).
 
-    Returns ``(text: str, metrics: dict)`` where *metrics* includes
-    ``model``, ``latency_sec``, ``input_chars``, ``output_chars``,
-    ``ok``, and ``error``.
+    Returns ``(text: str, metrics: dict)``.
     """
     import urllib.request as _ur
     import json as _json
@@ -562,29 +560,15 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
             pass
 
     base = os.environ.get("LOCAL_LLM_BASE_URL", "http://127.0.0.1:4000/v1")
-    ollama_host = os.environ.get("OLLAMA_HOST")
-    use_ollama = bool(ollama_host) or ":11434" in base
-
-    if use_ollama:
-        url = (ollama_host or base).rstrip("/") + "/api/generate"
-        payload = {
-            "model": model, "prompt": prompt, "stream": False,
-            "options": {"num_predict": 256, "temperature": 0.0},
-        }
-        keep_alive = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
-        if keep_alive is not None:
-            payload["keep_alive"] = keep_alive
-        headers = {"Content-Type": "application/json"}
-    else:
-        url = base.rstrip("/") + "/chat/completions"
-        payload = {
-            "model": model, "messages": [{"role": "user", "content": prompt}],
-            "stream": False, "temperature": 0.0, "max_tokens": 256,
-        }
-        headers = {"Content-Type": "application/json"}
-        api_key = os.environ.get("LOCAL_LLM_API_KEY")
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+    url = base.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": model, "messages": [{"role": "user", "content": prompt}],
+        "stream": False, "temperature": 0.0, "max_tokens": 256,
+    }
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("LOCAL_LLM_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     body = _json.dumps(payload).encode("utf-8")
     text = ""
@@ -593,13 +577,11 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
         req = _ur.Request(url, data=body, headers=headers)
         with _ur.urlopen(req, timeout=timeout) as resp:
             data = _json.loads(resp.read().decode("utf-8"))
-        if use_ollama:
-            text = data.get("response", "").strip()
-        else:
-            choices = data.get("choices") or []
-            if choices and isinstance(choices[0], dict):
-                message = choices[0].get("message") or {}
-                text = (message.get("content") or "").strip()
+        choices = data.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            message = choices[0].get("message") or {}
+            # Prefer content; fall back to reasoning_content (Qwen3.6 reasoning models)
+            text = (message.get("content") or message.get("reasoning_content") or "").strip()
         metrics["ok"] = True
         metrics["output_chars"] = len(text)
     except Exception as e:
