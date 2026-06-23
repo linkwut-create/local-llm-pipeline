@@ -1110,22 +1110,32 @@ def load_task_config(task_name: str) -> dict:
 
 
 def _resolve_provider(args_provider: str | None = None) -> str:
-    """Resolve provider: args > LOCAL_LLM_PROVIDER env > 'openai-compatible'.
+    """Resolve provider: args > LOCAL_LLM_PROVIDER env > auto-detect.
 
-    All local inference goes through LiteLLM/llama.cpp OpenAI-compatible API.
-    Ollama is no longer auto-detected or used as default.
+    Default: openai-compatible (LiteLLM/llama.cpp).
+    Auto-detects Ollama only when LOCAL_LLM_BASE_URL points to :11434.
     """
+    env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
+    auto = "openai-compatible"
+    if ":11434" in env_base and "4400" not in env_base:
+        auto = "ollama"
     return (
         args_provider
         or os.environ.get("LOCAL_LLM_PROVIDER")
-        or "openai-compatible"
+        or auto
     )
 
 
 def _resolve_endpoint(provider: str, args_base_url: str | None = None) -> str:
-    """Resolve base URL: args > LOCAL_LLM_BASE_URL > LiteLLM default."""
+    """Resolve base URL: args > LOCAL_LLM_BASE_URL > LiteLLM default.
+
+    Ensures the URL ends with ``/v1`` for OpenAI-compatible providers.
+    """
     env_base = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    return args_base_url or env_base or "http://127.0.0.1:4000/v1"
+    url = args_base_url or env_base or "http://127.0.0.1:4000/v1"
+    if "/v1" not in url.rstrip("/"):
+        url = url.rstrip("/") + "/v1"
+    return url
 
 
 def resolve_config(args: argparse.Namespace) -> WorkerConfig:
