@@ -68,7 +68,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
         "allowed": {"Read", "Grep", "Glob", "Edit", "Write", "Bash", "PowerShell",
                      "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
                      "TaskOutput", "TaskStop", "Skill", "Agent",
-                     "WebSearch", "WebFetch", "mcp__local-llm__*"},
+                     "WebSearch", "WebFetch", "mcp__local-llm__*", "mcp__git__*"},
         "denied": {"NotebookEdit"},
         "cloud_ok": True, "max_files": None, "bash_policy": "allow_safe",
         "description": "Pro authorized to execute; destructive commands blocked",
@@ -179,7 +179,7 @@ def validate_route_json(route: dict | None) -> list[str]:
 _BASH_DESTRUCTIVE = [
     r'\brm\s+-rf\b', r'\brm\s+-r\s+/', r'\bgit\s+reset\s+--hard\b',
     r'\bgit\s+clean\s+-f[dx]', r'\bformat\s+[a-zA-Z]:', r'\bdiskpart\b',
-    r'\bdel\s+/[fF]\s+/[sS]', r'>\s*/dev/', r'\bdd\s+if=',
+    r'\bdel\s+/[fF]\s+/[sS]', r'>\s*/dev/(?!null)', r'\bdd\s+if=',
     r'\bchmod\s+777\b', r'\bicacls\s+.*\/grant.*F\b',
 ]
 _BASH_NETWORK = [
@@ -196,7 +196,7 @@ _BASH_DEPENDENCY = [
 ]
 _BASH_WORKSPACE_WRITE = [
     r'\bsed\b\s', r'\bperl\b\s+-pi', r'\btee\b\s',
-    r'>[>]?\s*\S', r'\bcp\b\s', r'\bmv\b\s', r'\brm\b\s',
+    r'>[>]?\s*(?![&/])[^\s]', r'\bcp\b\s', r'\bmv\b\s', r'\brm\b\s',
     r'\bmkdir\b\s', r'\bgit\s+checkout\b', r'\bgit\s+add\b',
     r'\bgit\s+commit\b', r'\bgit\s+stash\b',
     r'\bgit\s+cherry-pick\b', r'\bgit\s+rebase\b', r'\bgit\s+merge\b',

@@ -895,17 +895,50 @@ def _is_list_of_strings(value: object) -> bool:
 
 
 def build_route_output(decision: RouteDecision) -> dict:
-    """Build the route.json payload from a RouteDecision."""
+    """Build the route.json payload from a RouteDecision.
+
+    Wildcard entries (``mcp__local-llm__*`` etc.) are expanded to concrete
+    tool names so Claude Code's built-in enforcement (exact match) works.
+    """
     permissions = _route_permissions_for(decision.recommended_route)
     output = decision.to_dict()
-    allowed = permissions.get("allowed", set())
-    denied = permissions.get("denied", set())
+    allowed = set(permissions.get("allowed", set()))
+    denied = set(permissions.get("denied", set()))
+
+    # Expand wildcard tool families
+    from pipeline_route_policy import _expand_tool_name
+    expanded = set()
+    for name in allowed:
+        expanded |= _expand_tool_name(name)
+
+    # Known MCP tool names for wildcard expansion
+    _MCP_KNOWN = {
+        "mcp__local-llm__*": [
+            "mcp__local-llm__local_review_diff", "mcp__local-llm__local_route_explain",
+            "mcp__local-llm__local_check", "mcp__local-llm__local_summarize_file",
+            "mcp__local-llm__local_summarize_tree", "mcp__local-llm__local_debate_review_diff",
+            "mcp__local-llm__local_generate_test_plan", "mcp__local-llm__local_draft_code",
+            "mcp__local-llm__local_contextual_analyze", "mcp__local-llm__local_repo_map",
+            "mcp__local-llm__local_classify_test_failure", "mcp__local-llm__local_workflow_plan",
+        ],
+        "mcp__git__*": [
+            "mcp__git__git_add", "mcp__git__git_commit", "mcp__git__git_diff",
+            "mcp__git__git_status", "mcp__git__git_log", "mcp__git__git_set_working_dir",
+            "mcp__git__git_branch", "mcp__git__git_checkout", "mcp__git__git_stash",
+        ],
+    }
+    for wildcard, concrete in _MCP_KNOWN.items():
+        if wildcard in allowed:
+            expanded |= set(concrete)
+
+    enforcement_allowed = sorted(t for t in expanded if not t.endswith("*"))
     output["_enforcement"] = {
-        "allowed": sorted(allowed) if allowed else ["all"],
+        "allowed": enforcement_allowed if enforcement_allowed else ["all"],
         "denied": sorted(denied),
         "cloud_ok": permissions.get("cloud_ok", False),
         "pro_audit_requested": decision.pro_audit_requested,
     }
+    output["allowed_tools"] = enforcement_allowed if enforcement_allowed != ["all"] else []
     return output
 
 

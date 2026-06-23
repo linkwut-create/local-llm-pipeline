@@ -603,7 +603,7 @@ def on_pre_tool_use(payload: dict) -> dict:
     task_id = task["task_id"]
 
     file_path = tool_input.get("file_path", "") or ""
-    if "plan.json" in file_path and str(task_id) in file_path:
+    if ("plan.json" in file_path or "route.json" in file_path) and str(task_id) in file_path:
         return {}
 
     allowed, reason = check_tool_allowed(tool_name, task_id, tool_input)
