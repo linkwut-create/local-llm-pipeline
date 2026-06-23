@@ -2,7 +2,7 @@
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
 > **Updated**: 2026-06-23  
-> **Current phase**: Phase 1 — Task Lifecycle Fix  
+> **Current phase**: Phase 3 — Unified Route Policy  
 
 ---
 
@@ -11,43 +11,27 @@
 | Item | Value |
 |------|-------|
 | Branch | `master` |
-| HEAD | `f768a7b` |
-| Commit message | `docs: establish pipeline mode v2 execution baseline` |
-| Working tree | Clean |
-| Phase 0 commit | `docs/PIPELINE_MODE_ROADMAP.md` (rewritten), `docs/PIPELINE_MODE_BACKLOG.md` (new), `docs/PIPELINE_MODE_STATUS.md` (rewritten) |
+| HEAD | `30ace01` |
+| Commit message | `fix: close route enforcement bypasses (Phase 2)` |
+| Working tree | Clean (after Phase 2 commit) |
 
-### Test Baseline
+### Test Baseline (Phase 1+2)
 
 ```text
-pytest tests/
-2923 passed, 1 skipped in 555.83s (0:09:15)
+pytest tests/test_route_enforcer.py tests/test_local_route_committee.py
+135 passed in 2.34s
 ```
 
-* No failures.
-* No new tests added in Phase 0 (documentation-only).
-* Tests run on commit `0d052fd` with a clean working tree.
-
 ---
-
-## Backend Migration Note (2026-06-23)
-
-The local inference backend has been migrated from Ollama to llama.cpp via the
-LiteLLM:4000 OpenAI-compatible gateway. This is a prerequisite for several
-pipeline-mode phases (model switching, reproducible hooks, cost evaluation) and
-is tracked in detail in `docs/INFERENCE_MIGRATION_STATUS.md`.
-
-- Default endpoint: `http://127.0.0.1:4000/v1`
-- Resident priority 1: `qwen3.6-deep` (llama.cpp:8001)
-- Resident priority 2: `gemma4-31b` (llama.cpp:8004)
-- Ollama is retained only for embedding models and explicit fallback.
 
 ## Phase Progress
 
 | Phase | Title | Status | Blocking Issues |
 |-------|-------|--------|-----------------|
 | 0 | Baseline Audit & Documentation Calibration | ✅ Done | None |
-| 1 | Task Lifecycle Fix | 🔧 In progress | None |
-| 2 | Tool Permission Enforcement Fix | ⬜ Not started | Depends on Phase 1 |
+| 1 | Task Lifecycle Fix | ✅ Done | None |
+| 2 | Tool Permission Enforcement Fix | ✅ Done | None |
+| 3 | Unified Route Policy | 🔧 In progress | Depends on Phase 2 |
 | 3 | Unified Route Policy | ⬜ Not started | Depends on Phase 2 |
 | 4 | Route Committee Hardening | ⬜ Not started | Depends on Phase 3 |
 | 5 | Model Switch Lifecycle | ⬜ Not started | Depends on Phase 3 |

@@ -7,6 +7,9 @@ Stop            → trigger local route committee if plan exists
 
 Design: Minimal, deterministic, never blocks the session itself.
          "Deny" means return a blocking response; "allow" means pass through.
+
+Route permissions, Bash classification, and validation are defined in
+``pipeline_route_policy.py`` — the single source of truth.
 """
 
 from __future__ import annotations
@@ -20,216 +23,22 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Ensure the tools/ directory is on sys.path so we can import
+# pipeline_route_policy regardless of how this script is invoked.
+_TOOLS_DIR = str(Path(__file__).resolve().parent.parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
 
-# ═══════════════════════════════════════════════════════════════
-# Route permissions
-# ═══════════════════════════════════════════════════════════════
-
-ROUTE_PERMISSIONS = {
-    # plan_only: planning mode — read + approval tools only
-    "plan_only": {
-        "allowed": {"Read", "Grep", "Glob", "RouteStatus", "RequestApproval",
-                     "AskUserQuestion", "PushNotification", "CancelTask"},
-        "denied": {"Bash", "Write", "Edit", "NotebookEdit", "Task", "Skill", "Agent"},
-        "cloud_ok": False,
-        "max_files": 3,
-        "bash_policy": "deny_all",
-    },
-    # direct: user-approved full local execution
-    "direct": {
-        "allowed": {"Read", "Grep", "Glob", "Edit", "Write", "Bash"},
-        "denied": {"NotebookEdit"},
-        "cloud_ok": False,
-        "max_files": None,
-        "bash_policy": "allow_safe",
-    },
-    "local_only": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "Task", "Skill"},
-        "denied": {"Edit", "Write", "NotebookEdit"},
-        "cloud_ok": False,
-        "max_files": 10,
-        "bash_policy": "readonly_or_test",
-    },
-    "flash_direct": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "Task", "Skill", "Agent"},
-        "denied": {"Edit", "Write", "NotebookEdit"},
-        "cloud_ok": True,
-        "max_files": 20,
-        "bash_policy": "readonly_or_test",
-        "_note": "Pro cannot edit/write directly. Must use Agent(model='deepseek-v4-flash') for implementation.",
-    },
-    "flash_subagent": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "Write", "Edit", "Task", "Skill", "Agent"},
-        "denied": {"NotebookEdit"},
-        "cloud_ok": True,
-        "max_files": 50,
-        "bash_policy": "allow_safe",
-        "_note": "Flash subagent has full access. Pro delegates implementation via Agent.",
-    },
-    # pro_decision: Pro reads evidence and adjudicates. NO direct edits.
-    "pro_decision": {
-        "allowed": {"Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch",
-                     "Task", "Skill", "AskUserQuestion"},
-        "denied": {"Edit", "Write", "NotebookEdit", "Agent"},
-        "cloud_ok": True,
-        "max_files": None,
-        "bash_policy": "readonly_or_test",
-        "_note": "Pro reads evidence and outputs adjudication. Cannot edit/write directly.",
-    },
-    # pro_execute_allowed: Pro explicitly authorized to execute.
-    "pro_execute_allowed": {
-        "allowed": {"Read", "Grep", "Glob", "Edit", "Write", "Bash",
-                     "Task", "Skill", "Agent", "WebSearch", "WebFetch"},
-        "denied": {"NotebookEdit"},
-        "cloud_ok": True,
-        "max_files": None,
-        "bash_policy": "allow_safe",
-        "_note": "Pro authorized to execute. Destructive and network-push commands still blocked.",
-    },
-    "blocked": {
-        "allowed": set(),
-        "denied": {"Read", "Grep", "Glob", "Bash", "Write", "Edit",
-                    "NotebookEdit", "Task", "Skill"},
-        "cloud_ok": False,
-        "max_files": 0,
-        "bash_policy": "deny_all",
-    },
-    "ask_user": {
-        "allowed": {"Read", "Grep", "Glob"},
-        "denied": {"Bash", "Write", "Edit", "NotebookEdit", "Task", "Skill"},
-        "cloud_ok": False,
-        "max_files": 3,
-        "bash_policy": "readonly_or_test",
-    },
-}
-
-
-# ═══════════════════════════════════════════════════════════════
-# Bash command classification
-# ═══════════════════════════════════════════════════════════════
-
-_BASH_DESTRUCTIVE = [
-    r'\brm\s+-rf\b', r'\brm\s+-r\s+/', r'\bgit\s+reset\s+--hard\b',
-    r'\bgit\s+clean\s+-f[dx]', r'\bformat\s+[a-zA-Z]:', r'\bdiskpart\b',
-    r'\bdel\s+/[fF]\s+/[sS]', r'>\s*/dev/', r'\bdd\s+if=',
-    r'\bchmod\s+777\b', r'\bicacls\s+.*\/grant.*F\b',
-    r'\brmdir\s+/[sS]\b', r'\bdeltree\b',
-]
-
-_BASH_NETWORK = [
-    r'\bgit\s+push\b', r'\bgit\s+pull\b',
-    r'\bcurl\b.*\|.*\b(ba)?sh\b', r'\bwget\b.*\|.*\b(ba)?sh\b',
-    r'\bscp\b\s', r'\brsync\b\s', r'\bssh\b\s+\w+@',
-    r'\bnc\b\s+-[nl]', r'\btelnet\b\s', r'\bdeploy\b',
-    r'\bgh\s+release\b', r'\bgh\s+pr\s+merge\b',
-]
-
-_BASH_DEPENDENCY = [
-    r'\bpip\d*\s+install\b', r'\bnpm\s+i(nstall)?\b',
-    r'\bcargo\s+install\b', r'\bgem\s+install\b',
-    r'\bapt\b.*\binstall\b', r'\bbrew\s+install\b',
-    r'\bchoco\s+install\b', r'\byarn\s+add\b',
-]
-
-_BASH_WORKSPACE_WRITE = [
-    r'\bsed\b\s', r'\bperl\b\s+-pi', r'\btee\b\s',
-    r'>[>]?\s*\S', r'\bcp\b\s', r'\bmv\b\s', r'\brm\b\s',
-    r'\bmkdir\b\s', r'\bgit\s+checkout\b', r'\bgit\s+add\b',
-    r'\bgit\s+commit\b', r'\bgit\s+stash\b',
-    r'\bgit\s+cherry-pick\b', r'\bgit\s+rebase\b', r'\bgit\s+merge\b',
-    r'\bgit\s+tag\b', r'\bgit\s+branch\b',
-    r'\brmdir\b\s', r'\bdel\b\s', r'\bcopy\b\s.*\bto\b',
-    r'\bNew-Item\b', r'\bRemove-Item\b', r'\bRename-Item\b',
-    r'\bSet-Content\b', r'\bOut-File\b', r'\bAdd-Content\b',
-]
-
-_BASH_TEST = [
-    r'\bpytest\b', r'\bpython\s+-m\s+pytest\b',
-    r'\bnpm\s+test\b', r'\bnpm\s+run\s+test\b',
-    r'\bcargo\s+test\b', r'\bgo\s+test\b',
-    r'\bpython\s+\S+\.py\b', r'\bpython\s+-c\b',
-    r'\bpy\s+-3\s+\S+\.py\b', r'\bpy\s+-3\s+-c\b',
-    r'\btox\b', r'\bmake\s+test\b', r'\bjust\s+test\b',
-    r'\bpython\s+tests?/', r'\bpython\s+-m\s+unittest\b',
-]
-
-_BASH_SAFE_READONLY = [
-    r'^(git|cd\s+\S+\s*&&\s*git)\s+(status|diff|log|show|branch|tag|blame|stash\s+list|remote\s+-v|ls-files|rev-parse|config\s+-l|describe|rev-list|shortlog|whatchanged)',
-    r'^(ls|dir)\b', r'^find\b', r'^(rg|grep)\b',
-    r'^(cat|type)\s', r'^(echo|printf)\s',
-    r'^(python|py)\s+--version', r'^(python|py)\s+-V\b',
-    r'^(which|where|Get-Command)\b', r'^(head|tail)\b',
-    r'^(wc|sort|uniq)\b', r'^(tree|du)\b',
-    r'\bgit\s+log\b.*--oneline',
-    r'^(Get-ChildItem|Get-Content|Get-Location|Test-Path|Resolve-Path)\b',
-    r'^(select-string|where\.exe|findstr)\b',
-    r'(pip|npm|cargo|gem)\s+(list|show|info|freeze|outdated|audit)\b',
-]
-
-
-def _compile(patterns):
-    return [re.compile(p, re.IGNORECASE) for p in patterns]
-
-
-_DESTRUCTIVE_RE = _compile(_BASH_DESTRUCTIVE)
-_NETWORK_RE = _compile(_BASH_NETWORK)
-_DEPENDENCY_RE = _compile(_BASH_DEPENDENCY)
-_WORKSPACE_WRITE_RE = _compile(_BASH_WORKSPACE_WRITE)
-_TEST_RE = _compile(_BASH_TEST)
-_READONLY_RE = _compile(_BASH_SAFE_READONLY)
-
-
-def classify_bash_command(command: str) -> str:
-    """Deterministic Bash/PowerShell command safety classification.
-
-    Returns: destructive | network_or_remote | dependency_change |
-             workspace_write | safe_test | safe_readonly | unknown
-    """
-    if not command or not isinstance(command, str):
-        return "unknown"
-    cmd = command.strip()
-    for pat in _DESTRUCTIVE_RE:
-        if pat.search(cmd):
-            return "destructive"
-    for pat in _NETWORK_RE:
-        if pat.search(cmd):
-            return "network_or_remote"
-    for pat in _DEPENDENCY_RE:
-        if pat.search(cmd):
-            return "dependency_change"
-    for pat in _WORKSPACE_WRITE_RE:
-        if pat.search(cmd):
-            return "workspace_write"
-    for pat in _TEST_RE:
-        if pat.search(cmd):
-            return "safe_test"
-    for pat in _READONLY_RE:
-        if pat.search(cmd):
-            return "safe_readonly"
-    return "unknown"
-
-
-_BASH_POLICY_ALLOWED: dict[str, set[str]] = {
-    "deny_all": set(),
-    "readonly_or_test": {"safe_readonly", "safe_test"},
-    "allow_safe": {"safe_readonly", "safe_test", "workspace_write", "dependency_change"},
-    "allow_all": {"safe_readonly", "safe_test", "workspace_write", "dependency_change",
-                   "network_or_remote", "destructive", "unknown"},
-}
-
-
-def check_bash_allowed(command: str, bash_policy: str) -> tuple[bool, str]:
-    """Check a Bash command against a bash_policy tier."""
-    if bash_policy == "allow_all":
-        return True, ""
-    tier = classify_bash_command(command)
-    allowed_tiers = _BASH_POLICY_ALLOWED.get(bash_policy, set())
-    if tier in allowed_tiers:
-        return True, ""
-    return False, (
-        f"Bash command classified as '{tier}' not allowed under "
-        f"bash_policy '{bash_policy}'. Allowed: {sorted(allowed_tiers)}"
-    )
+from pipeline_route_policy import (
+    ROUTE_PERMISSIONS,
+    VALID_ROUTES,
+    resolve_route_name,
+    get_permissions,
+    validate_route_json,
+    classify_bash_command,
+    check_bash_allowed,
+    is_tool_permitted,
+)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -648,8 +457,9 @@ def check_tool_allowed(tool_name: str, task_id: str,
                        tool_input: dict | None = None) -> tuple[bool, str]:
     """Check if a tool is allowed by the current route.
 
-    When *tool_input* is provided for Bash/PowerShell, the command text
-    is classified and checked against the route's ``bash_policy``.
+    Delegates to ``pipeline_route_policy.is_tool_permitted`` for the
+    canonical permission check, then adds plan-hash validation and
+    ask_user special handling.
     """
     route = load_route(task_id)
     if route is None:
@@ -670,25 +480,13 @@ def check_tool_allowed(tool_name: str, task_id: str,
             if tool_name in ("Edit", "Write", "NotebookEdit", "Bash", "PowerShell"):
                 return False, (
                     f"Plan has changed since approval (SHA-256 mismatch). "
-                    f"Expected {expected_sha[:16]}..., got {actual_sha[:16]}... "
-                    f"Previous approval revoked."
+                    f"Expected {expected_sha[:16]}..., got {actual_sha[:16]}..."
                 )
             return True, ""
 
-    # Authoritative: route.json allowed_tools
-    allowed_tools = route.get("allowed_tools")
-    if isinstance(allowed_tools, list) and allowed_tools:
-        if tool_name not in allowed_tools:
-            return False, (
-                f"Tool '{tool_name}' not in route.json allowed_tools. "
-                f"Allowed: {allowed_tools}"
-            )
-        return True, ""
-
     route_type = route.get("recommended_route", "ask_user")
-    perms = ROUTE_PERMISSIONS.get(route_type, ROUTE_PERMISSIONS["ask_user"])
 
-    # ask_user special handling
+    # ask_user special handling (enforcer-specific, not in policy module)
     if route_type == "ask_user":
         enforcement = route.get("_enforcement", {})
         pro_audit = enforcement.get("pro_audit_requested", False)
@@ -696,64 +494,39 @@ def check_tool_allowed(tool_name: str, task_id: str,
                                         "WebSearch", "WebFetch", "Task", "Skill"):
             return True, ""
         if tool_name in ("Edit", "Write", "NotebookEdit"):
-            if pro_audit:
-                return False, (
-                    "Pro audit requested (committee disagreement). "
-                    "Edit/Write blocked — present audit opinion first."
-                )
-            return False, (
+            msg = "Pro audit requested. Edit/Write blocked." if pro_audit else (
                 f"This task is pending human approval (route: ask_user). "
-                f"Tool '{tool_name}' is blocked.\n\n"
-                f"To authorize: {_auth_command(task_id)}\n"
-                f"Then reply 'approved' or 'continue'."
-            )
+                f"To authorize: {_auth_command(task_id)}")
+            return False, msg
         if pro_audit:
-            return False, (
-                f"Pro audit in progress. Tool '{tool_name}' blocked."
-            )
+            return False, "Pro audit in progress."
+        return False, f"Route 'ask_user' blocks '{tool_name}'."
+
+    # Flash direct special handling
+    if route_type == "flash_direct" and tool_name in ("Edit", "Write", "NotebookEdit"):
+        if _is_flash_session():
+            return True, ""
         return False, (
-            f"Route 'ask_user' blocks '{tool_name}'.\n"
-            f"To authorize: {_auth_command(task_id)}"
+            f"Route 'flash_direct' FORCES execution on DeepSeek v4 Flash. "
+            f"You cannot {tool_name} directly — use Agent(model='deepseek-v4-flash')."
         )
 
-    # Tool-level allow/deny
-    if perms["allowed"] and tool_name not in perms["allowed"]:
-        if route_type == "flash_direct" and tool_name in ("Edit", "Write", "NotebookEdit"):
-            if _is_flash_session():
-                return True, ""
-            return False, (
-                f"Route '{route_type}' FORCES execution on DeepSeek v4 Flash. "
-                f"You cannot {tool_name} directly — use Agent(model='deepseek-v4-flash')."
-            )
-        return False, (
-            f"Tool '{tool_name}' not allowed for route '{route_type}'. "
-            f"Allowed: {perms['allowed']}"
-        )
-    if tool_name in perms["denied"]:
-        return False, f"Tool '{tool_name}' denied for route '{route_type}'."
-
-    # --- Bash command classification ---
-    if tool_name in ("Bash", "PowerShell") and tool_input is not None:
-        command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
-        bash_policy = perms.get("bash_policy", "deny_all")
-        allowed_bash, bash_reason = check_bash_allowed(command, bash_policy)
-        if not allowed_bash:
-            return False, bash_reason
-
-    # --- Agent restriction ---
+    # Agent restriction (enforcer layer)
     if tool_name == "Agent":
         if route_type in ("blocked", "local_only"):
-            return False, (
-                f"Agent calls not allowed under route '{route_type}'."
-            )
+            return False, f"Agent calls not allowed under route '{route_type}'."
         if route_type == "pro_decision":
             return False, (
-                f"Agent calls not allowed under route 'pro_decision'. "
-                f"Pro adjudicates — execution delegation requires "
-                f"elevation to 'pro_execute_allowed'."
+                "Agent calls not allowed under route 'pro_decision'. "
+                "Pro adjudicates — elevation to 'pro_execute_allowed' required."
             )
 
-    return True, ""
+    # Delegate to canonical policy module
+    allowed_tools = route.get("allowed_tools")
+    return is_tool_permitted(
+        tool_name, route_type, tool_input,
+        allowed_tools_override=allowed_tools if isinstance(allowed_tools, list) and allowed_tools else None,
+    )
 
 
 def should_trigger_committee(task_id: str) -> bool:
@@ -810,7 +583,6 @@ def on_pre_tool_use(payload: dict) -> dict:
     tool_name = payload.get("tool_name", "") or payload.get("toolName", "")
     tool_input = payload.get("tool_input", {}) or payload.get("toolInput", {})
 
-    # Secrets protection (always enforced)
     secret_reason = _secret_access_reason(tool_name, tool_input)
     if secret_reason:
         return {"permissionDecision": "deny", "reason": secret_reason}
@@ -821,7 +593,6 @@ def on_pre_tool_use(payload: dict) -> dict:
 
     task_id = task["task_id"]
 
-    # Always allow plan.json writes
     file_path = tool_input.get("file_path", "") or ""
     if "plan.json" in file_path and str(task_id) in file_path:
         return {}
@@ -830,7 +601,6 @@ def on_pre_tool_use(payload: dict) -> dict:
     if not allowed:
         return {"permissionDecision": "deny", "reason": reason}
 
-    # Flash cloud authorization
     route = load_route(task_id)
     if route is not None:
         route_type = route.get("recommended_route", "")
@@ -1018,10 +788,7 @@ def on_stop(payload: dict) -> dict:
         if _run_route_committee(task_id, task.get("user_task", "")):
             return {
                 "decision": "allow",
-                "reason": (
-                    f"route.json generated. Next session enforced: "
-                    f".local_llm_out/tasks/{task_id}/route.json"
-                ),
+                "reason": f"route.json generated: .local_llm_out/tasks/{task_id}/route.json",
             }
         return {
             "decision": "block",
@@ -1037,10 +804,7 @@ def on_stop(payload: dict) -> dict:
         route_type = route.get("recommended_route", "")
         if route_type.startswith("flash_"):
             _apply_model_switch(route_type)
-            return {
-                "decision": "allow",
-                "reason": f"Route '{route_type}' → model set to deepseek-v4-flash.",
-            }
+            return {"decision": "allow", "reason": f"Route '{route_type}' -> model set to deepseek-v4-flash."}
     return {}
 
 
