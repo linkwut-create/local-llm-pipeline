@@ -26,6 +26,21 @@ from pathlib import Path
 # ═══════════════════════════════════════════════════════════════
 
 ROUTE_PERMISSIONS = {
+    # plan_only: planning mode — read + approval tools only
+    "plan_only": {
+        "allowed": {"Read", "Grep", "Glob", "RouteStatus", "RequestApproval",
+                     "AskUserQuestion", "PushNotification", "CancelTask"},
+        "denied": {"Bash", "Write", "Edit", "NotebookEdit", "Task", "Skill", "Agent"},
+        "cloud_ok": False,
+        "max_files": 3,
+    },
+    # direct: user-approved full local execution
+    "direct": {
+        "allowed": {"Read", "Grep", "Glob", "Edit", "Write", "Bash"},
+        "denied": {"NotebookEdit"},
+        "cloud_ok": False,
+        "max_files": None,
+    },
     "local_only": {
         "allowed": {"Read", "Grep", "Glob", "Bash", "Task", "Skill"},
         "denied": {"Edit", "Write", "NotebookEdit"},
@@ -286,7 +301,7 @@ def _is_continuation_prompt(prompt: str) -> bool:
     # Match control statements without requiring exact equality
     for keywords in _CONTROL_STATEMENTS.values():
         for kw in keywords:
-            if text == kw or text.startswith(kw + " "):
+            if text == kw or text.startswith(kw + " ") or text.startswith(kw + ":") or text.startswith(kw + "："):
                 return True
     return False
 
@@ -302,7 +317,13 @@ def _detect_control_statement(prompt: str) -> str | None:
         return None
     for intent, keywords in _CONTROL_STATEMENTS.items():
         for kw in keywords:
-            if text == kw or text.startswith(kw + " ") or text.endswith(" " + kw):
+            if (
+                text == kw
+                or text.startswith(kw + " ")
+                or text.startswith(kw + ":")
+                or text.startswith(kw + "：")
+                or text.endswith(" " + kw)
+            ):
                 return intent
     # Generic continuation keywords append to active task.
     if text in _CONTINUATION_KEYWORDS:
@@ -598,6 +619,31 @@ def check_tool_allowed(tool_name: str, task_id: str) -> tuple[bool, str]:
             )
         return True, ""
 
+    # Validate plan hash if route carries one
+    plan_file = _tasks_dir() / task_id / "plan.json"
+    expected_sha = route.get("plan_sha256")
+    if expected_sha and plan_file.exists():
+        import hashlib
+        actual_sha = hashlib.sha256(plan_file.read_bytes()).hexdigest()
+        if actual_sha != expected_sha:
+            if tool_name in ("Edit", "Write", "NotebookEdit", "Bash", "PowerShell"):
+                return False, (
+                    f"Plan has changed since approval (SHA-256 mismatch). "
+                    f"Expected {expected_sha[:16]}..., got {actual_sha[:16]}... "
+                    f"Previous approval revoked. Please re-approve via routectl."
+                )
+            return True, ""
+
+    # Authoritative permission source: route.json allowed_tools field
+    allowed_tools = route.get("allowed_tools")
+    if isinstance(allowed_tools, list) and allowed_tools:
+        if tool_name not in allowed_tools:
+            return False, (
+                f"Tool '{tool_name}' not in route.json allowed_tools. "
+                f"Allowed: {allowed_tools}"
+            )
+        return True, ""
+
     route_type = route.get("recommended_route", "ask_user")
     perms = ROUTE_PERMISSIONS.get(route_type, ROUTE_PERMISSIONS["ask_user"])
 
@@ -676,21 +722,72 @@ def should_trigger_committee(task_id: str) -> bool:
 # ═══════════════════════════════════════════════════════════════
 
 def on_user_prompt_submit(payload: dict) -> dict:
-    """UserPromptSubmit hook: create task session, inject plan-only context."""
+    """UserPromptSubmit hook: manage task lifecycle and inject context.
+
+    Behavior:
+      - Very short prompts are ignored.
+      - If an active task exists and the user is not explicitly requesting a
+        new task, append the prompt to the active task session.
+      - "新建任务"/"new task" always creates a new task session.
+      - If no active task exists, a substantive prompt creates a new task session.
+    """
     prompt_text = payload.get("prompt", "") or payload.get("text", "") or ""
-    if not prompt_text or len(prompt_text) < 20:
-        return {}  # too short, don't intercept
+    project_root = payload.get("project_root") or payload.get("projectRoot")
+    claude_session_id = payload.get("claude_session_id") or payload.get("claudeSessionId")
 
-    session = create_task_session(prompt_text)
+    control_intent = _detect_control_statement(prompt_text)
+    is_too_short = not prompt_text or len(prompt_text) < 10
 
+    if is_too_short and control_intent is None:
+        return {}
+
+    active_task = get_active_task(
+        project_root=project_root,
+        claude_session_id=claude_session_id,
+    )
+
+    # Explicit new-task request or no active task: create a new session.
+    if control_intent == "new_task" or active_task is None:
+        session = create_task_session(
+            prompt_text,
+            project_root=project_root,
+            claude_session_id=claude_session_id,
+        )
+        append_task_message(session["task_id"], "user", prompt_text)
+        return {
+            "additionalContext": (
+                f"[TASK SESSION: {session['task_id']}]\n"
+                f"You are in PLAN-ONLY mode. Before any code changes, output:\n"
+                f"1. A plan.json describing what you will do (phases, files, approach)\n"
+                f"2. Save it with: Write .local_llm_out/tasks/{session['task_id']}/plan.json\n"
+                f"After plan.json exists, the route committee will decide execution model.\n"
+                f"Do NOT edit/write source files until route is approved."
+            ),
+        }
+
+    # Append to active task for any non-new-task prompt.
+    task_id = active_task["task_id"]
+    append_task_message(task_id, "user", prompt_text)
+
+    if control_intent in ("stop", "cancel"):
+        cancel_task(task_id)
+        return {
+            "additionalContext": (
+                f"[TASK SESSION: {task_id}]\n"
+                f"Task cancelled. No further edits will be allowed for this session."
+            ),
+        }
+    if control_intent == "accept":
+        return {
+            "additionalContext": (
+                f"[TASK SESSION: {task_id}]\n"
+                f"Approval recorded. Proceed with the approved plan."
+            ),
+        }
     return {
         "additionalContext": (
-            f"[TASK SESSION: {session['task_id']}]\n"
-            f"You are in PLAN-ONLY mode. Before any code changes, output:\n"
-            f"1. A plan.json describing what you will do (phases, files, approach)\n"
-            f"2. Save it with: Write .local_llm_out/tasks/{session['task_id']}/plan.json\n"
-            f"After plan.json exists, the route committee will decide execution model.\n"
-            f"Do NOT edit/write source files until route is approved."
+            f"[TASK SESSION: {task_id}]\n"
+            f"Continuing active task. Latest user message recorded."
         ),
     }
 

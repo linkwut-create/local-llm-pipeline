@@ -94,7 +94,7 @@ def test_enforce_no_route_allows_read():
 def test_enforce_blocked_denies_all():
     import route_enforcer as re
     session = re.create_task_session("blocked")
-    p = Path(".local_llm_out/tasks") / session["task_id"] / "route.json"
+    p = re._tasks_dir() / session["task_id"] / "route.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"recommended_route": "blocked"}), encoding="utf-8")
     assert re.check_tool_allowed("Read", session["task_id"])[0] is False
@@ -103,7 +103,7 @@ def test_enforce_blocked_denies_all():
 def test_enforce_pro_allows_all():
     import route_enforcer as re
     session = re.create_task_session("pro")
-    p = Path(".local_llm_out/tasks") / session["task_id"] / "route.json"
+    p = re._tasks_dir() / session["task_id"] / "route.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"recommended_route": "pro_decision"}), encoding="utf-8")
     assert re.check_tool_allowed("Edit", session["task_id"])[0] is True
@@ -111,8 +111,9 @@ def test_enforce_pro_allows_all():
 
 def test_all_routes_have_perms():
     from route_enforcer import ROUTE_PERMISSIONS
-    assert set(ROUTE_PERMISSIONS.keys()) == {"local_only", "flash_direct",
-        "flash_subagent", "pro_decision", "blocked", "ask_user"}
+    assert set(ROUTE_PERMISSIONS.keys()) == {"plan_only", "direct",
+        "local_only", "flash_direct", "flash_subagent", "pro_decision",
+        "blocked", "ask_user"}
 
 
 def test_user_prompt_short_input():
@@ -748,6 +749,11 @@ class TestRouteEnforcerSubprocess:
         assert "PLAN-ONLY" in result.get("additionalContext", "")
 
     def test_pre_tool_use_edit_no_route_denies(self):
+        # Create an active task first so that a missing route.json blocks edits.
+        _run_hook({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "new task: fix null pointer in the login handler",
+        })
         result = _run_hook({
             "hook_event_name": "PreToolUse",
             "tool_name": "Edit",
