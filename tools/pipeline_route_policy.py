@@ -1,4 +1,4 @@
-"""Pipeline Route Policy — single source of truth for route permissions.
+"""Pipeline Route Policy �?single source of truth for route permissions.
 
 All route definitions, tool aliases, Bash classification, and validation
 live here.  Both ``route_enforcer.py`` and ``local_route_committee.py``
@@ -10,17 +10,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# ═══════════════════════════════════════════════════════════════
-# 1. Canonical route permission table
-# ═══════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════�?# 1. Canonical route permission table
+# ══════════════════════════════════════════════════════════════�?
 ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "plan_only": {
         "allowed": {"Read", "Grep", "Glob", "RouteStatus", "RequestApproval",
                      "AskUserQuestion", "PushNotification", "CancelTask"},
         "denied": {"Bash", "PowerShell", "Write", "Edit", "NotebookEdit",
                     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                    "TaskOutput", "TaskStop", "Skill", "Agent"},
+                    "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*", "Agent"},
         "cloud_ok": False, "max_files": 3, "bash_policy": "deny_all",
         "description": "Planning only",
     },
@@ -33,7 +31,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "local_only": {
         "allowed": {"Read", "Grep", "Glob", "Bash", "PowerShell",
                      "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                     "TaskOutput", "TaskStop", "Skill"},
+                     "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*"},
         "denied": {"Edit", "Write", "NotebookEdit", "Agent"},
         "cloud_ok": False, "max_files": 10, "bash_policy": "readonly_or_test",
         "description": "Local-only execution",
@@ -41,7 +39,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "flash_direct": {
         "allowed": {"Read", "Grep", "Glob", "Bash", "PowerShell",
                      "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                     "TaskOutput", "TaskStop", "Skill", "Agent"},
+                     "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*", "Agent"},
         "denied": {"Edit", "Write", "NotebookEdit"},
         "cloud_ok": True, "max_files": 20, "bash_policy": "readonly_or_test",
         "description": "Flash cloud; Pro cannot edit directly",
@@ -49,7 +47,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "flash_subagent": {
         "allowed": {"Read", "Grep", "Glob", "Bash", "PowerShell",
                      "Write", "Edit", "TaskCreate", "TaskUpdate", "TaskGet",
-                     "TaskList", "TaskOutput", "TaskStop", "Skill", "Agent"},
+                     "TaskList", "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*", "Agent"},
         "denied": {"NotebookEdit"},
         "cloud_ok": True, "max_files": 50, "bash_policy": "allow_safe",
         "description": "Flash subagent with full tool access",
@@ -58,7 +56,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
         "allowed": {"Read", "Grep", "Glob", "Bash", "PowerShell",
                      "WebSearch", "WebFetch",
                      "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                     "TaskOutput", "TaskStop", "Skill", "AskUserQuestion",
+                     "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*", "AskUserQuestion",
                      "mcp__local-llm__*"},
         "denied": {"Edit", "Write", "NotebookEdit", "Agent"},
         "cloud_ok": True, "max_files": None, "bash_policy": "readonly_or_test",
@@ -67,7 +65,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "pro_execute_allowed": {
         "allowed": {"Read", "Grep", "Glob", "Edit", "Write", "Bash", "PowerShell",
                      "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                     "TaskOutput", "TaskStop", "Skill", "Agent",
+                     "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*", "Agent",
                      "WebSearch", "WebFetch", "mcp__local-llm__*", "mcp__git__*"},
         "denied": {"NotebookEdit"},
         "cloud_ok": True, "max_files": None, "bash_policy": "allow_safe",
@@ -78,7 +76,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
         "denied": {"Read", "Grep", "Glob", "Bash", "PowerShell",
                     "Write", "Edit", "NotebookEdit",
                     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                    "TaskOutput", "TaskStop", "Skill"},
+                    "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*"},
         "cloud_ok": False, "max_files": 0, "bash_policy": "deny_all",
         "description": "Task blocked",
     },
@@ -86,7 +84,7 @@ ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
         "allowed": {"Read", "Grep", "Glob"},
         "denied": {"Bash", "PowerShell", "Write", "Edit", "NotebookEdit",
                     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                    "TaskOutput", "TaskStop", "Skill"},
+                    "TaskOutput", "TaskStop", "Skill", "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*"},
         "cloud_ok": False, "max_files": 3, "bash_policy": "readonly_or_test",
         "description": "Pending human approval",
     },
@@ -172,10 +170,8 @@ def validate_route_json(route: dict | None) -> list[str]:
             errors.append("_enforcement must be an object")
     return errors
 
-# ═══════════════════════════════════════════════════════════════
-# Bash command classification
-# ═══════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════�?# Bash command classification
+# ══════════════════════════════════════════════════════════════�?
 _BASH_DESTRUCTIVE = [
     r'\brm\s+-rf\b', r'\brm\s+-r\s+/', r'\bgit\s+reset\s+--hard\b',
     r'\bgit\s+clean\s+-f[dx]', r'\bformat\s+[a-zA-Z]:', r'\bdiskpart\b',
@@ -272,10 +268,8 @@ def check_bash_allowed(command: str, bash_policy: str) -> tuple[bool, str]:
         f"bash_policy '{bash_policy}'. Allowed: {sorted(allowed_tiers)}"
     )
 
-# ═══════════════════════════════════════════════════════════════
-# Unified tool permission check
-# ═══════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════�?# Unified tool permission check
+# ══════════════════════════════════════════════════════════════�?
 def is_tool_permitted(
     tool_name: str,
     route_type: str,
@@ -326,10 +320,8 @@ def is_tool_permitted(
     return True, ""
 
 
-# ═══════════════════════════════════════════════════════════════
-# 7. Model roles and switch rules
-# ═══════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════�?# 7. Model roles and switch rules
+# ══════════════════════════════════════════════════════════════�?
 MODEL_ROLES: dict[str, str] = {
     "planner": "claude-fable-5",
     "router_qwen": "qwen3.6-deep",
