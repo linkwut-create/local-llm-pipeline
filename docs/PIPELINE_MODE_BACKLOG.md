@@ -2,8 +2,8 @@
 
 > **Purpose**: Single source for all v2-alpha work items, their state, and binding acceptance criteria.  
 > **Last updated**: 2026-06-23  
-> **Current phase**: Phase 13 — End-to-End Dry Run (not started)  
-> **Phases completed**: 0–12 (all committed)  
+> **Current phase**: Phase 14 — Real Dogfood (not started)  
+> **Phases completed**: 0–13 (all committed)  
 
 ---
 
@@ -111,16 +111,16 @@
 
 | # | Item | State | Notes |
 |---|------|-------|-------|
-| 13.1 | Build mock plan generator | ⬜ TODO | |
-| 13.2 | Build mock Qwen/Gemma | ⬜ TODO | |
-| 13.3 | Build mock local/Flash workers | ⬜ TODO | |
-| 13.4 | Build mock Pro decision | ⬜ TODO | |
-| 13.5 | Wire task session, route, enforcement, artifact, test, adjudication, AgentDB | ⬜ TODO | |
-| 13.6 | Add tests covering all route types and failure modes | ⬜ TODO | |
+| 13.1 | Build mock plan generator | ✅ DONE | pipeline_mocks.py |
+| 13.2 | Build mock Qwen/Gemma | ✅ DONE | pipeline_mocks.py |
+| 13.3 | Build mock local/Flash workers | ✅ DONE | pipeline_mocks.py |
+| 13.4 | Build mock Pro decision | ✅ DONE | pipeline_mocks.py |
+| 13.5 | Wire task session, route, enforcement, artifact, test, adjudication, AgentDB | ✅ DONE | pipeline_e2e_dry_run.py |
+| 13.6 | Add tests covering all route types and failure modes | ✅ DONE | 25 tests pass, 256 total |
 
 ### Acceptance Criteria
 
-* [ ] One command runs the full dry-run and produces task artifacts and DB records.
+* [x] One command runs the full dry-run and produces task artifacts and DB records.
 
 ---
 
