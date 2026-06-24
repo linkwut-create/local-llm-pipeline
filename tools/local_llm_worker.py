@@ -725,6 +725,12 @@ def call_openai_compat(system: str, user: str, config: WorkerConfig) -> "ModelCa
         "max_tokens": config.max_output_tokens or config.max_output_chars,
         "stream": False,
     }
+    try:
+        from model_launcher import ensure_running as _ensure_running
+        _ensure_running(config.model, max_wait=180)
+    except Exception:
+        pass
+
     resp = _openai_compat_request(config, payload)
     resp.raise_for_status()
     data = resp.json()

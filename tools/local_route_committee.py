@@ -587,6 +587,12 @@ def _call_model(model: str, prompt: str, timeout: int = 1000) -> tuple[str, dict
     text = ""
 
     try:
+        from model_launcher import ensure_running as _ensure_running
+        _ensure_running(model, max_wait=180)
+    except Exception:
+        pass
+
+    try:
         req = _ur.Request(url, data=body, headers=headers)
         with _ur.urlopen(req, timeout=timeout) as resp:
             data = _json.loads(resp.read().decode("utf-8"))
