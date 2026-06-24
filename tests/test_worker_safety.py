@@ -237,7 +237,7 @@ def test_draft_commit_message_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker_llamacpp"
+    assert t["default_profile"] == "code_worker"
 
 
 def test_draft_commit_message_prompt_exists():
@@ -272,7 +272,7 @@ def test_draft_pr_summary_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker_llamacpp"
+    assert t["default_profile"] == "code_worker"
 
 
 def test_draft_pr_summary_prompt_exists():
@@ -325,7 +325,7 @@ def test_draft_changelog_entry_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker_llamacpp"
+    assert t["default_profile"] == "code_worker"
 
 
 def test_draft_changelog_entry_prompt_exists():
@@ -380,7 +380,7 @@ def test_find_related_files_task_config():
     assert t["risk"] == "low", f"risk should be low, got {t.get('risk')}"
     assert t["may_modify_code"] is False, "may_modify_code must be false"
     assert t["controller_must_verify"] is True, "controller_must_verify must be true"
-    assert t["default_profile"] == "code_worker_llamacpp"
+    assert t["default_profile"] == "code_worker"
 
 
 def test_find_related_files_prompt_exists():
@@ -518,11 +518,11 @@ def test_resolve_provider_default_openai_compatible(monkeypatch):
 
 
 def test_resolve_endpoint_ollama_default(monkeypatch):
-    """Ollama default is localhost:11434."""
+    """Default endpoint now always openai-compatible (v0.14: Ollama deprecated)."""
     from local_llm_worker import _resolve_endpoint
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
     monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
-    assert _resolve_endpoint("ollama") == "http://localhost:11434"
+    assert _resolve_endpoint("ollama") == "http://127.0.0.1:4000/v1"
 
 
 def test_resolve_endpoint_openai_compat_default(monkeypatch):
@@ -538,7 +538,7 @@ def test_resolve_endpoint_args_override(monkeypatch):
     from local_llm_worker import _resolve_endpoint
     monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://env.example.com:11434")
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama-host.example.com")
-    assert _resolve_endpoint("ollama", "http://cli.example.com:9999") == "http://cli.example.com:9999"
+    assert _resolve_endpoint("ollama", "http://cli.example.com:9999") == "http://cli.example.com:9999/v1"
 
 
 def test_resolve_endpoint_local_llm_base_url_priority(monkeypatch):
@@ -546,24 +546,25 @@ def test_resolve_endpoint_local_llm_base_url_priority(monkeypatch):
     from local_llm_worker import _resolve_endpoint
     monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://env.example.com:11434")
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama-host.example.com")
-    assert _resolve_endpoint("ollama") == "http://env.example.com:11434"
+    assert _resolve_endpoint("ollama") == "http://env.example.com:11434/v1"
 
 
 def test_resolve_endpoint_ollama_host_fallback(monkeypatch):
-    """OLLAMA_HOST used when LOCAL_LLM_BASE_URL not set."""
+    """OLLAMA_HOST is ignored post-Ollama-removal; only LOCAL_LLM_BASE_URL is used."""
     from local_llm_worker import _resolve_endpoint
     monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
     monkeypatch.setenv("OLLAMA_HOST", "193.168.2.2")
     # OLLAMA_HOST without http:// prefix gets normalized
-    assert _resolve_endpoint("ollama") == "http://193.168.2.2"
+    assert _resolve_endpoint("ollama") == "http://127.0.0.1:4000/v1"
 
 
 def test_resolve_endpoint_ollama_host_with_http(monkeypatch):
-    """OLLAMA_HOST with http:// prefix preserved as-is."""
+    """OLLAMA_HOST is ignored post-Ollama-removal; only LOCAL_LLM_BASE_URL is used."""
     from local_llm_worker import _resolve_endpoint
     monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
     monkeypatch.setenv("OLLAMA_HOST", "http://192.168.2.2:11434")
-    assert _resolve_endpoint("ollama") == "http://192.168.2.2:11434"
+    # OLLAMA_HOST is no longer consulted — falls back to default
+    assert _resolve_endpoint("ollama") == "http://127.0.0.1:4000/v1"
 
 
 def test_debate_resolve_base_url_delegates_to_shared(monkeypatch):

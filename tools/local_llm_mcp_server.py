@@ -55,21 +55,21 @@ _call_lock = threading.Lock()
 # Timeout errors fall back to a faster model instead.
 _ESCALATION_CHAIN = {
     # Summarization: llama.cpp fallbacks → fast/e4b → smart/9b → 27b → coder
-    "summarize-file": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
+    "summarize-file": ["gemma4_26b_llamacpp", "qwen3.6-default", "fast_summary",
                        "smart_summary", "gemma4_26b", "qwen3.6_27b_mtp", "code_worker"],
-    "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
+    "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6-default", "fast_summary",
                        "smart_summary", "qwen3.6_27b_mtp"],
     # Diff review: commit gate → llama.cpp diff reviewer → resident → 27b → deep
-    "review-diff": ["commit_reviewer_llamacpp", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
+    "review-diff": ["commit_reviewer", "diff_reviewer", "qwen3.6-default",
                     "qwen3.6_27b_mtp", "deep_reviewer"],
     # Code generation: on-demand coder → resident → 27b → deep
-    "generate-test-plan": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "generate-test-plan": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                            "gemma4_26b_llamacpp", "qwen3.6_27b_mtp", "deep_reviewer"],
-    "generate-test-draft": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "generate-test-draft": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                             "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-fix": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "draft-fix": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                   "qwen3.6_27b_mtp", "deep_reviewer"],
-    "draft-feature": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "draft-feature": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                       "qwen3.6_27b_mtp", "deep_reviewer"],
     "draft-refactor": ["code_worker", "reasoning_checker", "deep_reviewer"],
     # Advisory draft text generation: code_worker is sufficient, no escalation needed
@@ -77,7 +77,7 @@ _ESCALATION_CHAIN = {
     "draft-pr-summary": ["code_worker"],
     "draft-changelog-entry": ["code_worker"],
     # Suggestions: llama.cpp fallbacks → 27b → coder → deep
-    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "qwen3.6_27b_mtp",
+    "suggest-improvements": ["gemma4_26b_llamacpp", "qwen3.6-default", "qwen3.6_27b_mtp",
                              "code_worker", "deep_reviewer"],
     # Deep/architecture review: 35b MoE → deep → 31b → release → super → heavy
     "deep-code-review": ["qwen3.6_35b_moe_mtp", "deep_reviewer", "gemma4_31b",
@@ -94,16 +94,16 @@ _ESCALATION_CHAIN = {
                     "release_auditor"],
     "failure-mode-analysis": ["deep_reasoning_llamacpp", "reasoning_checker", "deep_reasoning",
                                "release_auditor"],
-    "contextual-analyze": ["qwen3.6_llamacpp", "qwen3.6_27b_mtp",
+    "contextual-analyze": ["qwen3.6-default", "qwen3.6_27b_mtp",
                             "code_worker", "reasoning_checker"],
-    "translate-text": ["translation_llamacpp", "translation", "qwen3.6_llamacpp"],
-    "rewrite-text": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
+    "translate-text": ["translation_llamacpp", "translation", "qwen3.6-default"],
+    "rewrite-text": ["gemma4_26b_llamacpp", "qwen3.6-default", "fast_summary",
                      "qwen3.6_27b_mtp"],
-    "extract-todos": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "extract-todos": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                       "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "find-related-files": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "find-related-files": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                            "gemma4_26b_llamacpp", "qwen3.6_27b_mtp"],
-    "classify-test-failure": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
+    "classify-test-failure": ["code_worker_llamacpp", "qwen3.6-default", "code_worker",
                                "reasoning_checker", "qwen3.6_27b_mtp"],
 }
 
@@ -272,7 +272,7 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
 
     # 2. Commit gate: always commit_reviewer
     if is_commit_gate:
-        return "commit_reviewer_llamacpp"
+        return "commit_reviewer"
 
     chain = _ESCALATION_CHAIN.get(task, [])
     if not chain:

@@ -1,7 +1,6 @@
 {
   "_note": "All profiles use openai-compatible backend via LiteLLM (zero12:4000). Ollama is deprecated.",
   "default_profile": "code_worker",
-
   "profiles": {
     "fast_summary": {
       "model": "qwen3.6-default",
@@ -9,8 +8,14 @@
       "max_chars": 24000,
       "max_output_chars": 3000,
       "max_output_tokens": 16384,
-      "use_for": ["summarize-file", "summarize-tree"],
-      "candidates": ["qwen3.6-default", "qwen3-coder-30b"],
+      "use_for": [
+        "summarize-file",
+        "summarize-tree"
+      ],
+      "candidates": [
+        "qwen3.6-default",
+        "qwen3-coder-30b"
+      ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
       "_residency": "resident",
@@ -22,8 +27,16 @@
       "max_chars": 40000,
       "max_output_chars": 4000,
       "max_output_tokens": 16384,
-      "use_for": ["generate-test-plan", "generate-test-draft", "extract-todos", "find-related-files"],
-      "candidates": ["qwen3-coder-30b", "qwen3.6-default"],
+      "use_for": [
+        "generate-test-plan",
+        "generate-test-draft",
+        "extract-todos",
+        "find-related-files"
+      ],
+      "candidates": [
+        "qwen3-coder-30b",
+        "qwen3.6-default"
+      ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
       "_residency": "resident",
@@ -35,8 +48,13 @@
       "max_chars": 40000,
       "max_output_chars": 4000,
       "max_output_tokens": 16384,
-      "use_for": ["review-diff"],
-      "candidates": ["qwen3-coder-30b", "qwen3.6-default"],
+      "use_for": [
+        "review-diff"
+      ],
+      "candidates": [
+        "qwen3-coder-30b",
+        "qwen3.6-default"
+      ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
       "_residency": "resident",
@@ -49,13 +67,18 @@
       "max_chars": 60000,
       "max_output_chars": 6000,
       "max_output_tokens": 16384,
-      "use_for": ["review-diff", "deep-code-review"],
-      "candidates": ["nemotron-30b", "qwen3-coder-30b"],
+      "use_for": [
+        "review-diff",
+        "deep-code-review"
+      ],
+      "candidates": [
+        "nemotron-30b",
+        "qwen3-coder-30b"
+      ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "nemotron-30b-llama.service",
-      "_note": "Nemotron 30B for deeper code review. On-demand via systemd."
+      "_systemd": "nemotron-30b-llama.service"
     },
     "deep_reviewer": {
       "model": "qwen3.6-deep",
@@ -63,12 +86,18 @@
       "max_chars": 60000,
       "max_output_chars": 6000,
       "max_output_tokens": 16384,
-      "use_for": ["architecture-review", "risk-analysis", "logic-check"],
-      "candidates": ["qwen3.6-deep", "deepseek-r1-32b"],
+      "use_for": [
+        "architecture-review",
+        "risk-analysis",
+        "logic-check"
+      ],
+      "candidates": [
+        "qwen3.6-deep",
+        "deepseek-r1-32b"
+      ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
-      "_residency": "resident",
-      "_note": "Deep reasoning on resident qwen3.6-27b. Slower due to built-in thinking."
+      "_residency": "resident"
     },
     "reasoning_checker": {
       "model": "deepseek-r1-32b",
@@ -76,13 +105,19 @@
       "max_chars": 60000,
       "max_output_chars": 6000,
       "max_output_tokens": 16384,
-      "use_for": ["risk-analysis", "safety-check", "logic-check"],
-      "candidates": ["deepseek-r1-32b", "qwen3.6-deep"],
+      "use_for": [
+        "risk-analysis",
+        "safety-check",
+        "logic-check"
+      ],
+      "candidates": [
+        "deepseek-r1-32b",
+        "qwen3.6-deep"
+      ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "deepseek-r1-32b-llama.service",
-      "_note": "DeepSeek R1 for high-risk reasoning. On-demand only — 32B model."
+      "_systemd": "deepseek-r1-32b-llama.service"
     },
     "translation": {
       "model": "glm-4.7-flash",
@@ -90,13 +125,18 @@
       "max_chars": 20000,
       "max_output_chars": 4000,
       "max_output_tokens": 16384,
-      "use_for": ["translate", "multilingual"],
-      "candidates": ["glm-4.7-flash", "qwen3.6-default"],
+      "use_for": [
+        "translate",
+        "multilingual"
+      ],
+      "candidates": [
+        "glm-4.7-flash",
+        "qwen3.6-default"
+      ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "glm4-flash-llama.service",
-      "_note": "GLM-4.7 Flash for Chinese/multilingual. Small model, fast load."
+      "_systemd": "glm4-flash-llama.service"
     },
     "gemma4_31b": {
       "model": "gemma4-31b",
@@ -104,13 +144,18 @@
       "max_chars": 50000,
       "max_output_chars": 5000,
       "max_output_tokens": 16384,
-      "use_for": ["committee-review", "docs-agent"],
-      "candidates": ["gemma4-31b", "qwen3.6-deep"],
+      "use_for": [
+        "committee-review",
+        "docs-agent"
+      ],
+      "candidates": [
+        "gemma4-31b",
+        "qwen3.6-deep"
+      ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "gemma4-31b-llama.service",
-      "_note": "Gemma4 31B for cross-family committee review. On-demand — start before committee."
+      "_systemd": "gemma4-31b-llama.service"
     },
     "docs_agent": {
       "model": "qwen3.6-deep",
@@ -118,27 +163,36 @@
       "max_chars": 40000,
       "max_output_chars": 5000,
       "max_output_tokens": 16384,
-      "use_for": ["documentation", "governance"],
-      "candidates": ["qwen3.6-deep", "qwen3-coder-30b"],
+      "use_for": [
+        "documentation",
+        "governance"
+      ],
+      "candidates": [
+        "qwen3.6-deep",
+        "qwen3-coder-30b"
+      ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
-      "_residency": "resident",
-      "_note": "Documentation agent on resident qwen3.6."
+      "_residency": "resident"
     },
-
     "fast_summary_light": {
       "model": "gemma4-12b",
       "temperature": 0.2,
       "max_chars": 24000,
       "max_output_chars": 3000,
       "max_output_tokens": 16384,
-      "use_for": ["summarize-file", "summarize-tree"],
-      "candidates": ["gemma4-12b", "qwen3.5-claude-opus-9b"],
+      "use_for": [
+        "summarize-file",
+        "summarize-tree"
+      ],
+      "candidates": [
+        "gemma4-12b",
+        "qwen3.5-claude-opus-9b"
+      ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "gemma4-12b-llama.service",
-      "_note": "Gemma4 12B — tiny 6GB model for fast summaries. On-demand."
+      "_systemd": "gemma4-12b-llama.service"
     },
     "heavy_reviewer": {
       "model": "qwen3.6-35b",
@@ -146,22 +200,53 @@
       "max_chars": 60000,
       "max_output_chars": 6000,
       "max_output_tokens": 16384,
-      "use_for": ["deep-code-review", "release-risk-review"],
-      "candidates": ["qwen3.6-35b", "qwen3.6-deep"],
+      "use_for": [
+        "deep-code-review",
+        "release-risk-review"
+      ],
+      "candidates": [
+        "qwen3.6-35b",
+        "qwen3.6-deep"
+      ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
       "_residency": "on_demand",
-      "_systemd": "qwen36-35b-llama.service",
-      "_note": "Qwen3.6 35B — heavy lifter for deep review. On-demand."
-    },
-    "_deprecated_ollama": {
-      "_note": "Below profiles are Ollama-only, kept for reference. Not usable without Ollama running.",
-      "smart_summary": {"model": "qwen3.5-claude-opus:9b", "_backend_class": "ollama", "_status": "deprecated"},
-      "heavy_reviewer": {"model": "gpt-oss:120b", "_backend_class": "ollama", "_status": "deprecated"},
-      "gemma4_26b": {"model": "gemma4:26b", "_backend_class": "ollama", "_status": "deprecated"},
-      "nemotron_super": {"model": "nemotron:super", "_backend_class": "ollama", "_status": "deprecated"},
-      "deepseek_r1_70b": {"model": "deepseek-r1:70b", "_backend_class": "ollama", "_status": "deprecated"},
-      "embedding": {"model": "nomic-embed:latest", "_backend_class": "ollama", "_status": "deprecated"}
+      "_systemd": "qwen36-35b-llama.service"
+    }
+  },
+  "_deprecated": {
+    "_note": "Ollama-only profiles kept for reference. Moved out of profiles section so validate_configs doesn't flag them.",
+    "ollama_profiles": {
+      "smart_summary": {
+        "model": "qwen3.5-claude-opus:9b",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      },
+      "heavy_reviewer": {
+        "model": "gpt-oss:120b",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      },
+      "gemma4_26b": {
+        "model": "gemma4:26b",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      },
+      "nemotron_super": {
+        "model": "nemotron:super",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      },
+      "deepseek_r1_70b": {
+        "model": "deepseek-r1:70b",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      },
+      "embedding": {
+        "model": "nomic-embed:latest",
+        "_backend_class": "ollama",
+        "_status": "deprecated"
+      }
     }
   }
 }
