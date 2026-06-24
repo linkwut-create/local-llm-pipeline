@@ -240,7 +240,7 @@ def test_openai_models_probe_uses_api_key_header(monkeypatch):
     assert seen == {"authorization": "Bearer test-key", "timeout": 5}
 
 
-def test_llamacpp_probe_uses_api_key_header(monkeypatch):
+def test_probe_uses_api_key_header(monkeypatch):
     monkeypatch.setenv("LOCAL_LLM_API_KEY", "test-key")
 
     class FakeResponse:
@@ -261,7 +261,7 @@ def test_llamacpp_probe_uses_api_key_header(monkeypatch):
 
     monkeypatch.setattr(router, "urlopen", fake_urlopen)
 
-    assert router.probe_llamacpp_endpoint("http://example.test:4000/v1", timeout=3)
+    assert router.probe_endpoint("http://example.test:4000/v1", timeout=3)
     assert seen == {"authorization": "Bearer test-key", "timeout": 3}
 
 
@@ -291,41 +291,41 @@ def test_env_override_in_mtp_profiles():
     mtp_profile = profiles.get("gemma4_26b_mtp")
     if mtp_profile:
         assert "_acceleration" in mtp_profile
-    mistral_llamacpp = profiles.get("mistral_119b_llamacpp")
-    if mistral_llamacpp:
-        status = mistral_llamacpp.get("_status", "")
+    mistral = profiles.get("mistral_119b")
+    if mistral:
+        status = mistral.get("_status", "")
         if status.startswith("unavailable"):
             return  # Profile known unavailable — _env not required
-        env = mistral_llamacpp.get("_env", "")
+        env = mistral.get("_env", "")
         assert "LOCAL_LLM_BASE_URL" in env, "llama.cpp profile should set LOCAL_LLM_BASE_URL in _env"
 
 
-def test_llamacpp_resident_policy_is_dense_only():
+def test_resident_policy_is_dense_only():
     data = _load_profiles()
     profiles = data["profiles"]
     policy = data["_backends"]["llama_cpp_resident"]
 
     assert policy["profiles"] == [
-        "qwen3.6_llamacpp",
-        "qwen3.6_llamacpp_direct",
-        "gemma4_31b_llamacpp",
+        "qwen3.6",
+        "qwen3.6_direct",
+        "gemma4_31b",
     ]
-    assert profiles["qwen3.6_llamacpp"]["_model_family"] == "dense"
-    assert profiles["qwen3.6_llamacpp"]["_residency"] == "resident_priority_1"
-    assert profiles["qwen3.6_llamacpp_direct"]["_residency"] == "resident_priority_1"
-    assert profiles["gemma4_31b_llamacpp"]["_model_family"] == "dense"
-    assert profiles["gemma4_31b_llamacpp"]["_residency"] == "resident_priority_2"
+    assert profiles["qwen3.6"]["_model_family"] == "dense"
+    assert profiles["qwen3.6"]["_residency"] == "resident_priority_1"
+    assert profiles["qwen3.6_direct"]["_residency"] == "resident_priority_1"
+    assert profiles["gemma4_31b"]["_model_family"] == "dense"
+    assert profiles["gemma4_31b"]["_residency"] == "resident_priority_2"
 
 
-def test_moe_llamacpp_profiles_are_on_demand():
+def test_moe_profiles_are_on_demand():
     data = _load_profiles()
     profiles = data["profiles"]
     policy = data["_backends"]["llama_cpp_resident"]
 
     for profile_name in (
-        "code_worker_llamacpp",
-        "commit_reviewer_llamacpp",
-        "gemma4_26b_llamacpp",
+        "code_worker",
+        "commit_reviewer",
+        "gemma4_26b",
     ):
         assert profile_name not in policy["profiles"]
         assert profile_name in policy["on_demand_profiles"]
@@ -464,11 +464,11 @@ def test_commit_reviewer_profile_exists():
     assert len(cr.get("candidates", [])) >= 1, "commit_reviewer must have candidates"
 
 
-def test_review_diff_default_profile_is_diff_reviewer_llamacpp():
+def test_review_diff_default_profile_is_diff_reviewer():
     tasks = _load_tasks()["tasks"]
     rd = tasks["review-diff"]
-    assert rd["default_profile"] == "diff_reviewer_llamacpp", (
-        f"review-diff default_profile must be diff_reviewer_llamacpp, got {rd['default_profile']}"
+    assert rd["default_profile"] == "diff_reviewer", (
+        f"review-diff default_profile must be diff_reviewer, got {rd['default_profile']}"
     )
 
 
@@ -542,8 +542,8 @@ class TestProfileAutoEligibility:
                                           {"_backend_class": "placeholder"})
         assert ok is False
 
-    def test_llamacpp_unconfigured_not_auto_eligible(self):
-        ok, _ = is_profile_auto_eligible("gemma4_26b_llamacpp",
+    def test_unconfigured_not_auto_eligible(self):
+        ok, _ = is_profile_auto_eligible("gemma4_26b",
                                           {"_backend_class": "llamacpp_unconfigured"})
         assert ok is False
 
@@ -576,36 +576,36 @@ class TestExistingTaskResolutionStillWorks:
 
     def test_review_diff_resolves(self):
         p, m, r = resolve_profile("review-diff", None, None)
-        assert p == "diff_reviewer_llamacpp"
+        assert p == "diff_reviewer"
 
     def test_draft_commit_message_resolves(self):
         p, m, r = resolve_profile("draft-commit-message", None, None)
-        assert p == "code_worker_llamacpp"
+        assert p == "code_worker"
 
     def test_draft_pr_summary_resolves(self):
         p, m, r = resolve_profile("draft-pr-summary", None, None)
-        assert p == "code_worker_llamacpp"
+        assert p == "code_worker"
 
     def test_draft_changelog_entry_resolves(self):
         p, m, r = resolve_profile("draft-changelog-entry", None, None)
-        assert p == "code_worker_llamacpp"
+        assert p == "code_worker"
 
     def test_summarize_file_resolves(self):
         p, m, r = resolve_profile("summarize-file", None, None)
-        assert p == "gemma4_26b_llamacpp"
+        assert p == "fast_summary_light"
 
     def test_risk_analysis_resolves(self):
         p, m, r = resolve_profile("risk-analysis", None, None)
-        assert p == "deep_reasoning_llamacpp"
+        assert p == "reasoning_checker"
 
     def test_suggest_improvements_resolves(self):
         p, m, r = resolve_profile("suggest-improvements", None, None)
-        assert p == "gemma4_26b_llamacpp"
+        assert p == "fast_summary_light"
 
     def test_find_related_files_resolves(self):
         """J-K2: find-related-files must resolve to code_worker."""
         p, m, r = resolve_profile("find-related-files", None, None)
-        assert p == "code_worker_llamacpp"
+        assert p == "code_worker"
 
 
 def test_cli_no_traceback():

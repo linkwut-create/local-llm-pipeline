@@ -18,6 +18,9 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from local_llm_api import call_chat_completion, get_available_models
 
 SCRIPT_DIR = Path(__file__).parent
 EVALS_DIR = SCRIPT_DIR.parent / "evals" / "model_audition"
@@ -85,58 +88,20 @@ def preflight_check(model: str, timeout: int = 1000) -> int:
     return PREFLIGHT_TOKEN_LIMITS[0]
 
 
-def call_ollama(model: str, prompt: str, timeout: int = 1000,
+def call_ollama(model: str, prompt: str, timeout: int = 300,
                 num_predict: int = 400) -> dict:
-    """Call Ollama with a prompt. Returns {ok, response, elapsed_seconds, error}."""
-    start = time.time()
-    try:
-        data = json.dumps({
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"num_predict": num_predict, "temperature": 0.1},
-        }).encode()
-        req = urllib.request.Request(
-            OLLAMA_API, data=data,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result = json.loads(resp.read().decode())
-            elapsed = time.time() - start
-            return {
-                "ok": True,
-                "response": result.get("response", ""),
-                "elapsed_seconds": round(elapsed, 1),
-                "error": None,
-                "eval_count": result.get("eval_count", 0),
-            }
-    except Exception as e:
-        elapsed = time.time() - start
-        return {
-            "ok": False,
-            "response": "",
-            "elapsed_seconds": round(elapsed, 1),
-            "error": str(e)[:200],
-            "eval_count": 0,
-        }
-
-
+    """Call model via LiteLLM OpenAI-compat API."""
+    return call_chat_completion(
+        model, [{"role": "user", "content": prompt}],
+        max_tokens=num_predict, timeout=timeout)
 def unload_model(model: str):
-    try:
-        data = json.dumps({"model": model, "prompt": "", "keep_alive": 0}).encode()
-        req = urllib.request.Request(OLLAMA_API, data=data,
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+    """No-op: llama.cpp manages VRAM automatically."""
+    pass
 
 
 def get_ollama_models() -> list[str]:
-    try:
-        r = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30)
-        return [line.split()[0] for line in r.stdout.strip().split("\n")[1:] if line.strip()]
-    except Exception:
-        return []
+    """Get models via LiteLLM /v1/models."""
+    return get_available_models()
 
 
 def run_audition(model: str, cases: list[str], timeout: int = 1000,
@@ -187,7 +152,7 @@ def save_results(results: list[dict], model: str) -> Path:
 def main():
     parser = argparse.ArgumentParser(description="Model Audition — capability assessment")
     parser.add_argument("--model", action="append", default=[], help="Model to test (repeatable)")
-    parser.add_argument("--from-ollama", action="store_true", help="Test all Ollama models")
+    parser.add_argument("--from-ollama", action="store_true", help="Test all available models")
     parser.add_argument("--case", default=None, help="Run only specific case (e.g., 003)")
     parser.add_argument("--timeout", type=int, default=180, help="Per-case timeout in seconds")
     parser.add_argument("--runs", type=int, default=1, help="Number of audition runs per model (default: 1)")
@@ -250,35 +215,6 @@ def main():
             print(f"  {p}")
         if all_saved:
             print(f"\nScore with: py -3 tools/score_model_audition.py {all_saved[-1]}")
-
-
-
-def _get_openai_models_from_api(base_url: str) -> list[str]:
-    """Fallback: query OpenAI-compatible /v1/models endpoint."""
-    try:
-        from urllib.request import Request, urlopen
-        import json
-        url = base_url.rstrip("/") + "/models"
-        req = Request(url, method="GET")
-        with urlopen(req, timeout=5) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        return [m.get("id", "") for m in payload.get("data", []) if isinstance(m, dict) and m.get("id")]
-    except Exception:
-        return []
-
-
-def get_available_models() -> list[str]:
-    """Get models: Ollama first, fall back to OpenAI-compat endpoints."""
-    import os
-    models = get_ollama_models()
-    if models:
-        return models
-    base_url = os.environ.get("LOCAL_LLM_BASE_URL", "")
-    if base_url and ":11434" not in base_url and ":11436" not in base_url:
-        models = _get_openai_models_from_api(base_url)
-        if models:
-            return models
-    return get_ollama_models()  # retry
 
 if __name__ == "__main__":
     main()

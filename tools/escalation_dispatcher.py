@@ -60,39 +60,23 @@ class DispatchResult:
 # Local execution
 # ═══════════════════════════════════════════════════════════════
 
-def _run_local(task: str, profile: str = "fast_summary") -> tuple[bool, str, int]:
-    """Execute a task using a local Ollama model."""
+def _run_local(task, profile="fast_summary"):
+    """Execute a task via LiteLLM/OpenAI-compat API."""
+    from local_llm_api import call_chat_completion
     model_map = {
-        "fast_summary": "gemma4:e4b",
-        "code_worker": "qwen3-coder:30b",
-        "commit_reviewer": "qwen3-coder:30b",
-        "diff_reviewer": "nemotron:30b",
+        "fast_summary": "gemma4-12b",
+        "code_worker": "qwen3-coder-30b",
+        "commit_reviewer": "qwen3-coder-30b",
+        "diff_reviewer": "nemotron-30b",
     }
-    model = model_map.get(profile, "qwen3-coder:30b")
-
-    import urllib.request
-    body = json.dumps({
-        "model": model,
-        "prompt": task[:2000],
-        "stream": False,
-        "options": {"num_predict": 512, "temperature": 0.0},
-    }).encode("utf-8")
-    base = os.environ.get("OLLAMA_HOST", "http://193.168.2.2:11434")
-    url = base.rstrip("/") + "/api/generate"
-
+    model = model_map.get(profile, "qwen3-coder-30b")
     try:
-        req = urllib.request.Request(url, data=body,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return True, data.get("response", ""), data.get("eval_count", 0)
+        result = call_chat_completion(
+            model, [{"role": "user", "content": task[:2000]}],
+            max_tokens=512, timeout=120)
+        return result["ok"], result["response"], result.get("usage", {}).get("completion_tokens", 0)
     except Exception as e:
         return False, str(e)[:300], 0
-
-
-# ═══════════════════════════════════════════════════════════════
-# Cloud execution
-# ═══════════════════════════════════════════════════════════════
 
 def _run_cloud(task: str, model: str, max_tokens: int = 1024) -> tuple[bool, str, int, float]:
     """Execute a task via DeepSeek API. Returns (ok, content, tokens, cost_cny)."""
