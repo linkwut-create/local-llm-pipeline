@@ -306,8 +306,7 @@ def build_route_prompt(role_instructions: str, plan_json: str, evidence: str) ->
     """Build one model-specific prompt while preserving the shared JSON schema."""
     max_evidence = 2000
     if len(evidence) > max_evidence:
-        evidence = evidence[:max_evidence] + '
-... (truncated)'
+        evidence = evidence[:max_evidence] + "... (truncated)"
     return ROUTE_JUDGEMENT_PROMPT.format(
         role_instructions=role_instructions.strip(),
         plan_json=plan_json,
