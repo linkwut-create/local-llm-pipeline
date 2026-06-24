@@ -2,8 +2,8 @@
   "tasks": {
     "summarize-file": {
       "risk": "low",
-      "default_profile": "gemma4_26b_llamacpp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "fast_summary",
+      "_llamacpp_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,
@@ -12,8 +12,8 @@
     },
     "summarize-tree": {
       "risk": "low",
-      "default_profile": "gemma4_26b_llamacpp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "fast_summary",
+      "_llamacpp_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,
@@ -22,8 +22,8 @@
     },
     "extract-todos": {
       "risk": "low",
-      "default_profile": "code_worker_llamacpp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "code_worker",
+      "_llamacpp_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -32,8 +32,8 @@
     },
     "find-related-files": {
       "risk": "low",
-      "default_profile": "code_worker_llamacpp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "code_worker",
+      "_llamacpp_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -42,7 +42,7 @@
     },
     "generate-test-plan": {
       "risk": "medium",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -51,7 +51,7 @@
     },
     "generate-test-draft": {
       "risk": "medium",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 5000,
@@ -60,7 +60,7 @@
     },
     "review-diff": {
       "risk": "medium",
-      "default_profile": "diff_reviewer_llamacpp",
+      "default_profile": "diff_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 5000,
@@ -69,7 +69,7 @@
     },
     "deep-code-review": {
       "risk": "high",
-      "default_profile": "diff_reviewer_llamacpp",
+      "default_profile": "diff_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -78,7 +78,7 @@
     },
     "architecture-review": {
       "risk": "high",
-      "default_profile": "diff_reviewer_llamacpp",
+      "default_profile": "diff_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -87,7 +87,7 @@
     },
     "release-risk-review": {
       "risk": "high",
-      "default_profile": "release_auditor_llamacpp",
+      "default_profile": "deep_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -96,7 +96,7 @@
     },
     "risk-analysis": {
       "risk": "medium-high",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 5000,
@@ -105,7 +105,7 @@
     },
     "logic-check": {
       "risk": "medium",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -114,7 +114,7 @@
     },
     "failure-mode-analysis": {
       "risk": "medium-high",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 5000,
@@ -123,7 +123,7 @@
     },
     "translate-text": {
       "risk": "low",
-      "default_profile": "translation_llamacpp",
+      "default_profile": "translation",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -132,8 +132,8 @@
     },
     "rewrite-text": {
       "risk": "low",
-      "default_profile": "gemma4_31b_llamacpp",
-      "_llamacpp_profile": "gemma4_26b_llamacpp",
+      "default_profile": "gemma4_31b",
+      "_llamacpp_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -142,7 +142,7 @@
     },
     "draft-fix": {
       "risk": "medium",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -151,7 +151,7 @@
     },
     "draft-feature": {
       "risk": "medium",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 8000,
@@ -160,7 +160,7 @@
     },
     "draft-commit-message": {
       "risk": "low",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,
@@ -169,7 +169,7 @@
     },
     "draft-pr-summary": {
       "risk": "low",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -178,7 +178,7 @@
     },
     "draft-changelog-entry": {
       "risk": "low",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -187,7 +187,7 @@
     },
     "draft-refactor": {
       "risk": "medium-high",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 8000,
@@ -196,7 +196,7 @@
     },
     "suggest-improvements": {
       "risk": "low",
-      "default_profile": "gemma4_26b_llamacpp",
+      "default_profile": "fast_summary",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -205,7 +205,7 @@
     },
     "debate-review-diff": {
       "risk": "medium-high",
-      "default_profile": "code_worker_llamacpp",
+      "default_profile": "code_worker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -214,7 +214,7 @@
     },
     "debate-risk-analysis": {
       "risk": "high",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -223,7 +223,7 @@
     },
     "debate-architecture-review": {
       "risk": "high",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -232,7 +232,7 @@
     },
     "debate-failure-mode-analysis": {
       "risk": "medium-high",
-      "default_profile": "deep_reasoning_llamacpp",
+      "default_profile": "reasoning_checker",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
@@ -241,7 +241,7 @@
     },
     "health-report": {
       "risk": "low",
-      "default_profile": "qwen3.6_llamacpp",
+      "default_profile": "deep_reviewer",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,

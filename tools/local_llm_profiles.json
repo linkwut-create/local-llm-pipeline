@@ -1,1156 +1,139 @@
 {
+  "_note": "All profiles use openai-compatible backend via LiteLLM (zero12:4000). Ollama is deprecated.",
+  "default_profile": "code_worker",
+
   "profiles": {
     "fast_summary": {
-      "model": "gemma4:12b-unsloth",
-      "_strengths": [
-        "speed",
-        "summarization",
-        "general"
-      ],
+      "model": "qwen3.6-default",
       "temperature": 0.2,
-      "max_context_tokens": 8192,
       "max_chars": 24000,
       "max_output_chars": 3000,
       "max_output_tokens": 2048,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "rewrite-text"
-      ],
-      "candidates": [
-        "gemma4:12b-unsloth",
-        "gemma4:e4b-unsloth",
-        "minicpm:4.5",
-        "qwen3.5:9b"
-      ],
+      "use_for": ["summarize-file", "summarize-tree"],
+      "candidates": ["qwen3.6-default", "qwen3-coder-30b"],
       "risk_level": "low",
-      "_benchmark": "2026-06-13: Upgraded e4b→12b-unsloth based on model audition (fast_summary 3.1, 15-case battery stable). 2026-06-12: Tag fixed gemma4:e4b→gemma4:e4b-unsloth.",
-      "_community_reputation": "Gemma 4 is Google's lightweight model series. Unsloth variant required — native Ollama gemma4 tags blocked (temperature sensitivity causes empty responses at T≤0.7). See evals/model_audition/reports/profile_suggestions.md.",
-      "_backend_class": "ollama"
-    },
-    "docs_agent": {
-      "model": "gemma4:31b-unsloth",
-      "_strengths": [
-        "documentation",
-        "governance",
-        "accuracy",
-        "consistency"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 8192,
-      "max_chars": 28000,
-      "max_output_chars": 4000,
-      "max_output_tokens": 3072,
-      "use_for": [
-        "update-governance-docs",
-        "review-documentation",
-        "maintain-docs"
-      ],
-      "candidates": [
-        "gemma4:31b-unsloth",
-        "gemma4:26b-unsloth",
-        "gemma4:12b-unsloth",
-        "qwen3.5:35b"
-      ],
-      "risk_level": "low",
-      "_benchmark": "2026-06-13: Created from model audition (docs_agent 3.4, 15-case battery) + shadow dogfood (2/2 summaries non-empty, accurate, no over-expansion). 31B unsloth selected as primary.",
-      "_community_reputation": "Gemma 4 unsloth variants are stable for documentation roles. Native Ollama gemma4 tags blocked (temperature sensitivity T≤0.7 empty response). docs_agent is docs-only — must not edit non-.md files per agent definition.",
-      "_backend_class": "ollama"
-    },
-    "smart_summary": {
-      "model": "qwen3.5-claude-opus:9b",
-      "_strengths": [
-        "summarization",
-        "quality",
-        "opus-distilled"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 32768,
-      "max_chars": 60000,
-      "max_output_chars": 3000,
-      "max_output_tokens": 2048,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "rewrite-text"
-      ],
-      "risk_level": "low",
-      "_benchmark": "28.6s summarize, 47.6s review — Opus-distilled quality in 9.5GB (zero12)",
-      "_community_reputation": "Qwen3.5 distilled from Claude Opus. Hidden gem — small (9.5GB) but high-quality output. Confirmed 67.5s summarize on worker.py (2026-05-12 live test).",
-      "_last_tested": "2026-05-12",
-      "_backend_class": "ollama"
+      "_backend_class": "openai-compatible",
+      "_residency": "resident",
+      "_note": "Uses resident qwen3.6-27b. Fast enough for summaries, no need for separate gemma model."
     },
     "code_worker": {
-      "model": "qwen3-coder:30b",
-      "_strengths": [
-        "coding",
-        "refactoring",
-        "code-review",
-        "test-generation"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 32768,
-      "max_chars": 90000,
+      "model": "qwen3-coder-30b",
+      "temperature": 0.1,
+      "max_chars": 40000,
       "max_output_chars": 4000,
       "max_output_tokens": 4096,
-      "use_for": [
-        "extract-todos",
-        "find-related-files",
-        "generate-test-plan",
-        "generate-test-draft",
-        "draft-fix",
-        "draft-feature",
-        "draft-refactor",
-        "draft-commit-message",
-        "draft-pr-summary",
-        "draft-changelog-entry"
-      ],
-      "candidates": [
-        "qwen3-coder-next-q8:latest",
-        "qwen3-coder:30b",
-        "qwen3.6:27b"
-      ],
+      "use_for": ["generate-test-plan", "generate-test-draft", "extract-todos", "find-related-files"],
+      "candidates": ["qwen3-coder-30b", "qwen3.6-default"],
       "risk_level": "medium",
-      "_benchmark": "105s test-plan, 20s review — dedicated coder, intelligence > speed (zero12)",
-      "_community_reputation": "Qwen3-Coder Next is the latest in the Qwen3-Coder family, designed for agentic coding and multi-step programming tasks.",
-      "_backend_class": "ollama"
+      "_backend_class": "openai-compatible",
+      "_residency": "resident",
+      "_note": "Primary code worker. Resident on 8003."
     },
     "commit_reviewer": {
       "model": "qwen3-coder-30b",
-      "_strengths": [
-        "coding",
-        "fast-review",
-        "commit-gate"
-      ],
       "temperature": 0.1,
-      "max_context_tokens": 16384,
       "max_chars": 40000,
       "max_output_chars": 4000,
-      "max_output_tokens": 2048,
-      "use_for": [
-        "review-diff"
-      ],
-      "candidates": [
-        "qwen3-coder-30b",
-        "qwen3.6_llamacpp"
-      ],
+      "max_output_tokens": 4096,
+      "use_for": ["review-diff"],
+      "candidates": ["qwen3-coder-30b", "qwen3.6-default"],
       "risk_level": "medium",
-      "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
-      "_community_reputation": "Qwen3-Coder is purpose-built for agentic coding, tool use, and multi-step programming. Strong public benchmarks for code editing and agent tasks.",
+      "_backend_class": "openai-compatible",
+      "_residency": "resident",
       "_commit_gate_allowed": true,
-      "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s. Context: 16K (prioritize speed over context).",
-      "_last_tested": "2026-05-12",
-      "_backend_class": "openai-compatible"
+      "_note": "Commit gate reviewer. Must be resident (low latency)."
     },
     "diff_reviewer": {
-      "model": "nemotron:30b",
-      "_strengths": [
-        "reasoning",
-        "code-review",
-        "diff-analysis"
-      ],
+      "model": "nemotron-30b",
       "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 90000,
-      "max_output_chars": 5000,
+      "max_chars": 60000,
+      "max_output_chars": 6000,
       "max_output_tokens": 4096,
-      "use_for": [
-        "review-diff"
-      ],
+      "use_for": ["review-diff", "deep-code-review"],
+      "candidates": ["nemotron-30b", "qwen3-coder-30b"],
       "risk_level": "medium",
-      "_benchmark": "27s review + reasoning capability. Audition: nemotron not tested (TIMEOUT). Backup: qwen3.6:27b (15/15, 1424s dense).",
-      "_community_reputation": "Nemotron Nano Omni is NVIDIA's reasoning-augmented model. Community: 'good balance of reasoning depth and speed.' Backup qwen3.6:27b dense — slower but reliable.",
-      "_constraints": "Only for explicit non-commit-gate review calls. Not for commit gate (use commit_reviewer). ~39GB, may cause GPU swap.",
-      "_audition_date": "2026-06-12",
-      "_backend_class": "ollama"
+      "_backend_class": "openai-compatible",
+      "_residency": "on_demand",
+      "_systemd": "nemotron-30b-llama.service",
+      "_note": "Nemotron 30B for deeper code review. On-demand via systemd."
     },
     "deep_reviewer": {
-      "model": "qwen3.6:35b",
-      "_strengths": [
-        "deep-review",
-        "architecture",
-        "general",
-        "reliability"
-      ],
+      "model": "qwen3.6-deep",
       "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 100000,
+      "max_chars": 60000,
       "max_output_chars": 6000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review"
-      ],
-      "candidates": [
-        "qwen3.6:35b",
-        "qwen3.5-35b:latest",
-        "mistral-medium-3.5-128b-q5_k_xl:latest"
-      ],
+      "max_output_tokens": 4096,
+      "use_for": ["architecture-review", "risk-analysis", "logic-check"],
+      "candidates": ["qwen3.6-deep", "deepseek-r1-32b"],
       "risk_level": "high",
-      "_benchmark": "Audition 15/15, 417s. Core cases: tag drift 3.7, diff review 3.1, release gate 3.3. Community: 'first local model that saturated my benchmark.' Tag corrected 2026-06-12: qwen3.6:35b-q8-ud → qwen3.6:35b.",
-      "_community_reputation": "Qwen3.6 35B MoE (3B active/token). Widely regarded as strongest mid-size local model for coding and agentic tasks. Must set reasoning-budget to cap thinking tokens — community reports infinite reasoning loops without it.",
-      "_constraints": "Not for commit gate (>30B). Set reasoning-budget=4096 to cap thinking tokens and prevent unbounded loops.",
-      "_backend_class": "ollama",
-      "_audition_date": "2026-06-12"
-    },
-    "heavy_reviewer": {
-      "model": "gpt-oss:120b",
-      "_strengths": [
-        "context-breadth",
-        "deep-review",
-        "backup"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 100000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review"
-      ],
-      "risk_level": "high",
-      "_benchmark": "70s review, 23s summarize — 120B model (zero12)",
-      "_community_reputation": "GPT-OSS 120B is a large open-source model. Good review quality for its size. Backup for Mistral Medium.",
-      "_constraints": "Backup only. Prefer mistral-medium for release audit. Never in commit gate.",
-      "_backend_class": "ollama_heavy_manual"
+      "_backend_class": "openai-compatible",
+      "_residency": "resident",
+      "_note": "Deep reasoning on resident qwen3.6-27b. Slower due to built-in thinking."
     },
     "reasoning_checker": {
-      "model": "nemotron:30b",
-      "_strengths": [
-        "reasoning",
-        "logic",
-        "risk-analysis",
-        "security"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 32768,
+      "model": "deepseek-r1-32b",
+      "temperature": 0.0,
       "max_chars": 60000,
-      "max_output_chars": 5000,
+      "max_output_chars": 6000,
       "max_output_tokens": 4096,
-      "use_for": [
-        "risk-analysis",
-        "logic-check",
-        "failure-mode-analysis"
-      ],
-      "candidates": [
-        "qwen3.5:27b-reasoning",
-        "deepseek-r1-distill-qwen:32b-q8-fixed"
-      ],
-      "risk_level": "medium-high",
-      "_benchmark": "125s risk, 125s logic — 2/2 passed, most reliable (zero12)",
-      "_community_reputation": "Qwen3.5 reasoning variant. Reliable for structured analysis. Top performer in local benchmarks (2/2 passed).",
-      "_constraints": "Not for commit gate. Use for explicit risk/logic/failure-mode tasks only.",
-      "_backend_class": "ollama"
-    },
-    "deep_reasoning": {
-      "model": "deepseek-r1:32b-distill",
-      "_strengths": [
-        "reasoning",
-        "logic",
-        "root-cause-analysis"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 60000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "risk-analysis",
-        "logic-check",
-        "failure-mode-analysis"
-      ],
+      "use_for": ["risk-analysis", "safety-check", "logic-check"],
+      "candidates": ["deepseek-r1-32b", "qwen3.6-deep"],
       "risk_level": "high",
-      "_benchmark": "140s risk analysis. distill variant confirmed working 2026-06-12. deepseek-r1:32b (non-distill) returns empty — likely Ollama R1 format issue.",
-      "_community_reputation": "DeepSeek R1 reasoning distilled into Qwen 32B. Official model card targets reasoning, math, and code. Strong community validation for deep analysis tasks.",
-      "_constraints": "CLI only. Only for architecture changes, security risks, root cause analysis. Never for commit gate or default routing.",
-      "_backend_class": "ollama",
-      "candidates": [
-        "deepseek-r1:32b-distill",
-        "deepseek-r1:32b"
-      ]
+      "_backend_class": "openai-compatible",
+      "_residency": "on_demand",
+      "_systemd": "deepseek-r1-32b-llama.service",
+      "_note": "DeepSeek R1 for high-risk reasoning. On-demand only — 32B model."
     },
     "translation": {
-      "model": "glm4.7:flash",
-      "_strengths": [
-        "translation",
-        "cjk",
-        "multilingual"
-      ],
-      "temperature": 0.2,
-      "max_context_tokens": 32768,
-      "max_chars": 40000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "translate-text"
-      ],
-      "risk_level": "low",
-      "_benchmark": "151s translate — only reliable option via MCP (zero12)",
-      "_community_reputation": "GLM-4.7 Flash is the only CLI-verified translation model on this machine (151.4s, 2026-05-12 live test). translategemma-12b-it can translate via immersive plugin but the CLI prompt template does not trigger its translation behavior — prompt fix needed before it can be used as a faster alternative.",
-      "_last_tested": "2026-05-12",
-      "_backend_class": "ollama"
-    },
-    "release_auditor": {
-      "model": "qwen3.6:35b",
-      "_strengths": [
-        "accuracy",
-        "deep-review",
-        "architecture",
-        "release-audit",
-        "engineering-judgment"
-      ],
+      "model": "glm-4.7-flash",
       "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 100000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "architecture-review",
-        "deep-code-review",
-        "risk-analysis",
-        "release-risk-review"
-      ],
-      "candidates": [
-        "qwen3.6:35b",
-        "mistral3.5:128b",
-        "gpt-oss:120b"
-      ],
-      "risk_level": "high",
-      "_benchmark": "Audition 15/15, 417s. Core cases: release gate 3.3, tag drift 3.7, diff review 3.1. Community: 'first local model that saturated my benchmark.'",
-      "_community_reputation": "Qwen3.6 35B MoE (3B active/token). Widely regarded as strongest mid-size local model. Strong agentic coding and release judgment. Must set reasoning-budget to prevent loops.",
-      "_constraints": "Release audit only. Must never enter commit gate or default review path. Set reasoning-budget to cap thinking tokens. Previous model mistral3.5:128b timed out in audition — kept as fallback candidate.",
-      "_audition_date": "2026-06-12",
-      "_backend_class": "ollama_heavy_manual"
-    },
-    "release_auditor_llamacpp": {
-      "model": "deepseek-r1-32b",
-      "_strengths": [
-        "accuracy",
-        "deep-review",
-        "architecture",
-        "release-audit",
-        "engineering-judgment"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 16384,
-      "max_chars": 60000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "architecture-review",
-        "deep-code-review",
-        "risk-analysis",
-        "release-risk-review"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "deep_reasoning_llamacpp"
-      ],
-      "risk_level": "high",
-      "_backend": "LiteLLM -> llama.cpp:8010",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_benchmark": "2026-06-21: DeepSeek R1 distill 32B via llama.cpp. Release audit equivalent on llama.cpp backend.",
-      "_constraints": "Release audit only. Must never enter commit gate or default review path. Exclude model load time from task latency measurements.",
-      "_model_family": "dense",
-      "_residency": "on_demand",
-      "_service": "deepseek-r1-32b-llama",
-      "_port": 8010
-    },
-    "gemma4_26b_llamacpp": {
-      "model": "gemma-4-26B-A4B-it-UD-Q8_K_XL.gguf",
-      "_strengths": [
-        "speed",
-        "summarization",
-        "mo-efficiency"
-      ],
-      "temperature": 0.2,
-      "max_context_tokens": 8192,
-      "max_chars": 24000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 3072,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "suggest-improvements",
-        "rewrite-text"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "gemma4_31b_llamacpp"
-      ],
-      "risk_level": "medium",
-      "_backend": "llama.cpp:8002 (Q8_K_XL)",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8002/v1",
-      "_service": "gemma4-26b-llama",
-      "_port": 8002,
-      "_benchmark": "2026-06-21: loads 16s. Gemma4 26B MoE (4B active), Q8_K_XL. Good mid-size generalist.",
-      "_model_family": "moe",
-      "_residency": "on_demand",
-      "_constraints": "MoE profile. Must not be resident; start only for explicit on-demand tasks."
-    },
-    "gemma4_26b": {
-      "model": "gemma4:26b",
-      "_strengths": [
-        "general",
-        "speed",
-        "mo-efficiency"
-      ],
-      "temperature": 0.2,
-      "max_context_tokens": 8192,
-      "max_chars": 28000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 3072,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "suggest-improvements",
-        "rewrite-text"
-      ],
-      "risk_level": "medium",
-      "_benchmark": "37.8s summarize-file — Gemma 4 26B A4B MoE, good mid-size generalist (zero12)",
-      "_backend_class": "ollama"
-    },
-    "gemma4_26b_mtp": {
-      "model": "gemma4:26b",
-      "_strengths": [
-        "speed",
-        "summarization",
-        "mtp-accelerated"
-      ],
-      "temperature": 0.2,
-      "max_context_tokens": 8192,
-      "max_chars": 28000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 3072,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "suggest-improvements"
-      ],
-      "risk_level": "medium",
-      "_variant_of": "gemma4_26b",
-      "_acceleration": "mtp",
-      "_drafter": "gemma-4-26B-A4B-it-assistant-F16.gguf (815MB, on laptop)",
-      "_note": "MTP-accelerated via llama.cpp. Uses assistant GGUF as speculative decoding drafter for ~1.5-2x speedup.",
-      "_backend_class": "ollama"
-    },
-    "gemma4_31b": {
-      "model": "gemma4-31b-opus:latest",
-      "_strengths": [
-        "coding",
-        "deep-review",
-        "opus-quality",
-        "general"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 8192,
-      "max_chars": 28000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review",
-        "risk-analysis",
-        "suggest-improvements",
-        "summarize-file",
-        "summarize-tree"
-      ],
-      "candidates": [
-        "gemma-4-31b-q8:latest",
-        "gemma4-31b-opus:latest",
-        "gemma4-26b-it:q8_0"
-      ],
-      "risk_level": "medium",
-      "_benchmark": "Gemma 4 31B — Google's 31B flagship. Opus-distilled variant available. 32-35GB.",
-      "_drafter": "gemma-4-31B-it-assistant-F16.gguf (911MB, on zero12) — MTP ready when llama.cpp supports Gemma 4 MTP",
-      "_status": "available — Ollama (uses gemma4-31b-opus:latest, not standard gemma4:31b)",
-      "_backend_class": "ollama_heavy_manual"
-    },
-    "deepseek_r1_70b": {
-      "model": "deepseek-r1:70b",
-      "_strengths": [
-        "reasoning",
-        "logic",
-        "math",
-        "deep-analysis"
-      ],
-      "temperature": 0.1,
-      "max_chars": 120000,
-      "max_output_chars": 6000,
-      "use_for": [
-        "risk-analysis",
-        "logic-check",
-        "failure-mode-analysis",
-        "deep-code-review",
-        "architecture-review"
-      ],
-      "candidates": [
-        "deep_reasoning",
-        "reasoning_checker"
-      ],
-      "risk_level": "high",
-      "_benchmark": "DeepSeek R1 distill 70B — stronger reasoning than 32B variant. Sits between deep_reasoning (32B) and release_auditor (128B).",
-      "_constraints": "Not for commit gate. 70B model — deep reasoning and architecture only.",
-      "_status": "unavailable — times out on API (>60s). Too slow for routing chains. Marked 2026-05-19.",
-      "_backend_class": "ollama_heavy_manual"
-    },
-    "nemotron_super": {
-      "model": "nemotron:super",
-      "_strengths": [
-        "reasoning",
-        "risk-analysis",
-        "security",
-        "deep-review"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 32768,
-      "max_chars": 100000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review",
-        "release-risk-review",
-        "risk-analysis"
-      ],
-      "candidates": [
-        "release_auditor",
-        "deepseek_r1_70b"
-      ],
-      "risk_level": "high",
-      "_benchmark": "Nemotron-3 Super — NVIDIA large reasoning model. Release-audit tier.",
-      "_constraints": "Not for commit gate. Heavy model.",
-      "_status": "available — Ollama, CLI-only",
-      "_backend_class": "ollama_heavy_manual"
-    },
-    "command_r": {
-      "model": "command-r:35b",
-      "_strengths": [
-        "general",
-        "instruct-following",
-        "summarization"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 32768,
-      "max_chars": 60000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "suggest-improvements",
-        "rewrite-text"
-      ],
-      "candidates": [
-        "gemma4_26b",
-        "qwen3.6_27b_mtp"
-      ],
-      "risk_level": "medium",
-      "_benchmark": "Command-R 35B — Cohere mid-size generalist, good instruct following",
-      "_constraints": "Mid-size generalist. Good alternative to Qwen3.6 for summarization/suggestions.",
-      "_status": "available — Ollama",
-      "_backend_class": "ollama"
-    },
-    "mistral_119b_llamacpp": {
-      "model": "mistral-small-119b:q5",
-      "temperature": 0.1,
-      "max_chars": 160000,
-      "max_output_chars": 6000,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review",
-        "release-risk-review"
-      ],
-      "risk_level": "high",
-      "_backend": "Ollama (from GGUF via ollama create). BLOCKED: mistral4 arch not supported by Ollama's llama.cpp.",
-      "_launch": "ollama create mistral-small-119b:q5 -f Modelfile (model loads but chat returns 500)",
-      "candidates": [
-        "mistral-medium-3.5-128b-q5_k_xl:latest",
-        "qwen3.6:35b"
-      ],
-      "_status": "unavailable — requires ollama llama.cpp update for mistral4 architecture",
-      "_backend_class": "unavailable"
-    },
-    "qwen3.6_27b_mtp": {
-      "model": "qwen3.6:27b",
-      "_strengths": [
-        "general",
-        "speed",
-        "cjk"
-      ],
-      "temperature": 0.15,
-      "max_chars": 120000,
-      "max_output_chars": 5000,
-      "use_for": [
-        "review-diff",
-        "suggest-improvements",
-        "summarize-file",
-        "summarize-tree",
-        "rewrite-text"
-      ],
-      "candidates": [
-        "qwen3.6:27b",
-        "qwen3.5-27b-q8:latest",
-        "gemma4-26b-it:q8_0"
-      ],
-      "risk_level": "medium",
-      "_benchmark": "TBD",
-      "_community_reputation": "Qwen3.6 27B UD. Gated Delta Net (SSM) hybrid. Q8_0 via Ollama. Native MTP heads.",
-      "_constraints": "Not for commit gate. Ollama backend (llama.cpp MTP on port 8082 pending upstream Qwen3.6 tensor fix).",
-      "_last_tested": "2026-05-19",
-      "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
-      "_acceleration": "mtp (pending upstream llama.cpp)",
-      "_backend_class": "unavailable",
-      "_status": "unavailable — llama.cpp MTP offline since v0.12.0 (pending upstream tensor fix)"
-    },
-    "qwen3.6_llamacpp": {
-      "model": "qwen3.6-deep",
-      "_strengths": [
-        "general",
-        "reasoning",
-        "deep-review",
-        "cjk"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 16384,
-      "max_chars": 40000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 1536,
-      "use_for": [
-        "review-diff",
-        "suggest-improvements",
-        "summarize-file",
-        "summarize-tree",
-        "rewrite-text",
-        "contextual-analyze",
-        "draft-commit-message",
-        "generate-test-plan"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "code_worker"
-      ],
-      "risk_level": "medium",
-      "_backend": "LiteLLM proxy on zero12:4000",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_benchmark": "2026-06-21 measured: prompt 34 tok/s, gen 6 tok/s. 7K prompt OK. max_output_tokens=1024 min for content, 1536 stable, 2048+ timeout. Typical call 65-162s.",
-      "_community_reputation": "Qwen3.6 27B GGUF resident on zero12. Managed by qwen36-llama.service (user systemd). Uses Radeon 8060S APU via ROCm — RTX 5070 Ti is free.",
-      "_constraints": "Not for commit gate (65-162s, >30s target). --reasoning auto causes unbounded reasoning. Content only at max_tokens>=1024. Worker handles empty content via reasoning_content fallback.",
-      "_reasoning_behavior": "--reasoning auto: content empty when max_tokens<=768. reasoning_content 2-4x max_tokens. Timeout risk above 2048.",
-      "_model_family": "dense",
-      "_residency": "resident_priority_1",
-      "_service": "qwen36-llama",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
-      "_port": 8001
-    },
-    "qwen3.6_llamacpp_direct": {
-      "model": "qwen3.6-27b.sha256-19a2f473.gguf",
-      "_strengths": [
-        "general",
-        "reasoning",
-        "deep-review",
-        "cjk"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 16384,
-      "max_chars": 40000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 1536,
-      "risk_level": "medium",
-      "_backend": "llama.cpp b9543 ROCm direct on zero12:8001",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:8001/v1",
-      "_benchmark": "Same as qwen3.6_llamacpp — measured 2026-06-21",
-      "_note": "Debug/fallback only. Prefer qwen3.6_llamacpp (via LiteLLM) for normal use.",
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "suggest-improvements",
-        "review-diff",
-        "rewrite-text",
-        "contextual-analyze"
-      ],
-      "_model_family": "dense",
-      "_residency": "resident_priority_1",
-      "_service": "qwen36-llama",
-      "_port": 8001,
-      "candidates": [
-        "qwen3.6_llamacpp"
-      ]
-    },
-    "qwen3.6_35b_moe_mtp": {
-      "model": "qwen3.6:35b",
-      "_strengths": [
-        "deep-review",
-        "architecture",
-        "moe",
-        "general"
-      ],
-      "temperature": 0.1,
-      "max_chars": 160000,
-      "max_output_chars": 6000,
-      "use_for": [
-        "deep-code-review",
-        "architecture-review",
-        "release-risk-review",
-        "review-diff"
-      ],
-      "candidates": [
-        "qwen3.6:35b",
-        "qwen3.5-35b-q8:latest",
-        "mistral-small-24b-q8_xl:latest",
-        "mistral-medium-3.5-128b-q5_k_xl:latest"
-      ],
-      "risk_level": "high",
-      "_benchmark": "TBD — Qwen3.6 35B MoE UD with native MTP heads (~1.5-2x speedup via speculative decoding)",
-      "_community_reputation": "Qwen3.6 35B MoE UD. Gated Delta Net (SSM) hybrid. Native MTP for fast inference.",
-      "_constraints": "Not for commit gate (>30B). Ollama backend (llama.cpp MTP on port 8083 pending upstream Qwen3.6 tensor fix).",
-      "_last_tested": "2026-05-19",
-      "_backend": "Ollama (llama.cpp MTP offline — pending upstream)",
-      "_acceleration": "mtp (pending upstream llama.cpp)",
-      "_backend_class": "unavailable",
-      "_status": "unavailable — llama.cpp MTP offline since v0.12.0 (pending upstream tensor fix)"
-    },
-    "v4_flash_local_experimental": {
-      "model": "v4-flash",
-      "_strengths": [
-        "heavy-audit",
-        "experimental",
-        "low-frequency"
-      ],
-      "temperature": 0.1,
-      "max_chars": 160000,
-      "max_output_chars": 6000,
-      "use_for": [
-        "release-risk-review",
-        "deep-code-review",
-        "architecture-review",
-        "debate-architecture-review"
-      ],
-      "risk_level": "experimental",
-      "_local_only": true,
-      "_constraints": "Manual invocation only. Not a default for any task. Requires explicit profile override. Model weights/binary must be provisioned separately.",
-      "_community_reputation": "Reserved local experimental profile. Provider is auto-detected from LOCAL_LLM_BASE_URL / LOCAL_LLM_PROVIDER; no tongyi provider is introduced.",
-      "_backend_class": "placeholder"
-    },
-    "embedding": {
-      "model": "nomic-embed:latest",
-      "temperature": 0.0,
-      "max_chars": 32000,
-      "max_output_chars": 0,
-      "use_for": [
-        "embedding"
-      ],
-      "risk_level": "low",
-      "_backend_class": "ollama"
-    },
-    "deepseek_v4_flash_worker": {
-      "model": "deepseek-v4-flash",
-      "provider": "deepseek",
-      "base_url": "https://api.deepseek.com",
-      "cloud": true,
-      "thinking": false,
-      "reasoning_effort": "low",
-      "max_context_tokens": 1000000,
-      "max_output_tokens": 16384,
-      "_strengths": [
-        "speed",
-        "cost",
-        "medium-complexity"
-      ],
-      "temperature": 0.1,
-      "max_chars": 200000,
-      "max_output_chars": 16000,
-      "use_for": [
-        "fallback-worker",
-        "medium-code-task",
-        "multi-file-edit",
-        "test-failure-analysis"
-      ],
-      "risk_level": "medium",
-      "_role": "cloud_worker",
-      "_escalation_trigger": "local_failed_twice",
-      "_constraints": "Cloud only. Never auto-called. Only after 2 local failures or explicit --cloud-ok. Privacy gate must pass first.",
-      "_backend_class": "cloud_deepseek"
-    },
-    "deepseek_v4_flash_thinking": {
-      "model": "deepseek-v4-flash",
-      "provider": "deepseek",
-      "base_url": "https://api.deepseek.com",
-      "cloud": true,
-      "thinking": true,
-      "reasoning_effort": "medium",
-      "max_context_tokens": 1000000,
-      "max_output_tokens": 32768,
-      "_strengths": [
-        "reasoning",
-        "multi-file",
-        "fallback"
-      ],
-      "temperature": 0.1,
-      "max_chars": 200000,
-      "max_output_chars": 16000,
-      "use_for": [
-        "harder-bug-analysis",
-        "multi-file-reasoning",
-        "non-release-review"
-      ],
-      "risk_level": "medium-high",
-      "_role": "cloud_worker_reasoning",
-      "_escalation_trigger": "local_failed_twice_or_complex",
-      "_constraints": "Cloud only. For tasks where Flash non-thinking is insufficient. Thinking mode adds cost.",
-      "_backend_class": "cloud_deepseek"
-    },
-    "deepseek_v4_pro_reviewer": {
-      "model": "deepseek-v4-pro",
-      "provider": "deepseek",
-      "base_url": "https://api.deepseek.com",
-      "cloud": true,
-      "thinking": true,
-      "reasoning_effort": "high",
-      "max_context_tokens": 1000000,
-      "max_output_tokens": 32768,
-      "_strengths": [
-        "architecture",
-        "security",
-        "judgment",
-        "arbitration"
-      ],
-      "temperature": 0.1,
-      "max_chars": 200000,
-      "max_output_chars": 16000,
-      "use_for": [
-        "architecture-review",
-        "interface-review",
-        "release-gate",
-        "security-review",
-        "agent-arbitration"
-      ],
-      "risk_level": "high",
-      "_role": "cloud_reviewer",
-      "_escalation_trigger": "high_risk_or_interface_or_release",
-      "_constraints": "Cloud only. NEVER for routine tasks. Only architecture/interface/release/arbitration. Must pass privacy gate. Controller must explicitly approve or task must be auto-classified as high-risk.",
-      "_backend_class": "cloud_deepseek"
-    },
-    "deepseek_v4_pro_planner": {
-      "model": "deepseek-v4-pro",
-      "provider": "deepseek",
-      "base_url": "https://api.deepseek.com",
-      "cloud": true,
-      "thinking": true,
-      "reasoning_effort": "high",
-      "max_context_tokens": 1000000,
-      "max_output_tokens": 32768,
-      "_strengths": [
-        "planning",
-        "design",
-        "long-term"
-      ],
-      "temperature": 0.1,
-      "max_chars": 200000,
-      "max_output_chars": 16000,
-      "use_for": [
-        "architecture-planning",
-        "long-term-design",
-        "hard-bug-analysis"
-      ],
-      "risk_level": "high",
-      "_role": "cloud_planner",
-      "_escalation_trigger": "architecture_or_long_term_design",
-      "_constraints": "Cloud only. For architecture decisions and long-term design. Must pass privacy gate. Controller must explicitly request.",
-      "_backend_class": "cloud_deepseek"
-    },
-    "code_worker_llamacpp": {
-      "model": "qwen3-coder-30b",
-      "_strengths": [
-        "coding",
-        "refactoring",
-        "code-review",
-        "test-generation"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 16384,
-      "max_chars": 50000,
-      "max_output_chars": 4000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "extract-todos",
-        "find-related-files",
-        "generate-test-plan",
-        "generate-test-draft",
-        "draft-fix",
-        "draft-feature",
-        "draft-refactor",
-        "draft-commit-message",
-        "draft-pr-summary",
-        "draft-changelog-entry"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "code_worker"
-      ],
-      "risk_level": "medium",
-      "_backend": "LiteLLM proxy on zero12:4000",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. No reasoning overhead — direct code generation.",
-      "_constraints": "MoE qwen3-coder 30B-A3B. On-demand only; do not enable as a resident service. Exclude model load time from task latency measurements.",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env. Start qwen3-coder-llama.service only for explicit on-demand tasks.",
-      "_model_family": "moe",
-      "_residency": "on_demand",
-      "_service": "qwen3-coder-llama",
-      "_port": 8003
-    },
-    "commit_reviewer_llamacpp": {
-      "model": "qwen3-coder-30b",
-      "_strengths": [
-        "coding",
-        "fast-review",
-        "commit-gate"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 16384,
-      "max_chars": 40000,
+      "max_chars": 20000,
       "max_output_chars": 4000,
       "max_output_tokens": 2048,
-      "use_for": [
-        "review-diff"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "code_worker_llamacpp"
-      ],
-      "risk_level": "medium",
-      "_backend": "LiteLLM proxy on zero12:4000",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_benchmark": "2026-06-21: qwen3-coder:30b via llama.cpp. Fast code review, no reasoning overhead.",
-      "_commit_gate_allowed": true,
-      "_constraints": "Commit gate profile backed by MoE qwen3-coder 30B-A3B. On-demand only; do not keep resident. Measure gate latency after service prewarm, not during model load.",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env. Start qwen3-coder-llama.service only for explicit on-demand review gates.",
-      "_model_family": "moe",
-      "_residency": "on_demand",
-      "_service": "qwen3-coder-llama",
-      "_port": 8003
-    },
-    "gemma4_31b_llamacpp": {
-      "model": "gemma4-31b",
-      "_strengths": [
-        "documentation",
-        "summarization",
-        "governance",
-        "general"
-      ],
-      "temperature": 0.15,
-      "max_context_tokens": 8192,
-      "max_chars": 24000,
-      "max_output_chars": 4000,
-      "max_output_tokens": 3072,
-      "use_for": [
-        "summarize-file",
-        "summarize-tree",
-        "rewrite-text",
-        "suggest-improvements",
-        "review-documentation",
-        "maintain-docs"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp"
-      ],
-      "risk_level": "medium",
-      "_backend": "LiteLLM proxy on zero12:4000",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_benchmark": "2026-06-21: Gemma4 31B Q8_0 via llama.cpp. 6s load. Has reasoning but lighter than Qwen3.6. Good for summarization and docs.",
-      "_constraints": "8K context. Has reasoning — worker handles via content fallback. Not for code generation or commit gate.",
-      "_note": "Unified gateway. Set LOCAL_LLM_API_KEY=sk-zero12-cluster in env.",
-      "_model_family": "dense",
-      "_residency": "resident_priority_2",
-      "_service": "gemma4-31b-llama",
-      "_port": 8004
-    },
-    "diff_reviewer_llamacpp": {
-      "model": "nemotron-30b",
-      "_strengths": [
-        "reasoning",
-        "code-review",
-        "diff-analysis"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 16384,
-      "max_chars": 60000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "review-diff"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "diff_reviewer"
-      ],
-      "risk_level": "medium",
-      "_backend": "LiteLLM -> llama.cpp:8009",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_service": "nemotron-30b-llama",
-      "_port": 8009,
-      "_benchmark": "2026-06-21: loads 28s. Nemotron Nano Omni, NVIDIA reasoning model."
-    },
-    "deep_reasoning_llamacpp": {
-      "model": "deepseek-r1-32b",
-      "_strengths": [
-        "reasoning",
-        "logic",
-        "root-cause"
-      ],
-      "temperature": 0.1,
-      "max_context_tokens": 16384,
-      "max_chars": 60000,
-      "max_output_chars": 5000,
-      "max_output_tokens": 6144,
-      "use_for": [
-        "risk-analysis",
-        "logic-check",
-        "failure-mode-analysis"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "deep_reasoning"
-      ],
-      "risk_level": "high",
-      "_backend": "LiteLLM -> llama.cpp:8010",
-      "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_service": "deepseek-r1-32b-llama",
-      "_port": 8010,
-      "_benchmark": "2026-06-21: loads 18s. DeepSeek R1 distill 32B, reasoning specialist."
-    },
-    "translation_llamacpp": {
-      "model": "glm-4.7-flash",
-      "_strengths": [
-        "translation",
-        "cjk",
-        "multilingual"
-      ],
-      "temperature": 0.2,
-      "max_context_tokens": 16384,
-      "max_chars": 40000,
-      "max_output_chars": 6000,
-      "max_output_tokens": 4096,
-      "use_for": [
-        "translate-text"
-      ],
-      "candidates": [
-        "qwen3.6_llamacpp_direct",
-        "qwen3.6_llamacpp",
-        "translation"
-      ],
+      "use_for": ["translate", "multilingual"],
+      "candidates": ["glm-4.7-flash", "qwen3.6-default"],
       "risk_level": "low",
-      "_backend": "LiteLLM -> llama.cpp:8011",
       "_backend_class": "openai-compatible",
-      "_env": "LOCAL_LLM_BASE_URL=http://127.0.0.1:4000/v1",
-      "_service": "glm4-flash-llama",
-      "_port": 8011,
-      "_benchmark": "2026-06-21: loads 14s. GLM-4.7 Flash, translation and CJK."
-    }
-  },
-  "default_profile": "qwen3.6_llamacpp",
-  "_backends": {
-    "ollama": {
-      "description": "Default backend. All profiles except mistral_119b work via Ollama.",
-      "models_available": 44
+      "_residency": "on_demand",
+      "_systemd": "glm4-flash-llama.service",
+      "_note": "GLM-4.7 Flash for Chinese/multilingual. Small model, fast load."
     },
-    "llama_cpp_mtp": {
-      "description": "llama.cpp with MTP speculative decoding. Requires manual server start.",
-      "profiles": [
-        "gemma4_26b_mtp",
-        "qwen3.6_27b_mtp",
-        "qwen3.6_35b_moe_mtp"
-      ],
-      "drafter_models": {
-        "gemma-4-26B-A4B-it-assistant-F16.gguf": "815MB — MTP drafter for Gemma 4 26B (on laptop)",
-        "gemma-4-31B-it-assistant-F16.gguf": "911MB — MTP drafter for Gemma 4 31B (on zero12)"
-      },
-      "native_mtp_models": {
-        "qwen3.6_27b_mtp": "Qwen3.6 has native MTP heads — no drafter needed",
-        "qwen3.6_35b_moe_mtp": "Qwen3.6 MoE has native MTP heads — no drafter needed"
-      },
-      "launch_example": "llama-server -m <target_gguf> --mtp-head <drafter_gguf> --spec-type mtp -ngl 99 --port 8080"
+    "gemma4_31b": {
+      "model": "gemma4-31b",
+      "temperature": 0.15,
+      "max_chars": 50000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 4096,
+      "use_for": ["committee-review", "docs-agent"],
+      "candidates": ["gemma4-31b", "qwen3.6-deep"],
+      "risk_level": "medium",
+      "_backend_class": "openai-compatible",
+      "_residency": "on_demand",
+      "_systemd": "gemma4-31b-llama.service",
+      "_note": "Gemma4 31B for cross-family committee review. On-demand — start before committee."
     },
-    "llama_cpp_resident": {
-      "description": "llama.cpp resident dense-model policy on zero12. Priority 1 is qwen36-llama.service (Qwen3.6 27B dense). Priority 2 is gemma4-31b-llama.service (Gemma 4 31B dense). MoE models are on-demand only.",
-      "profiles": [
-        "qwen3.6_llamacpp",
-        "qwen3.6_llamacpp_direct",
-        "gemma4_31b_llamacpp"
-      ],
-      "on_demand_profiles": [
-        "code_worker_llamacpp",
-        "commit_reviewer_llamacpp",
-        "diff_reviewer_llamacpp",
-        "deep_reasoning_llamacpp",
-        "translation_llamacpp",
-        "gemma4_26b_llamacpp"
-      ],
-      "services": {
-        "resident_priority_1": "qwen36-llama.service (user systemd, enabled)",
-        "resident_priority_2": "gemma4-31b-llama.service (user systemd, enabled)",
-        "on_demand_moe": "qwen3-coder-llama.service and other MoE services stay disabled/inactive until explicitly started"
-      },
-      "endpoints": {
-        "litellm": "http://127.0.0.1:4000/v1 - LiteLLM proxy wrapping llama.cpp",
-        "qwen36_direct": "http://127.0.0.1:8001/v1 - Qwen3.6 27B dense direct",
-        "gemma31_direct": "http://127.0.0.1:8004/v1 - Gemma 4 31B dense direct"
-      },
-      "models": {
-        "resident_priority_1": "qwen3.6-27b.sha256-19a2f473.gguf",
-        "resident_priority_2": "gemma-4-31B-it-Q8_0.gguf",
-        "on_demand_moe": "qwen3-coder-30b and other MoE profiles"
-      },
-      "context": {
-        "qwen36": 16384,
-        "gemma31": 8192
-      },
-      "acceleration": "ROCm (Radeon 8060S APU); RTX 5070 Ti free",
-      "policy": "Keep only dense priority 1 and dense priority 2 resident. All other profiles, especially MoE profiles, are on-demand and must not be enabled as resident services.",
-      "launch_example": "llama-server -m <gguf> --host 127.0.0.1 --port <port> -c <context> -t <threads> -ngl auto"
+    "docs_agent": {
+      "model": "qwen3.6-deep",
+      "temperature": 0.1,
+      "max_chars": 40000,
+      "max_output_chars": 5000,
+      "max_output_tokens": 4096,
+      "use_for": ["documentation", "governance"],
+      "candidates": ["qwen3.6-deep", "qwen3-coder-30b"],
+      "risk_level": "low",
+      "_backend_class": "openai-compatible",
+      "_residency": "resident",
+      "_note": "Documentation agent on resident qwen3.6."
+    },
+
+    "_deprecated_ollama": {
+      "_note": "Below profiles are Ollama-only, kept for reference. Not usable without Ollama running.",
+      "smart_summary": {"model": "qwen3.5-claude-opus:9b", "_backend_class": "ollama", "_status": "deprecated"},
+      "heavy_reviewer": {"model": "gpt-oss:120b", "_backend_class": "ollama", "_status": "deprecated"},
+      "gemma4_26b": {"model": "gemma4:26b", "_backend_class": "ollama", "_status": "deprecated"},
+      "nemotron_super": {"model": "nemotron:super", "_backend_class": "ollama", "_status": "deprecated"},
+      "deepseek_r1_70b": {"model": "deepseek-r1:70b", "_backend_class": "ollama", "_status": "deprecated"},
+      "embedding": {"model": "nomic-embed:latest", "_backend_class": "ollama", "_status": "deprecated"}
     }
-  },
-  "_notes": {
-    "zero12_benchmark_date": "2026-05-09/10",
-    "method": "solo testing (one model at a time, no GPU contention)",
-    "total_ollama_models": 44,
-    "unique_text_models_tested": 32,
-    "newly_added_v081": [
-      "gemma4-26b-it:q8_0 (37.8s, working)",
-      "mistral-small-119b (llama.cpp only)"
-    ],
-    "newly_added_v082": [
-      "qwen3.6-27b-mtp (llama.cpp MTP, port 8082)",
-      "qwen3.6-35b-moe-mtp (llama.cpp MoE MTP, port 8083)"
-    ],
-    "broken_models": [],
-    "slow_but_working_cli_only": [
-      "deepseek-r1-distill-llama:70b",
-      "translategemma-27b-it-q8",
-      "nemotron-3-super"
-    ],
-    "hidden_gems": [
-      "nvidia-nemotron-3-nano-omni (27s review + reasoning)",
-      "gpt-oss-120b (70s review for 120B)",
-      "qwen3.5-claude-opus-9b (29s summarize)"
-    ],
-    "corrected_from_parallel_testing": "qwen3.5-35b was TIMEOUT in parallel → 68s solo.",
-    "mtp_drafter_models": "gemma assistant GGUF files are MTP speculative decoding drafters, NOT standalone models. Use via llama.cpp --mtp-head."
   }
 }
