@@ -47,11 +47,14 @@ def _discover_services():
 
 def _resolve_litellm_name(service: str, port: int) -> str:
     """Resolve service→LiteLLM model name."""
-    # Try reading LiteLLM config
-    config_paths = [
+    config_paths = []
+    env_config = os.environ.get("LOCAL_LLM_LITELLM_CONFIG", "")
+    if env_config:
+        config_paths.append(env_config)
+    config_paths.extend([
         "/home/zero12/ai_cluster/litellm_config.yaml",
         os.path.expanduser("~/ai_cluster/litellm_config.yaml"),
-    ]
+    ])
     import re as _re
     for cp in config_paths:
         try:
