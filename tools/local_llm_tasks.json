@@ -2,8 +2,8 @@
   "tasks": {
     "summarize-file": {
       "risk": "low",
-      "default_profile": "fast_summary",
-      "_llamacpp_profile": "fast_summary",
+      "default_profile": "fast_summary_light",
+      "_llamacpp_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,
@@ -12,8 +12,8 @@
     },
     "summarize-tree": {
       "risk": "low",
-      "default_profile": "fast_summary",
-      "_llamacpp_profile": "fast_summary",
+      "default_profile": "fast_summary_light",
+      "_llamacpp_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 3000,
@@ -23,7 +23,7 @@
     "extract-todos": {
       "risk": "low",
       "default_profile": "code_worker",
-      "_llamacpp_profile": "fast_summary",
+      "_llamacpp_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -33,7 +33,7 @@
     "find-related-files": {
       "risk": "low",
       "default_profile": "code_worker",
-      "_llamacpp_profile": "fast_summary",
+      "_llamacpp_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -133,7 +133,7 @@
     "rewrite-text": {
       "risk": "low",
       "default_profile": "gemma4_31b",
-      "_llamacpp_profile": "fast_summary",
+      "_llamacpp_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 4000,
@@ -196,7 +196,7 @@
     },
     "suggest-improvements": {
       "risk": "low",
-      "default_profile": "fast_summary",
+      "default_profile": "fast_summary_light",
       "may_modify_code": false,
       "controller_must_verify": true,
       "max_output_chars": 6000,
