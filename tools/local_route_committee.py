@@ -249,6 +249,9 @@ class RouteDecision:
     escalated_reason: str
     # Pro audit (Pro does NOT vote, only audits on disagreement)
     pro_audit_requested: bool = False
+    # Execution tier and cloud model selection
+    tier: str = "local"           # local | flash | pro
+    cloud_model: str = ""         # deepseek-v4-flash | deepseek-v4-pro | ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -309,11 +312,25 @@ def build_route_prompt(role_instructions: str, plan_json: str, evidence: str) ->
     )
 
 
+
+def _route_to_tier(route: str) -> tuple[str, str]:
+    """Map recommended_route -> (tier, cloud_model)."""
+    if route in ("local_only", "local_summary"):
+        return ("local", "")
+    if route in ("flash_direct", "flash_subagent"):
+        return ("flash", "deepseek-v4-flash")
+    if route in ("pro_decision", "pro_execute_allowed"):
+        return ("pro", "deepseek-v4-pro")
+    if route == "direct":
+        return ("local", "")
+    return ("local", "")
 def _single_model_decision(j: RouteJudgement) -> RouteDecision:
     """When only one model responds, use its judgement directly."""
     return RouteDecision(
         delegability=j.delegability,
         recommended_route=j.recommended_route,
+            tier="local",
+            cloud_model="",
         local_preprocessing_required=j.local_preprocessing_required,
         pro_should_execute=j.pro_should_execute,
         pro_should_adjudicate=j.pro_should_adjudicate,
@@ -349,6 +366,8 @@ def merge_judgements(qwen: RouteJudgement,
         return RouteDecision(
             delegability="blocked",
             recommended_route="blocked",
+            tier="local",
+            cloud_model="",
             local_preprocessing_required=False,
             pro_should_execute=False,
             pro_should_adjudicate=True,
@@ -372,6 +391,8 @@ def merge_judgements(qwen: RouteJudgement,
         return RouteDecision(
             delegability="low",
             recommended_route="pro_decision",
+            tier="pro",
+            cloud_model="deepseek-v4-pro",
             local_preprocessing_required=(
                 qwen.local_preprocessing_required or gemma.local_preprocessing_required
             ),
@@ -411,6 +432,8 @@ def merge_judgements(qwen: RouteJudgement,
         return RouteDecision(
             delegability="high",
             recommended_route=route,
+            tier=_route_to_tier(route)[0],
+            cloud_model=_route_to_tier(route)[1],
             local_preprocessing_required=(
                 qwen.local_preprocessing_required or gemma.local_preprocessing_required
             ),
@@ -440,6 +463,8 @@ def merge_judgements(qwen: RouteJudgement,
         return RouteDecision(
             delegability="low",
             recommended_route=route,
+            tier=_route_to_tier(route)[0],
+            cloud_model=_route_to_tier(route)[1],
             local_preprocessing_required=(
                 qwen.local_preprocessing_required or gemma.local_preprocessing_required
             ),
@@ -468,6 +493,8 @@ def merge_judgements(qwen: RouteJudgement,
     return RouteDecision(
         delegability="low",
         recommended_route="ask_user",
+            tier="local",
+            cloud_model="",
         local_preprocessing_required=True,
         pro_should_execute=False,
         pro_should_adjudicate=True,
@@ -849,6 +876,8 @@ def convene(task_description: str,
         decision = RouteDecision(
             delegability="low",
             recommended_route="pro_decision",
+            tier="pro",
+            cloud_model="deepseek-v4-pro",
             local_preprocessing_required=False,
             pro_should_execute=True, pro_should_adjudicate=True,
             risk_level="medium", privacy_status="safe",
