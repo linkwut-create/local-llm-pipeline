@@ -279,7 +279,7 @@ Focus on conservatism, privacy, route safety, and escalation boundaries.
 - Prefer ask_user when the task is ambiguous or missing authorization.
 - Prefer pro_decision when local or flash execution would cross a safety boundary."""
 
-ROUTE_JUDGEMENT_PROMPT = """Route this task. Output ONLY valid JSON, no markdown.
+ROUTE_JUDGEMENT_PROMPT = """Route this task. Reply with ONLY a JSON object. No markdown, no explanation. First byte must be {{, last byte must be }}.
 
 {role_instructions}
 
@@ -603,7 +603,7 @@ def _call_model(model: str, prompt: str, timeout: int = 1000) -> tuple[str, dict
     url = base.rstrip("/") + "/chat/completions"
     payload = {
         "model": model, "messages": [{"role": "user", "content": prompt}],
-        "stream": False, "temperature": 0.0, "max_tokens": 2048,
+        "stream": False, "temperature": 0.0, "max_tokens": 32768,
     }
     headers = {"Content-Type": "application/json"}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")
