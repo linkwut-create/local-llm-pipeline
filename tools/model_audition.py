@@ -61,7 +61,7 @@ def list_cases() -> list[str]:
 PREFLIGHT_TOKEN_LIMITS = [200, 400, 800]
 
 
-def warmup_model(model: str, warmup_timeout: int = 1800) -> bool:
+def warmup_model(model: str, warmup_timeout: int = 10000) -> bool:
     """Load the model into GPU with a tiny prompt. Not timed — loading only.
     Returns True if model loaded and responded."""
     print(f"    warmup: loading {model} (timeout={warmup_timeout}s)...", end=" ", flush=True)
@@ -73,7 +73,7 @@ def warmup_model(model: str, warmup_timeout: int = 1800) -> bool:
     return False
 
 
-def preflight_check(model: str, timeout: int = 180) -> int:
+def preflight_check(model: str, timeout: int = 1000) -> int:
     """Run a quick test to find the optimal num_predict for this model.
     Uses a short but real prompt (not just "Say OK.") to ensure the model
     can produce multi-sentence output. Returns the recommended num_predict."""
@@ -85,7 +85,7 @@ def preflight_check(model: str, timeout: int = 180) -> int:
     return PREFLIGHT_TOKEN_LIMITS[0]
 
 
-def call_ollama(model: str, prompt: str, timeout: int = 180,
+def call_ollama(model: str, prompt: str, timeout: int = 1000,
                 num_predict: int = 400) -> dict:
     """Call Ollama with a prompt. Returns {ok, response, elapsed_seconds, error}."""
     start = time.time()
@@ -139,7 +139,7 @@ def get_ollama_models() -> list[str]:
         return []
 
 
-def run_audition(model: str, cases: list[str], timeout: int = 180,
+def run_audition(model: str, cases: list[str], timeout: int = 1000,
                  num_predict: int = 400) -> list[dict]:
     """Run all cases for one model. Returns list of result dicts."""
     results = []

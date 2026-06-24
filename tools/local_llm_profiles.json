@@ -116,7 +116,7 @@
       "_backend_class": "ollama"
     },
     "commit_reviewer": {
-      "model": "qwen3-coder:30b",
+      "model": "qwen3-coder-30b",
       "_strengths": [
         "coding",
         "fast-review",
@@ -140,7 +140,7 @@
       "_commit_gate_allowed": true,
       "_constraints": "Must never use >30B or reasoning models for commit gate. Latency target: under 30s. Context: 16K (prioritize speed over context).",
       "_last_tested": "2026-05-12",
-      "_backend_class": "ollama"
+      "_backend_class": "openai-compatible"
     },
     "diff_reviewer": {
       "model": "nemotron:30b",

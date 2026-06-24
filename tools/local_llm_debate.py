@@ -534,7 +534,7 @@ def main():
                         choices=["ollama", "openai-compatible"])
     parser.add_argument("--base-url", default=None,
                         help="Override the model endpoint base URL")
-    parser.add_argument("--timeout", type=int, default=600,
+    parser.add_argument("--timeout", type=int, default=1000,
                         help="Timeout per round in seconds")
     parser.add_argument("--summary-only", action="store_true",
                         help="Output only findings summary (no per-round details)")

@@ -104,7 +104,7 @@ def call_deepseek(
     max_tokens: int = 16384,
     api_key: str | None = None,
     base_url: str | None = None,
-    timeout: int = 180,
+    timeout: int = 1000,
 ) -> dict:
     """Call DeepSeek API and return a standardized result dict.
 

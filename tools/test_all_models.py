@@ -53,7 +53,7 @@ def unload_model(model: str):
 
 
 def test_model_with_task(model: str, task: str, profile: str | None = None,
-                         timeout: int = 300) -> dict:
+                         timeout: int = 1000) -> dict:
     """Test a single model with a single task. Returns result dict."""
     start = time.time()
 
@@ -122,7 +122,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test all Ollama models with tasks")
     parser.add_argument("--task", default=None, help="Single task to test")
     parser.add_argument("--profile", default=None, help="Single profile to test")
-    parser.add_argument("--timeout", type=int, default=300, help="Per-model timeout")
+    parser.add_argument("--timeout", type=int, default=1000, help="Per-model timeout")
     parser.add_argument("--json-only", action="store_true", help="JSON output only")
     args = parser.parse_args()
 

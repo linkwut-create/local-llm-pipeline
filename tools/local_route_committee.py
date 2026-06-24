@@ -34,7 +34,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # ═══════════════════════════════════════════════════════════════
 
 _LOCAL_ROUTE_QWEN_MODEL = os.environ.get("LOCAL_ROUTE_QWEN_MODEL", "qwen3.6-deep")
-_LOCAL_ROUTE_GEMMA_MODEL = os.environ.get("LOCAL_ROUTE_GEMMA_MODEL", "gemma4-31b")
+_LOCAL_ROUTE_GEMMA_MODEL = os.environ.get("LOCAL_ROUTE_GEMMA_MODEL", "qwen3-coder-30b")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -550,7 +550,7 @@ def _check_model_availability(model: str, base_url: str | None = None,
         return False, f"endpoint not reachable: {e}"
 
 
-def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
+def _call_model(model: str, prompt: str, timeout: int = 1000) -> tuple[str, dict]:
     """Call local model via OpenAI-compatible API (LiteLLM/llama.cpp).
 
     Returns ``(text: str, metrics: dict)``.
@@ -576,7 +576,7 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
     url = base.rstrip("/") + "/chat/completions"
     payload = {
         "model": model, "messages": [{"role": "user", "content": prompt}],
-        "stream": False, "temperature": 0.0, "max_tokens": 1024,
+        "stream": False, "temperature": 0.0, "max_tokens": 2048,
     }
     headers = {"Content-Type": "application/json"}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")
@@ -605,7 +605,7 @@ def _call_model(model: str, prompt: str, timeout: int = 90) -> tuple[str, dict]:
     return text, metrics
 
 
-def _call_model_with_retry(model: str, prompt: str, timeout: int = 120,
+def _call_model_with_retry(model: str, prompt: str, timeout: int = 1000,
                             max_retries: int = 1) -> tuple[str, list[dict]]:
     """Call a model, retry once if unparseable. Returns (text, metrics_list)."""
     all_metrics: list[dict] = []
@@ -761,8 +761,8 @@ def convene(task_description: str,
         "gemma_available": gemma_avail, "gemma_detail": gemma_avail_detail,
     })
 
-    model_timeout = int(os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT", 120))
-    result_timeout = model_timeout + 30
+    model_timeout = int(os.environ.get("LOCAL_LLM_COMMITTEE_TIMEOUT", 1000))
+    result_timeout = model_timeout + 60
 
     # --- Round 1: Independent judgements (parallel) ---
     raw_qwen, raw_gemma = "", ""
@@ -1026,3 +1026,40 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# Model → systemd service mapping for on-demand start
+_MODEL_SERVICE_MAP = {
+    "qwen3-coder-30b": "qwen3-coder-llama.service",
+    "gemma4-31b": "gemma4-31b-llama.service",
+    "nemotron-30b": "nemotron-30b-llama.service",
+    "deepseek-r1-32b": "deepseek-r1-32b-llama.service",
+    "gemma4-26b-q8": "gemma4-26b-llama.service",
+    "glm-4.7-flash": "glm4-flash-llama.service",
+}
+
+def _start_model_on_demand(model, max_wait=180):
+    """Start llama.cpp model via systemd if not already running. Returns bool."""
+    import subprocess, urllib.request, time
+    service = _MODEL_SERVICE_MAP.get(model)
+    if not service:
+        return False
+    try:
+        r = subprocess.run(["systemctl", "--user", "is-active", service],
+                         capture_output=True, text=True, timeout=5)
+        if r.returncode != 0:
+            subprocess.run(["systemctl", "--user", "start", service],
+                         capture_output=True, text=True, timeout=10)
+        deadline = time.monotonic() + max_wait
+        port_map = {"qwen3-coder-llama.service": 8003, "gemma4-31b-llama.service": 8004,
+                    "nemotron-30b-llama.service": 8009, "deepseek-r1-32b-llama.service": 8010,
+                    "gemma4-26b-llama.service": 8002, "glm4-flash-llama.service": 8011}
+        port = port_map.get(service)
+        while time.monotonic() < deadline:
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/models", timeout=5)
+                return True
+            except Exception:
+                time.sleep(5)
+        return False
+    except Exception:
+        return False

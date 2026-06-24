@@ -34,7 +34,7 @@ WORKER_PATH = SCRIPT_DIR / "local_llm_worker.py"
 OUT_DIR = PROJECT_ROOT / ".local_llm_out" / "quality_smoke"
 
 SMOKE_VERSION = 1
-DEFAULT_TIMEOUT = 120
+DEFAULT_TIMEOUT = 1000
 
 _VALID_CONFIDENCE = {"high", "medium", "low"}
 

@@ -71,7 +71,7 @@ test_failure_analyzer = register(WorkerContract(
     },
     artifact_type="flash_failure_analysis",
     max_input_chars=80000,
-    timeout_sec=180,
+    timeout_sec=1000,
     may_read_source=True,
 ))
 
@@ -102,7 +102,7 @@ patch_worker = register(WorkerContract(
     },
     artifact_type="flash_patch_candidate",
     max_input_chars=100000,
-    timeout_sec=300,
+    timeout_sec=1000,
     may_read_source=True,
     # Patch worker is the most dangerous — extra restrictions
     forbidden_actions=("edit", "write", "commit", "push", "deploy", "apply"),
@@ -142,7 +142,7 @@ diff_reviewer = register(WorkerContract(
     },
     artifact_type="flash_review",
     max_input_chars=80000,
-    timeout_sec=180,
+    timeout_sec=1000,
     may_read_source=False,
 ))
 
@@ -191,7 +191,7 @@ def validate_patch(patch_text: str) -> tuple[bool, str]:
 # Flash worker runner
 # ═══════════════════════════════════════════════════════════════
 
-def _call_flash(prompt: str, timeout: int = 180) -> tuple[str, dict]:
+def _call_flash(prompt: str, timeout: int = 1000) -> tuple[str, dict]:
     """Call DeepSeek v4 Flash via the local worker infrastructure."""
     import time as _time
     t0 = _time.monotonic()

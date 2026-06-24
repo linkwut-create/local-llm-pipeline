@@ -60,7 +60,7 @@ _ESCALATION_CHAIN = {
     "summarize-tree": ["gemma4_26b_llamacpp", "qwen3.6_llamacpp", "fast_summary",
                        "smart_summary", "qwen3.6_27b_mtp"],
     # Diff review: commit gate → llama.cpp diff reviewer → resident → 27b → deep
-    "review-diff": ["commit_reviewer", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
+    "review-diff": ["commit_reviewer_llamacpp", "diff_reviewer_llamacpp", "qwen3.6_llamacpp",
                     "qwen3.6_27b_mtp", "deep_reviewer"],
     # Code generation: on-demand coder → resident → 27b → deep
     "generate-test-plan": ["code_worker_llamacpp", "qwen3.6_llamacpp", "code_worker",
@@ -272,7 +272,7 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
 
     # 2. Commit gate: always commit_reviewer
     if is_commit_gate:
-        return "commit_reviewer"
+        return "commit_reviewer_llamacpp"
 
     chain = _ESCALATION_CHAIN.get(task, [])
     if not chain:
@@ -808,9 +808,9 @@ SERVER_VERSION = _read_version()
 MAX_DIFF_CHARS = 100_000
 MAX_PATH_MAX_CHARS = 200_000
 MAX_MAX_FILES = 50
-DEFAULT_TIMEOUT = 600
-DEBATE_TIMEOUT = 900
-DEBATE_FAST_PER_ROUND_TIMEOUT = 350
+DEFAULT_TIMEOUT = 1000
+DEBATE_TIMEOUT = 1000
+DEBATE_FAST_PER_ROUND_TIMEOUT = 1000
 
 TOOLS = {
     "local_check": {
@@ -2474,8 +2474,8 @@ def call_generate_test_plan(params: dict) -> dict:
     return result
 
 
-REVIEW_TIMEOUT = 900
-REVIEW_PREWARM_TIMEOUT = 300
+REVIEW_TIMEOUT = 1000
+REVIEW_PREWARM_TIMEOUT = 1000
 
 
 def _prewarm_llamacpp_profile(profile_name: str, timeout: int = REVIEW_PREWARM_TIMEOUT) -> dict:

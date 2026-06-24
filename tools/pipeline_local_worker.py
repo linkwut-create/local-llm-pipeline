@@ -141,7 +141,7 @@ diff_review = register(WorkerContract(
     },
     artifact_type="diff_review",
     max_input_chars=80000,
-    timeout_sec=180,
+    timeout_sec=1000,
 ))
 
 repo_map = register(WorkerContract(
@@ -187,7 +187,7 @@ def _detect_python() -> str:
 
 
 def _call_local_worker(task_description: str, prompt: str,
-                       timeout: int = 120) -> tuple[str, dict]:
+                       timeout: int = 1000) -> tuple[str, dict]:
     """Call the local LLM worker via subprocess. Returns (output, metrics)."""
     import time as _time
     t0 = _time.monotonic()

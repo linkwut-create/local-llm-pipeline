@@ -182,7 +182,7 @@ def detect_test_command(repo_root: str | Path = ".") -> str | None:
 
 
 def run_tests(task_id: str, command: str | None = None,
-              repo_root: str | Path = ".", timeout: int = 300) -> dict:
+              repo_root: str | Path = ".", timeout: int = 1000) -> dict:
     """Run tests and capture results as artifacts.
 
     Returns structured result with pass/fail counts and log paths.
@@ -310,7 +310,7 @@ def main():
     rt = sub.add_parser("run-tests", help="Detect and run project tests")
     rt.add_argument("task_id")
     rt.add_argument("--command", default=None)
-    rt.add_argument("--timeout", type=int, default=300)
+    rt.add_argument("--timeout", type=int, default=1000)
 
     cd = sub.add_parser("capture-diff", help="Capture current git diff")
     cd.add_argument("task_id")

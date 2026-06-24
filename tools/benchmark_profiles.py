@@ -191,7 +191,7 @@ def main():
                         help="Comma-separated task names")
     parser.add_argument("--repeat", type=int, default=1,
                         help="Repeat each benchmark N times (default: 1)")
-    parser.add_argument("--timeout", type=int, default=600,
+    parser.add_argument("--timeout", type=int, default=1000,
                         help="Timeout per run in seconds (default: 600)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show what would be tested without running")

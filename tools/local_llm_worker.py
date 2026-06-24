@@ -411,7 +411,7 @@ class WorkerConfig:
     model: str = ""
     profile: str = ""
     base_url: str = ""
-    timeout: int = 300
+    timeout: int = 1000
     max_context_tokens: int = 8192
     max_chars: int = 60000
     max_output_chars: int = 3000

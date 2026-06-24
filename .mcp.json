@@ -1,11 +1,11 @@
-﻿{
+{
   "mcpServers": {
     "local-llm": {
       "type": "stdio",
       "command": "py",
       "args": ["-3", "tools/local_llm_mcp_server.py"],
       "env": {
-        "LOCAL_LLM_BASE_URL": "http://127.0.0.1:4400/v1",
+        "LOCAL_LLM_BASE_URL": "http://193.168.2.2:4000/v1",
         "LOCAL_LLM_API_KEY": "sk-zero12-cluster"
       }
     }
