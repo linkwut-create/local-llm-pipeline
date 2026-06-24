@@ -62,7 +62,7 @@ def _resolve_litellm_name(service: str, port: int) -> str:
             if pattern in content:
                 # Get the model_name from the next line
                 m = _re.search(
-                    f'{pattern}.*?\n.*?model_name: (\S+)',
+                    f'{pattern}.*?\n.*?model_name: (\\S+)',
                     content, _re.DOTALL
                 )
                 if m:
