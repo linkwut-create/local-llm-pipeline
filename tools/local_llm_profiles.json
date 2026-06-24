@@ -131,8 +131,8 @@
         "review-diff"
       ],
       "candidates": [
-        "qwen3-coder:30b",
-        "qwen3.5-9b-q8:latest"
+        "qwen3-coder-30b",
+        "qwen3.6_llamacpp"
       ],
       "risk_level": "medium",
       "_benchmark": "10s review - lightweight coder for commit-gate diff review (zero12)",
