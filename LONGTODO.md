@@ -1,6 +1,6 @@
 # LONGTODO.md
 
-## Project Status (2026-06-13)
+## Project Status (2026-06-25)
 
 **Phase**: Soft gate dogfood accumulation.
 
@@ -11,7 +11,13 @@
 - Post-calibration audit (PASS_WITH_LIMITS)
 - Dogfood status reporter
 - Cost ledger smoke usage recording fix
-- DeepSeek Flash smoke test: transport + semantic PASS
+- Pipeline mode deadlock fixes (plan-vs-route mtime, plan_only permissions)
+- AGENTS.md stale data audit + fix (4 items)
+- MCP server Ollama->LiteLLM comment cleanup
+- Project status audit + forward plan document
+- Test expansion: pipeline_mocks 0->25, adjudicator 5->14
+- Test suite: 54->46 failures, 3125 passing (98.5%)
+- DeepSeek Flash smoke test: transport PASS, semantic FAILED (max_tokens=20 exhausted by reasoning tokens)
 
 ### Currently Blocked
 - Warning gate (match_rate < 85%, critical_misrouting > 0)
