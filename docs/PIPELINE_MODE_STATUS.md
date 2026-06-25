@@ -1,8 +1,8 @@
 # PIPELINE_MODE_STATUS.md — local-llm-pipeline v2-alpha
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
-> **Updated**: 2026-06-24  
-> **Current phase**: Phase 14 — Real Dogfood (1/5 tasks)
+> **Updated**: 2026-06-25  
+> **Current phase**: Phase 14 — Real Dogfood (4/5 tasks)
 
 ## Phase Progress
 
@@ -22,7 +22,7 @@
 | 11 | Tool Actuator | Done | f65f624 |
 | 12 | Pro Adjudication | Done | bf26b40 |
 | 13 | End-to-End Dry Run | Done | 0bf4ce2 |
-| 14 | Real Dogfood | In progress | 1/5 real tasks |
+| 14 | Real Dogfood | In progress | 4/5 real tasks: Ollama purge, GGUF consolidation, 4-tool migration, 37-model audition |
 | 15 | Cost & Quality Evaluation | Not started | Needs Phase 14 |
 | 16 | v2-alpha Finalization | Not started | Needs Phases 1-15 |
 
@@ -41,10 +41,14 @@
 | pipeline_e2e_dry_run.py | 13 | Full 9-step E2E orchestrator (8 route types) |
 
 ## Test Baseline
-3063 passed, 74 failed (Ollama migration cleanup in progress)
+3083 passed, 54 failed (pre-existing, not from current phase)
+
+## Infrastructure (2026-06-25)
+- Zero12: Vulkan (8060S 116GB), 37 models via LiteLLM, systemd on-demand
+- Local: , profiles updated from audition scores
+- GGUF: 37 reasoning models at 
 
 ## Next Actions
-1. Fix remaining test failures from Ollama→llama.cpp migration
-2. Document LiteLLM auth setup
-3. Phase 14: Run 4 more real dogfood tasks
-4. Phase 15: Cost comparison
+1. Download nemotron-super compatible GGUF from ModelScope
+2. Phase 14 #5: Pipeline mode real task
+3. Phase 15: Cost comparison
