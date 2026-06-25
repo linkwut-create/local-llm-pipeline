@@ -326,7 +326,7 @@ if __name__ == "__main__":
     result = call_deepseek(prompt, model=model)
     if result["ok"]:
         print(f"OK ({result['elapsed_seconds']:.1f}s):")
-        print(result["content"][:500])
+        print(result["content"][:500].encode("utf-8",errors="replace").decode("utf-8",errors="replace"))
     else:
         print(f"ERROR: {result['error']}")
         sys.exit(1)
