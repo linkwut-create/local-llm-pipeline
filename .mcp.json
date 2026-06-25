@@ -3,10 +3,15 @@
     "local-llm": {
       "type": "stdio",
       "command": "py",
-      "args": ["-3", "tools/local_llm_mcp_server.py"],
+      "args": [
+        "-3",
+        "tools/local_llm_mcp_server.py"
+      ],
       "env": {
         "LOCAL_LLM_BASE_URL": "http://193.168.2.2:4000/v1",
-        "LOCAL_LLM_API_KEY": "sk-zero12-cluster"
+        "LOCAL_LLM_API_KEY": "sk-zero12-cluster",
+        "DEBATE_TIMEOUT": "1000",
+        "LOCAL_LLM_REQUEST_TIMEOUT": "300"
       }
     }
   }
