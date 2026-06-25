@@ -8,6 +8,7 @@ Claude-specific slash commands, auto-invocation hooks, and subagent references).
 | File | Purpose | When to Read |
 |------|---------|-------------|
 | **AGENTS.md** | 项目宪法 + agent 操作规则 (Codex-facing) | 每次任务开始 |
+| **SHARED_POLICY.md** | AGENTS+CLAUDE 共享策略 (Controller/Worker/MCP) | 涉及 delegation 规则时 |
 | **CLAUDE.md** (this file) | Claude Code 专用指令 | 会话自动加载 |
 | **PROBLEMS.md** | 累计问题、禁令、已知坑 | 每次代码修改前 |
 | **LONGTODO.md** | 长期路线图、需求、延期项 | 触及 roadmap 时 |
@@ -17,175 +18,25 @@ Claude-specific slash commands, auto-invocation hooks, and subagent references).
 
 ## Controller Delegation Contract (U-1)
 
+> NOTE: See **SHARED_POLICY.md §1** for the full Controller Delegation Contract:
+> Delegation Decision Tree, MUST/SHOULD/MAY tables, Budget Controls, Work Order
+> and Result Packet schemas, Responsibility Split, and Prohibition Rules.
+
 **Core principle**: Big model (Claude Code) plans. Local models execute bounded
-read-only heavy work. Big model audits, integrates, edits, and finalizes. Local
-models never edit, stage, commit, or push.
+read-only heavy work. Big model audits, integrates, edits, and finalizes.
 
-This section is the top-level delegation policy. The "Task-Level MCP Usage Policy
-(MCP 2.1 — Hardened)" section below provides the detailed tool mapping, escalation
-rules, prohibition rules, and model selection rules that implement this contract.
-
-### Delegation Decision Tree
-
-When Claude Code receives a non-trivial task, follow this decision tree:
-
-```
-Task received
-  │
-  ├─ Trivial? (explanation-only, no code change)
-  │   └─ YES → Answer directly. No MCP delegation needed.
-  │
-  ├─ Tiny low-risk edit? (single-line typo, ≤5 line fix, not a high-risk path)
-  │   └─ YES → May skip local_summarize_file. MUST still run review_diff
-  │            (commit_gate=true) before commit.
-  │
-  └─ Non-trivial (cross-file, new feature, API change, unfamiliar module...)
-      │
-      ├─ [MUST] STEP 0: local_workflow_plan
-      │     Classify task type and risk level first. Use the MCP tool:
-      │     mcp__local-llm__local_workflow_plan or CLI:
-      │     `git diff --name-only | py -3 tools/local_workflow_plan.py --stdin --task "<desc>"`
-      │
-      ├─ [MUST] STEP 1: Orient
-      │     local_repo_map + find-related-files → understand project structure
-      │
-      ├─ [MUST] STEP 2: Understand
-      │     local_summarize_file for each key file > 200 lines before editing
-      │     (auto-invocation hooks cover >300 lines in background, but controller
-      │      should explicitly invoke for files it plans to edit)
-      │
-      ├─ [CONDITIONAL] STEP 3: Test Plan
-      │     local_generate_test_plan if new API/schema/parser/CLI/DB/import-export
-      │
-      ├─ [MUST] STEP 4: Review
-      │     local_review_diff (commit_gate=true) after edits, before commit
-      │
-      ├─ [CONDITIONAL] STEP 5: Debate
-      │     local_debate_review_diff for high-risk paths only
-      │     (MCP server, router, hooks, gate, security boundaries, DB schema,
-      │      release/freeze boundaries)
-      │
-      └─ [MUST] STEP 6: Commit
-          draft-commit-message → controller reviews → finalizes → commits
-```
-
-### MUST / SHOULD / MAY Delegate
-
-| Level | Trigger | Tool |
-|-------|---------|------|
-| **MUST** | Any non-trivial task, first step | `local_workflow_plan` |
-| **MUST** | Key file > 200 lines, first edit | `local_summarize_file` |
-| **MUST** | New API / schema / parser / CLI / DB / import-export | `local_generate_test_plan` |
-| **MUST** | Any code change, pre-commit | `local_review_diff` (commit_gate=true) |
-| **MUST** | MCP server / router / hooks / gate / security / DB schema | `local_debate_review_diff` |
-| **MUST** | Release / freeze boundary | `local_parallel_review` |
-| **SHOULD** | Cross-file / unfamiliar module | `find-related-files` + `local_repo_map` |
-| **SHOULD** | Unfamiliar directory | `local_summarize_tree` |
-| **SHOULD** | Multi-commit batch | `draft-pr-summary` + `draft-changelog-entry` |
-| **MAY skip** | Explanation-only, tiny typo, user says no MCP, emergency | — |
-
-### Budget Controls
-
-Before delegating heavy work, set limits:
-
-- `max_files_to_summarize` — cap summarize-file calls per task (default: 5)
-- `max_runtime_seconds` — cap total local model time (default: 300)
-- `max_model_calls` — cap total LLM calls (default: 10)
-- Stop on `ok=false`, timeout, high uncertainty, or safety boundary
-- Deep/reasoning models are never default — only when explicitly required
-
-### Work Order Schema
-
-```json
-{
-  "task_description": "<what the user asked>",
-  "controller_objective": "<what Claude Code is trying to achieve>",
-  "risk_level": "low | medium | high",
-  "local_steps_requested": [
-    {"step": "summarize", "tool": "local_summarize_file", "target": "<path>", "reason": "<why>"}
-  ],
-  "target_files": ["<path>"],
-  "search_scope": "<project root or subdirectory>",
-  "allowed_tools": ["<MCP tool names>"],
-  "forbidden_actions": ["edit", "stage", "commit", "push"],
-  "budget_limits": {
-    "max_files_to_summarize": 5,
-    "max_runtime_seconds": 300,
-    "max_model_calls": 10
-  },
-  "expected_outputs": ["summaries", "related_files", "risk_notes"],
-  "review_level": "commit_gate | debate_fast | debate_full",
-  "debate_policy": "required | optional | skip",
-  "stop_conditions": ["ok=false", "timeout", "high_uncertainty", "safety_boundary"],
-  "controller_notes": "<free-form>"
-}
-```
-
-### Result Packet Schema
-
-```json
-{
-  "files_examined": ["<path>"],
-  "related_files": ["<test_path>", "<config_path>"],
-  "summaries": [{"file": "<path>", "summary": "<markdown>", "confidence": "high|medium|low"}],
-  "test_recommendations": ["<rec>"],
-  "risk_notes": ["<note>"],
-  "uncertainty": "low | medium | high",
-  "uncertain_points": ["<point>"],
-  "skipped_steps": [{"step": "debate", "reason": "docs-only"}],
-  "budget_used": {"files_summarized": 3, "runtime_seconds": 85, "model_calls": 5},
-  "suggested_next_calls": ["local_review_diff", "draft-commit-message"],
-  "controller_must_verify": true,
-  "advisory_only": true
-}
-```
-
-### Responsibility Split
-
-| Responsibility | Controller (Claude Code) | Local Models |
-|---------------|-------------------------|--------------|
-| Task classification & risk grading | Decides (uses workflow_plan as advisory) | Advisory input via workflow_plan |
-| File discovery & scoping | Decides scope | Executes find-related-files, repo_map |
-| Code understanding | Verifies summaries directly | Drafts summaries |
-| Implementation plan | **Owns** | — |
-| Writing code | **Owns** | Draft only (→ .local_llm_out/) |
-| Reading secrets | **Owns** (reads directly) | **Forbidden** |
-| Diff review | Final judgment | Advisory review |
-| Debate review | Decides whether needed | Executes rounds |
-| Running tests | **Owns** | Classify failures only |
-| Commit message | **Owns** (advisors draft) | Draft only |
-| Final user-facing answer | **Owns** | — |
-| Deciding to ask the user | **Owns** | — |
+Decision tree summary: Trivial -> answer directly. Tiny edit -> may skip
+summarize, MUST review_diff. Non-trivial -> workflow_plan -> orient ->
+understand -> test_plan -> review -> commit. Full tree: SHARED_POLICY.md §1.1.
 
 ## Local Multi-Model Worker Policy
 
-This project uses a local multi-model LLM worker for low-risk, read-only assistance.
-Claude Code is the controller. The local worker is advisory only.
+> NOTE: See **SHARED_POLICY.md §2** for the full Worker Policy: allowed/forbidden
+> tasks, controller requirements, and confidence handling.
 
-### Allowed Local Worker Tasks
+Claude Code is the controller. Local workers are advisory only.
 
-- Summarize files.
-- Summarize directories.
-- Find related files.
-- Extract TODO/FIXME/HACK comments.
-- Draft test plans.
-- Draft test skeletons.
-- Draft diff reviews.
-- Draft risk analysis.
-- Logic checks and failure mode analysis.
-- Translate or rewrite non-sensitive text.
-
-### Forbidden Local Worker Tasks
-
-- Editing source code.
-- Reading secrets (.env, keys, tokens, credentials).
-- Handling authentication or authorization final decisions.
-- Handling cryptography final decisions.
-- Handling database migrations.
-- Deployment or release.
-- Final test judgment.
-- Final code approval.
-
+### Claude Code Must
 ### Claude Code Must
 
 - Verify important worker claims directly.
@@ -324,135 +175,11 @@ The existing manual MCP invocation path still works and is required for:
 
 ### Task-Level MCP Usage Policy (MCP 2.1 — Hardened)
 
-**Every non-trivial development task must have a local model participation point.**
-Not every keystroke — every non-trivial task. Missing MCP participation points block commit.
-This is enforced by process discipline, with audit trail. See Controller Delegation
-Contract (U-1) for MAY skip cases (explanation-only, tiny typo, user override, emergency).
+> NOTE: See **SHARED_POLICY.md §3** for the full MCP Usage Policy: Must-Follow
+> Rules, Task-to-Tool Mapping, Escalation Rules, Prohibition Rules, and Model
+> Selection Rules. Full policy also at docs/mcp-task-policy.md.
 
-Full policy: [docs/mcp-task-policy.md](docs/mcp-task-policy.md)
-Model selection: [docs/model-routing-policy.md](docs/model-routing-policy.md)
-Usage retro: [docs/mcp-audit-design.md](docs/mcp-audit-design.md) (MCP-USAGE-RETRO-1 section)
-
-#### MCP Participation Must-Follow Rules (MCP-USAGE-RETRO-1)
-
-These are NOT advisory. Skipping any of these without documented reason is a
-process deviation and must be recorded in the phase completion report.
-
-**1. local_summarize_file — mandatory before first edit of any file > 200 lines.**
-
-If you read a file > 200 lines for the first time and plan to edit it, you
-MUST run `local_summarize_file` first. Direct Read-only inspection does not
-satisfy this requirement — the local model must produce a structured summary.
-
-**2. local_generate_test_plan — mandatory before implementing new API, schema, parser, or UI behavior.**
-
-If the phase introduces new functions, classes, CLI commands, DB schema changes,
-import/export logic, or parsing, you MUST run `local_generate_test_plan` before
-writing tests or implementation code.
-
-**3. local_debate_review_diff — mandatory for specific change categories.**
-
-You MUST run debate review (fast mode minimum, full 3-round for architecture)
-when the diff touches any of:
-- `tools/claude_hooks/` (hook logic, gate logic, doctor)
-- `tools/local_llm_mcp_server.py` (MCP server)
-- `tools/local_llm_router.py` (routing logic)
-- Safety policy, blocked paths, security boundaries
-- Database schema changes (SQLite DDL)
-- Audit system infrastructure
-- Release/freeze boundaries
-
-MCP-AUDIT-4 and MCP-AUDIT-5 both involved these categories but skipped debate
-review. This is a documented process deviation — not a precedent.
-
-**4. Phase completion report MUST include an MCP Usage Matrix.**
-
-Every phase completion report must contain:
-
-```
-MCP Usage Matrix
-- local_check: used / not used / reason
-- local_summarize_file: used / not used / reason
-- local_generate_test_plan: used / not used / reason
-- local_review_diff: used / not used / result
-- local_debate_review_diff: used / not used / reason
-- deep_reviewer / reasoning_checker: used / not used / reason
-- recommendations accepted: N
-- recommendations rejected: N
-- deviations from plan: (list)
-```
-
-**5. Reasoning models must be used for high-risk classification tasks.**
-
-`deep_reviewer` or `reasoning_checker` must be used when:
-- Classifying whether a diff is high-risk
-- Evaluating gate bypass risks
-- Pre-release/freeze risk assessment
-
-#### Task → MCP Tool Mapping
-
-| Task type | MCP Tool | Profile | Required |
-|-----------|----------|---------|----------|
-| Session start | `local_check` | (no LLM) | Always first |
-| File > 200 lines, first read | `local_summarize_file` | `fast_summary` | Before editing |
-| New directory | `local_summarize_tree` | `fast_summary` | Before planning |
-| Code change → pre-commit | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
-| Code change → staged | `local_review_diff` | `commit_reviewer` | `commit_gate=true` |
-| Changes to `tools/` (MCP/router/worker) | `local_review_diff` | `diff_reviewer` | Explicit review |
-| Hook/gate/MCP server/router logic | `local_debate_review_diff` | fast mode | Must use debate |
-| Safety policy, blocked paths | `local_debate_review_diff` | fast mode | Must use debate |
-| Feature/bug/release test plan | `local_generate_test_plan` | `code_worker` | Before implementing |
-| Test plan with repo-map advisory | `local_generate_test_plan` + `use_repo_map=true` | `code_worker` | Opt-in; repo map advisory only, does not prove tests pass |
-| Draft code (fix/feature/refactor) | `local_draft_code` | `code_worker` | Output → `.local_llm_out/` only |
-| DB schema, CLI, import/export, parser | `local_generate_test_plan` | `code_worker` | Before implementing |
-| Phase freeze, release audit | `local_parallel_review` | parallel multi-family | Must use parallel |
-
-#### Escalation Rules
-
-P3 narrowed the runtime auto-escalation chain: `confidence=="low"` and
-`len(uncertain_points) > 3` no longer auto-escalate to a stronger model
-by default. Both legacy behaviors remain restorable via env knobs
-(truthy: `true` / `1` / `yes` / `on`, case-insensitive). The `timeout`
-path still downgrades unconditionally — note this is a downgrade to a
-lighter model, not a strong-model escalation, so it doesn't inflate cost.
-
-| Trigger | Default | Opt-in restore / controller action |
-|---------|---------|------------------------------------|
-| `summarize` returns `confidence=low` | No auto-escalation. Controller may manually re-run with `smart_summary` if the flagged area matters. | `LOCAL_LLM_AUTO_ESCALATE_ON_LOW_CONFIDENCE=true` restores legacy auto-escalation. |
-| `review` returns `uncertain_points` > 3 | No auto-escalation. Controller may manually re-run with `diff_reviewer` / `deep_reviewer` if the uncertain points are material. | `LOCAL_LLM_AUTO_ESCALATE_ON_UNCERTAIN=true` restores legacy auto-escalation. |
-| `summarize` / `review` returns `confidence=medium` | Informational only. Never an auto-escalation trigger. Controller may continue if output is useful and task is read-only or low/medium risk. Controller should manually re-run if output is vague, critical files were truncated, or task is high-risk/safety-sensitive. Document the decision in `controller_notes`. | n/a — medium confidence is not an escalation trigger. |
-| Worker `error_type == "timeout"` | Downgrades to a lighter model (unchanged). | n/a — downgrade, not escalation. |
-| Diff touches MCP server, commit gate, router | Debate or deep review mandatory (controller policy, not runtime). | n/a |
-| Pre-release / tag / publish | `release_auditor` mandatory (controller policy). | n/a |
-| MCP tool timeout | Retry with smaller input or faster model; record failure. | n/a |
-| Reasoning model timeout | Fall back to code_worker; record deviation. | n/a |
-
-The ledger `escalation_trigger` value space is unchanged
-(`timeout` / `low_confidence` / `uncertain_points` / `unknown`); only
-the *frequency* of `low_confidence` and `uncertain_points` labels
-changes once the knobs are OFF. `escalation_reason` remains a
-free-form string — there is no strict enum, no `structural_risk`
-runtime trigger, and no `escalate=true` / `user_requested` MCP
-parameter.
-
-#### Prohibition Rules (Hard Stops)
-
-- MCP `ok=false`, timeout, `UnicodeDecodeError`, or non-null `error` → **STOP. Do not commit.**
-- Controller MUST NOT say "I reviewed it manually" as substitute for failed MCP review.
-- Staged diff MUST be re-reviewed even if identical to unstaged reviewed diff.
-- Commit gate MUST use `commit_reviewer`. MUST NOT use reasoning, >30B, or release auditor.
-- Experimental / known-bad models MUST NOT enter automated routing.
-- Draft code MUST NOT be treated as directly applied code. Controller must inspect and manually apply.
-- `local_debate_review_diff` MUST NOT be skipped for hook/gate/DB/schema/security/release changes.
-
-#### Model Selection Rules
-
-- Default: match model to task type (coder→code, translator→translation).
-- Commit gate: `commit_reviewer` (qwen3-coder:30b) only. Target < 30s.
-- Translation (CLI/MCP): `glm-4.7-flash` only. `translategemma-12b-it` does not work with current CLI prompt.
-- Reasoning models: never default. Triggered by explicit request or high-risk classification.
-- Release audit models: never in commit gate or default review path.
-- Debate review: fast mode (2 rounds) default; full 3-round for architecture/DB/schema/release.
+**Every non-trivial task must have a local model participation point.**
 
 ### MCP Boundaries
 
