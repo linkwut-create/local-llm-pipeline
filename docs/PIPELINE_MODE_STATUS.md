@@ -22,7 +22,8 @@
 | 11 | Tool Actuator | Done | f65f624 |
 | 12 | Pro Adjudication | Done | bf26b40 |
 | 13 | End-to-End Dry Run | Done | 0bf4ce2 |
-| 14 | Real Dogfood | In progress | 4/5 real tasks: Ollama purge, GGUF consolidation, 4-tool migration, 37-model audition |
+| 14 | Real Dogfood | In progress | 4/5 real tasks: Ollama purge, GGUF consolidation, 4-tool migration, 37-model audition
+| 14.5 | Real pipeline task | Pending | Needs route_enforcer wildcard fix |
 | 15 | Cost & Quality Evaluation | Not started | Needs Phase 14 |
 | 16 | v2-alpha Finalization | Not started | Needs Phases 1-15 |
 
@@ -41,7 +42,7 @@
 | pipeline_e2e_dry_run.py | 13 | Full 9-step E2E orchestrator (8 route types) |
 
 ## Test Baseline
-3083 passed, 54 failed (pre-existing, not from current phase)
+3141 passed, 32 skipped, 0 failed (100% pass rate, 27 test failures fixed 2026-06-25)
 
 ## Infrastructure (2026-06-25)
 - Zero12: Vulkan (8060S 116GB), 37 models via LiteLLM, systemd on-demand
@@ -49,6 +50,7 @@
 - GGUF: 37 reasoning models at 
 
 ## Next Actions
-1. Download nemotron-super compatible GGUF from ModelScope
+1. Fix route_enforcer wildcard bug (mcp__* not expanding)
+2. Download nemotron-super compatible GGUF from ModelScope
 2. Phase 14 #5: Pipeline mode real task
 3. Phase 15: Cost comparison

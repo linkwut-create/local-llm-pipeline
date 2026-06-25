@@ -115,7 +115,7 @@ v2 路线图已独立成文：
 
 ## 2. Roadmap
 
-### Phase 1: Stability (current — v0.12.0+)
+### Phase 1: Stability (current — v0.13.0+)
 - [x] MCP server 13 tools, all source-non-mutating
 - [x] Controller delegation contract (U-1)
 - [x] Backend governance (J-chain)
