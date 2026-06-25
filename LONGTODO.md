@@ -16,8 +16,10 @@
 - MCP server Ollama->LiteLLM comment cleanup
 - Project status audit + forward plan document
 - Test expansion: pipeline_mocks 0->25, adjudicator 5->14
-- Test suite: 54->46 failures, 3125 passing (98.5%)
-- DeepSeek Flash smoke test: transport PASS, semantic FAILED (max_tokens=20 exhausted by reasoning tokens)
+- Test suite: 3141 passed, 32 skipped, 0 failed (100% pass rate)
+- DeepSeek Flash smoke test: transport PASS, semantic PASS (GBK encoding fix resolved false FAILED, max_tokens=128 confirmed working 2026-06-25)
+- MCP wildcard bug: root cause found (stale .pyc cache), route_enforcer restored
+- Session handoff workflow: AM + PM docs created
 
 ### Currently Blocked
 - Warning gate (match_rate < 85%, critical_misrouting > 0)
@@ -374,22 +376,24 @@ Real API smoke test design packet is complete.
 - 5 ledger event types for smoke test lifecycle
 - 8 rollback conditions, conservative retry rules
 - 18-test plan for implementation phase
+- Third smoke test with max_tokens=128: confirmed PASS (2026-06-25, GBK encoding fix)
 
 **Pending**:
-- Third smoke test with adjusted parameters (max_tokens=128, stronger prompt)
 - Pro model smoke test (separate design packet required)
 
 ---
 
-## 14. Model Output Compatibility Audit — Status (2026-06-13)
+## 14. Model Output Compatibility Audit — Status (2026-06-25)
 
-DeepSeek Flash output compatibility audit is complete.
+DeepSeek Flash output compatibility audit is complete. GBK encoding fix applied.
 
 **Done**:
 - Root cause identified: max_tokens=20 exhausted by reasoning tokens
 - thinking=disabled does not eliminate internal reasoning token consumption
 - Client payload confirmed correct (no bug)
 - 5 fix recommendations (design only, not implemented)
+- GBK encoding fix: `deepseek_client.py` UnicodeEncodeError resolved (emoji handling, 2026-06-25)
+- Third smoke test: max_tokens=128, semantic_smoke_pass=true (2026-06-25)
 
 **Pending**:
 - Flash limited real-run implementation skeleton (Stage 2)

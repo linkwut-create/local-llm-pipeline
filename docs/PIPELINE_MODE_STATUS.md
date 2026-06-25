@@ -2,7 +2,7 @@
 
 > **Purpose**: Living status for the v2-alpha pipeline mode implementation.  
 > **Updated**: 2026-06-25  
-> **Current phase**: Phase 14 — Real Dogfood (4/5 tasks)
+> **Current phase**: Phase 14 — Real Dogfood (5/5 tasks, COMPLETE)
 
 ## Phase Progress
 
@@ -22,9 +22,9 @@
 | 11 | Tool Actuator | Done | f65f624 |
 | 12 | Pro Adjudication | Done | bf26b40 |
 | 13 | End-to-End Dry Run | Done | 0bf4ce2 |
-| 14 | Real Dogfood | In progress | 4/5 real tasks: Ollama purge, GGUF consolidation, 4-tool migration, 37-model audition
-| 14.5 | Real pipeline task | Pending | Needs route_enforcer wildcard fix |
-| 15 | Cost & Quality Evaluation | Not started | Needs Phase 14 |
+| 14 | Real Dogfood | Complete | 5/5 real tasks: Ollama purge, GGUF consolidation, 4-tool migration, 37-model audition, MCP wildcard fix
+| 14.5 | Real pipeline task | Ready | route_enforcer wildcard fixed (2026-06-25 PM), pipeline mode operational |
+| 15 | Cost & Quality Evaluation | Ready | Phase 14 complete |
 | 16 | v2-alpha Finalization | Not started | Needs Phases 1-15 |
 
 ## Pipeline Modules Inventory
@@ -50,7 +50,7 @@
 - GGUF: 37 reasoning models at 
 
 ## Next Actions
-1. Fix route_enforcer wildcard bug (mcp__* not expanding)
-2. Download nemotron-super compatible GGUF from ModelScope
-2. Phase 14 #5: Pipeline mode real task
-3. Phase 15: Cost comparison
+1. ~~Fix route_enforcer wildcard bug (mcp__* not expanding)~~ — DONE (2026-06-25 PM)
+2. Phase 14.5: Execute real pipeline task (MCP wildcard fixed)
+3. Download nemotron-super compatible GGUF from ModelScope
+4. Phase 15: Cost comparison

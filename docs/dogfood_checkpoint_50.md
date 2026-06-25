@@ -10,7 +10,7 @@
 privacy_bypass:           0 ✓
 false_cloud_on_secret:    0 ✓
 soft gate:                PASS_WITH_LIMITS
-DeepSeek:                 not called (smoke test still FAILED)
+DeepSeek:                 smoke test PASS (max_tokens=128, GBK encoding fix applied 2026-06-25 PM)
 API key:                  not read
 warning gate:             still blocked (match_rate 76.2% < 85%)
 Stop hook:                still blocked (critical_misrouting 7 > 0)
@@ -55,9 +55,10 @@ Down from 54 failures (98.3%) to 0 failures (100%).
 |------|--------|
 | AGENTS/CLAUDE duplication | ~60-70% overlap, needs shared policy extraction |
 | Checkpoint docs | #1-#29, #35, #50-#90 missing |
-| Pipeline v2 Phase 14 #5 | Not completed |
-| DeepSeek smoke test | Still FAILED (max_tokens=20 exhausted by reasoning) |
-| route_enforcer wildcard bug | `mcp__local-llm__*` not expanding |
+| Pipeline v2 Phase 14 | COMPLETE (5/5) — MCP wildcard fixed |
+| DeepSeek smoke test | PASS (GBK encoding fix, max_tokens=128) |
+| route_enforcer wildcard bug | FIXED (stale .pyc cache cleared) |
+| Session handoff | AM + PM handoff docs created |
 
 ## Dogfood Metrics
 
@@ -72,6 +73,10 @@ Down from 54 failures (98.3%) to 0 failures (100%).
 ## Commits
 
 ```
+fae86c0 docs: add session handoff 2026-06-25 PM
+5d34279 fix: handle UnicodeEncodeError in deepseek_client GBK output
+9e4fff5 config: add DEBATE_TIMEOUT and LOCAL_LLM_REQUEST_TIMEOUT
+5e2adce docs: Phase C cleanup + checkpoint #50 + pipeline status update
 4ff73ab test: fix 27 remaining test failures (3141 passed, 0 failed)
 4888ddc docs: session handoff 2026-06-25
 ed69820 fix: resolve 25 profile migration test failures in router tests
