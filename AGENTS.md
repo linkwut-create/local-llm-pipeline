@@ -57,11 +57,11 @@ local-llm-pipeline is a **local AI development control layer** — not a tool co
 | **Hooks** | `tools/claude_hooks/` | Auto-invocation, commit gate, dangerous guard, release guard | 不在 Codex 中运行 |
 | **Call Ledger** | `tools/call_ledger.py` | Token/cost observability (JSONL) | 不自动 rotation |
 | **Health** | `tools/local_llm_check.py`, `tools/health_store.py` | Environment health, telemetry | 不修改 profiles |
-| **Profiles** | `tools/local_llm_profiles.json` | Model registry (24 entries) | 不自动生成 |
+| **Profiles** | `tools/local_llm_profiles.json` | Model registry (10 active + 6 deprecated) | 不自动生成 |
 | **Config** | `tools/validate_configs.py` | Profile consistency validation | 不修改 profiles |
 | **Installer** | `install_local_llm_pipeline.py` | Cross-project installation | 不自动更新 |
 | **Feedback** | `tools/feedback_ledger.py` | Cross-project feedback (JSONL) | 不自动写入 |
-| **Tests** | `tests/` | ~2100 tests across 13 categories | 不调用真实模型（mocked） |
+| **Tests** | `tests/` | ~3000 tests across 97 files | 不调用真实模型（mocked） |
 
 ### Services Provided
 
@@ -434,9 +434,9 @@ runtime gate:
 
 Runtime behavior is unchanged — this is controller guidance only.
 
-## MCP Integration (v0.11.0)
+## MCP Integration (v0.13.0)
 
-The pipeline exposes **12** source-non-mutating MCP tools via
+The pipeline exposes **13** source-non-mutating MCP tools via
 `tools/local_llm_mcp_server.py`:
 
 `local_check`, `local_summarize_file`, `local_summarize_tree`,
