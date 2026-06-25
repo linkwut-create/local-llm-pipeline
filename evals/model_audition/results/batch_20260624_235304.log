@@ -1,0 +1,285 @@
+=== Model Audition Batch ===
+Total: 37 models, 15 cases each
+Started: 2026年06月24日 23:53:05
+[1/37] deepseek-r1-32b-distill
+  Starting deepseek-r1-32b-distill-llama.service...
+  Ready after 1x5s
+    warmup: loading deepseek-r1-32b-distill (timeout=1800s)... OK (1s)
+  001 Case 001: Context Compression... OK (33.0s)
+  002 Case 002: Repo Map and Modification Targeting... OK (32.6s)
+  003 Case 003: Ollama Model Tag Drift... OK (32.9s)
+  004 Case 004: JSON Profile Contract Repair... OK (32.6s)
+  005 Case 005: Diff Review With Interface Risk... OK (32.6s)
+  006 Case 006: Patch Planning Without Coding... OK (32.7s)
+  007 Case 007: Test Failure Analysis... OK (32.7s)
+  008 Case 008: Interface Review for New CLI... OK (32.7s)
+  009 Case 009: Governance Document Pollution Audit... OK (32.6s)
+  010 Case 010: Privacy Gate for Cloud Escalation... OK (32.6s)
+  011 Case 011: Release Gate... OK (32.8s)
+  012 Case 012: Translation Precision... OK (32.8s)
+  013 Case 013: Subagent Task Packet Generation... OK (32.7s)
+  014 Case 014: Final Command Hygiene... OK (32.6s)
+  015 Case 015: Model Role Assignment From Evidence... OK (33.0s)
+  Stopping deepseek-r1-32b-distill...
+
+[2/37] deepseek-r1-70b
+  Starting deepseek-r1-70b-llama.service...
+  Ready after 1x5s
+    warmup: loading deepseek-r1-70b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping deepseek-r1-70b...
+
+[3/37] gemma4-12b
+  Starting gemma4-12b-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-12b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-12b...
+
+[4/37] gemma4-12b-unsloth
+  Starting gemma4-12b-unsloth-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-12b-unsloth (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-12b-unsloth...
+
+[5/37] gemma4-26b
+  Starting gemma4-26b-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-26b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-26b...
+
+[6/37] gemma4-26b-a4b-q8
+  Starting gemma4-26b-a4b-q8-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-26b-a4b-q8 (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-26b-a4b-q8...
+
+[7/37] gemma4-26b-unsloth
+  Starting gemma4-26b-unsloth-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-26b-unsloth (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-26b-unsloth...
+
+[8/37] gemma4-31b
+  Starting gemma4-31b-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-31b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-31b...
+
+[9/37] gemma4-31b-opus-latest
+  Starting gemma4-31b-opus-latest-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-31b-opus-latest (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-31b-opus-latest...
+
+[10/37] gemma4-31b-unsloth
+  Starting gemma4-31b-unsloth-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-31b-unsloth (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gemma4-31b-unsloth...
+
+[11/37] gemma4-e4b-unsloth
+  Starting gemma4-e4b-unsloth-llama.service...
+  Ready after 1x5s
+    warmup: loading gemma4-e4b-unsloth (timeout=1800s)... OK (1s)
+  001 Case 001: Context Compression... OK (1.8s)
+  002 Case 002: Repo Map and Modification Targeting... OK (1.4s)
+  003 Case 003: Ollama Model Tag Drift... OK (1.4s)
+  004 Case 004: JSON Profile Contract Repair... OK (1.4s)
+  005 Case 005: Diff Review With Interface Risk... OK (1.4s)
+  006 Case 006: Patch Planning Without Coding... OK (1.4s)
+  007 Case 007: Test Failure Analysis... OK (1.4s)
+  008 Case 008: Interface Review for New CLI... OK (1.4s)
+  009 Case 009: Governance Document Pollution Audit... OK (1.4s)
+  010 Case 010: Privacy Gate for Cloud Escalation... OK (1.4s)
+  011 Case 011: Release Gate... OK (1.7s)
+  012 Case 012: Translation Precision... OK (1.4s)
+  013 Case 013: Subagent Task Packet Generation... OK (1.3s)
+  014 Case 014: Final Command Hygiene... OK (1.3s)
+  015 Case 015: Model Role Assignment From Evidence... OK (1.4s)
+  Stopping gemma4-e4b-unsloth...
+
+[12/37] glm4.7-flash
+  Starting glm4.7-flash-llama.service...
+  Ready after 1x5s
+    warmup: loading glm4.7-flash (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping glm4.7-flash...
+
+[13/37] gpt-oss-20b
+  Starting gpt-oss-20b-llama.service...
+  Ready after 1x5s
+    warmup: loading gpt-oss-20b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gpt-oss-20b...
+
+[14/37] gpt-oss-120b
+  Starting gpt-oss-120b-llama.service...
+  Ready after 1x5s
+    warmup: loading gpt-oss-120b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping gpt-oss-120b...
+
+[15/37] legalone-8b
+  Starting legalone-8b-llama.service...
+  Ready after 1x5s
+    warmup: loading legalone-8b (timeout=1800s)... OK (1s)
+  001 Case 001: Context Compression... OK (2.7s)
+  002 Case 002: Repo Map and Modification Targeting... OK (2.4s)
+  003 Case 003: Ollama Model Tag Drift... OK (2.3s)
+  004 Case 004: JSON Profile Contract Repair... OK (2.3s)
+  005 Case 005: Diff Review With Interface Risk... OK (2.3s)
+  006 Case 006: Patch Planning Without Coding... OK (2.4s)
+  007 Case 007: Test Failure Analysis... OK (2.3s)
+  008 Case 008: Interface Review for New CLI... OK (2.4s)
+  009 Case 009: Governance Document Pollution Audit... OK (2.3s)
+  010 Case 010: Privacy Gate for Cloud Escalation... OK (2.4s)
+  011 Case 011: Release Gate... OK (2.3s)
+  012 Case 012: Translation Precision... OK (2.3s)
+  013 Case 013: Subagent Task Packet Generation... OK (2.3s)
+  014 Case 014: Final Command Hygiene... OK (2.3s)
+  015 Case 015: Model Role Assignment From Evidence... OK (2.3s)
+  Stopping legalone-8b...
+
+[16/37] minicpm-4.5
+  Starting minicpm-4.5-llama.service...
+  Ready after 1x5s
+    warmup: loading minicpm-4.5 (timeout=1800s)... OK (1s)
+  001 Case 001: Context Compression... OK (2.4s)
+  002 Case 002: Repo Map and Modification Targeting... OK (2.3s)
+  003 Case 003: Ollama Model Tag Drift... OK (2.3s)
+  004 Case 004: JSON Profile Contract Repair... OK (2.3s)
+  005 Case 005: Diff Review With Interface Risk... OK (2.3s)
+  006 Case 006: Patch Planning Without Coding... OK (2.3s)
+  007 Case 007: Test Failure Analysis... OK (2.3s)
+  008 Case 008: Interface Review for New CLI... OK (2.3s)
+  009 Case 009: Governance Document Pollution Audit... OK (2.3s)
+  010 Case 010: Privacy Gate for Cloud Escalation... OK (2.3s)
+  011 Case 011: Release Gate... OK (2.3s)
+  012 Case 012: Translation Precision... OK (2.3s)
+  013 Case 013: Subagent Task Packet Generation... OK (2.4s)
+  014 Case 014: Final Command Hygiene... OK (2.3s)
+  015 Case 015: Model Role Assignment From Evidence... OK (2.4s)
+  Stopping minicpm-4.5...
+
+[17/37] mistral-small-119b-q6
+  Starting mistral-small-119b-q6-llama.service...
+  Ready after 1x5s
+    warmup: loading mistral-small-119b-q6 (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping mistral-small-119b-q6...
+
+[18/37] mistral-small-4-119b-q5_k_xl-merged
+  Starting mistral-small-4-119b-q5_k_xl-merged-llama.service...
+  Ready after 1x5s
+    warmup: loading mistral-small-4-119b-q5_k_xl-merged (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping mistral-small-4-119b-q5_k_xl-merged...
+
+[19/37] mistral3.5-128b
+  Starting mistral3.5-128b-llama.service...
+  Ready after 1x5s
+    warmup: loading mistral3.5-128b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping mistral3.5-128b...
+
+[20/37] mistral4-24b
+  Starting mistral4-24b-llama.service...
+  Ready after 1x5s
+    warmup: loading mistral4-24b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping mistral4-24b...
+
+[21/37] mistral4-119b
+  Starting mistral4-119b-llama.service...
+  Ready after 1x5s
+    warmup: loading mistral4-119b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping mistral4-119b...
+
+[22/37] nemotron-30b
+  Starting nemotron-30b-llama.service...
+  Ready after 1x5s
+    warmup: loading nemotron-30b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping nemotron-30b...
+
+[23/37] nemotron-30b-q8
+  Starting nemotron-30b-q8-llama.service...
+  Ready after 1x5s
+    warmup: loading nemotron-30b-q8 (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping nemotron-30b-q8...
+
+[24/37] nemotron-super
+  Starting nemotron-super-llama.service...
+  Ready after 1x5s
+    warmup: loading nemotron-super (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping nemotron-super...
+
+[25/37] qwen3-coder-30b
+  Starting qwen3-coder-30b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3-coder-30b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping qwen3-coder-30b...
+
+[26/37] qwen3-coder-next
+  Starting qwen3-coder-next-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3-coder-next (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping qwen3-coder-next...
+
+[27/37] qwen3.5-0.8b
+  Starting qwen3.5-0.8b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-0.8b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.5-0.8b...
+
+[28/37] qwen3.5-2b
+  Starting qwen3.5-2b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-2b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.5-2b...
+
+[29/37] qwen3.5-9b
+  Starting qwen3.5-9b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-9b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.5-9b...
+
+[30/37] qwen3.5-27b
+  Starting qwen3.5-27b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-27b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping qwen3.5-27b...
+
+[31/37] qwen3.5-27b-reasoning
+  Starting qwen3.5-27b-reasoning-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-27b-reasoning (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.5-27b-reasoning...
+
+[32/37] qwen3.5-35b
+  Starting qwen3.5-35b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-35b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping qwen3.5-35b...
+
+[33/37] qwen3.5-122b
+  Starting qwen3.5-122b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.5-122b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.5-122b...
+
+[34/37] qwen3.6-27b
+  Starting qwen3.6-27b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.6-27b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping qwen3.6-27b...
+
+[35/37] qwen3.6-35b
+  Starting qwen3.6-35b-llama.service...
+  Ready after 1x5s
+    warmup: loading qwen3.6-35b (timeout=1800s)... FAIL (HTTP Error 500: Internal Server Error)
+  Stopping qwen3.6-35b...
+
+[36/37] translategemma-12b
+  Starting translategemma-12b-llama.service...
+  Ready after 1x5s
+    warmup: loading translategemma-12b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping translategemma-12b...
+
+[37/37] translategemma-27b
+  Starting translategemma-27b-llama.service...
+  Ready after 1x5s
+    warmup: loading translategemma-27b (timeout=1800s)... FAIL (HTTP Error 503: Service Unavailable)
+  Stopping translategemma-27b...
+

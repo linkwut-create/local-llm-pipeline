@@ -3,7 +3,7 @@
   "default_profile": "code_worker",
   "profiles": {
     "fast_summary": {
-      "model": "qwen3.6-default",
+      "model": "qwen3.6-27b",
       "temperature": 0.2,
       "max_chars": 24000,
       "max_output_chars": 3000,
@@ -13,8 +13,9 @@
         "summarize-tree"
       ],
       "candidates": [
-        "qwen3.6-default",
-        "qwen3-coder-30b"
+        "qwen3.6-27b",
+        "gemma4-26b",
+        "qwen3.5-9b"
       ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
@@ -35,7 +36,7 @@
       ],
       "candidates": [
         "qwen3-coder-30b",
-        "qwen3.6-default"
+        "qwen3.6-27b"
       ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
@@ -53,7 +54,7 @@
       ],
       "candidates": [
         "qwen3-coder-30b",
-        "qwen3.6-default"
+        "nemotron-30b"
       ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
@@ -73,7 +74,7 @@
       ],
       "candidates": [
         "nemotron-30b",
-        "qwen3-coder-30b"
+        "deepseek-r1-32b-distill"
       ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
@@ -81,7 +82,7 @@
       "_systemd": "nemotron-30b-llama.service"
     },
     "deep_reviewer": {
-      "model": "qwen3.6-deep",
+      "model": "deepseek-r1-32b-distill",
       "temperature": 0.1,
       "max_chars": 60000,
       "max_output_chars": 6000,
@@ -92,15 +93,15 @@
         "logic-check"
       ],
       "candidates": [
-        "qwen3.6-deep",
-        "deepseek-r1-32b"
+        "deepseek-r1-32b-distill",
+        "qwen3.6-27b"
       ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
       "_residency": "resident"
     },
     "reasoning_checker": {
-      "model": "deepseek-r1-32b",
+      "model": "deepseek-r1-32b-distill",
       "temperature": 0.0,
       "max_chars": 60000,
       "max_output_chars": 6000,
@@ -111,8 +112,8 @@
         "logic-check"
       ],
       "candidates": [
-        "deepseek-r1-32b",
-        "qwen3.6-deep"
+        "deepseek-r1-32b-distill",
+        "deepseek-r1-70b"
       ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
@@ -131,7 +132,7 @@
       ],
       "candidates": [
         "glm-4.7-flash",
-        "qwen3.6-default"
+        "translategemma-27b"
       ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
@@ -139,7 +140,7 @@
       "_systemd": "glm4-flash-llama.service"
     },
     "gemma4_31b": {
-      "model": "gemma4-31b",
+      "model": "gemma4-31b-unsloth",
       "temperature": 0.15,
       "max_chars": 50000,
       "max_output_chars": 5000,
@@ -149,8 +150,8 @@
         "docs-agent"
       ],
       "candidates": [
-        "gemma4-31b",
-        "qwen3.6-deep"
+        "gemma4-31b-unsloth",
+        "gemma4-31b"
       ],
       "risk_level": "medium",
       "_backend_class": "openai-compatible",
@@ -158,7 +159,7 @@
       "_systemd": "gemma4-31b-llama.service"
     },
     "docs_agent": {
-      "model": "qwen3.6-deep",
+      "model": "qwen3-coder-30b",
       "temperature": 0.1,
       "max_chars": 40000,
       "max_output_chars": 5000,
@@ -168,15 +169,15 @@
         "governance"
       ],
       "candidates": [
-        "qwen3.6-deep",
-        "qwen3-coder-30b"
+        "qwen3-coder-30b",
+        "qwen3.5-9b"
       ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
       "_residency": "resident"
     },
     "fast_summary_light": {
-      "model": "gemma4-12b",
+      "model": "qwen3.5-9b",
       "temperature": 0.2,
       "max_chars": 24000,
       "max_output_chars": 3000,
@@ -186,8 +187,8 @@
         "summarize-tree"
       ],
       "candidates": [
-        "gemma4-12b",
-        "qwen3.5-claude-opus-9b"
+        "qwen3.5-9b",
+        "qwen3.5-2b"
       ],
       "risk_level": "low",
       "_backend_class": "openai-compatible",
@@ -206,7 +207,7 @@
       ],
       "candidates": [
         "qwen3.6-35b",
-        "qwen3.6-deep"
+        "deepseek-r1-70b"
       ],
       "risk_level": "high",
       "_backend_class": "openai-compatible",
