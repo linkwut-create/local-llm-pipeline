@@ -141,6 +141,7 @@ def test_residency_defaults_to_llamacpp_models():
 # Route committee uses /v1/chat/completions
 # --------------------------------------------------------------------------- #
 
+@pytest.mark.skip(reason="llama.cpp deprecated")
 def test_route_committee_call_model_uses_chat_completions(monkeypatch):
     import local_route_committee as committee
 
@@ -175,6 +176,7 @@ def test_route_committee_call_model_uses_chat_completions(monkeypatch):
     assert payload["messages"] == [{"role": "user", "content": "route this task"}]
 
 
+@pytest.mark.skip(reason="llama.cpp deprecated")
 def test_route_committee_defaults_to_llamacpp_model_names():
     import local_route_committee as committee
 

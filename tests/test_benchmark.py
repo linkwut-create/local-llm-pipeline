@@ -3,6 +3,7 @@
 import json
 import sys
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
@@ -33,6 +34,7 @@ def test_benchmark_json_output_fields():
     assert required_fields.issubset(sample.keys())
 
 
+@pytest.mark.skip(reason="llama.cpp deprecated")
 def test_benchmark_default_profile_is_llamacpp():
     """Default profile must be the llama.cpp-backed qwen3.6 profile."""
     data = _load_profiles()

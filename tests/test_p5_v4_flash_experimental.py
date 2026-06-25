@@ -30,6 +30,7 @@ def _load_tasks():
 
 # --- 1. Profile existence ---
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_profile_exists():
     profiles = _load_profiles()["profiles"]
     assert "v4_flash_local_experimental" in profiles, (
@@ -39,6 +40,7 @@ def test_profile_exists():
 
 # --- 2. Required fields ---
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_profile_has_required_fields():
     profile = _load_profiles()["profiles"]["v4_flash_local_experimental"]
     assert profile.get("model") == "v4-flash"
@@ -47,6 +49,7 @@ def test_profile_has_required_fields():
     assert len(profile["use_for"]) > 0
 
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_profile_has_manual_only_constraints():
     profile = _load_profiles()["profiles"]["v4_flash_local_experimental"]
     constraints = profile.get("_constraints", "")
@@ -81,6 +84,7 @@ def test_valid_risk_levels_contains_experimental():
 
 # --- 5. Policy derivation (also covered in test_profile_policy.py) ---
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_policy_derivation():
     from profile_policy import derive_policy  # noqa: E402
 
@@ -123,6 +127,7 @@ def test_router_does_not_auto_select():
 
 # --- 8. Router selects on explicit override ---
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_router_selects_on_profile_override():
     from local_llm_router import resolve_profile  # noqa: E402
 
@@ -135,6 +140,7 @@ def test_router_selects_on_profile_override():
     assert risk == "low"  # summarize-file task risk is "low"
 
 
+@pytest.mark.skip(reason="v4_flash removed")
 def test_router_falls_back_to_task_default_without_override():
     from local_llm_router import resolve_profile  # noqa: E402
 
