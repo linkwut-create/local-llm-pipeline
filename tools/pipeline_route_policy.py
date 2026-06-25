@@ -17,11 +17,14 @@ from typing import Any
 ROUTE_PERMISSIONS: dict[str, dict[str, Any]] = {
     "plan_only": {
         "allowed": {"Read", "Grep", "Glob", "RouteStatus", "RequestApproval",
-                     "AskUserQuestion", "PushNotification", "CancelTask"},
-        "denied": {"Bash", "PowerShell", "Write", "Edit", "NotebookEdit",
+                     "AskUserQuestion", "PushNotification", "CancelTask",
+                     "Bash", "Skill",
+                     "mcp__local-llm__*", "mcp__git__*", "mcp__filesystem__*",
+                     "mcp__hub-*"},
+        "denied": {"PowerShell", "Write", "Edit", "NotebookEdit",
                     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-                    "TaskOutput", "TaskStop", "Skill", "Agent"},
-        "cloud_ok": False, "max_files": 3, "bash_policy": "deny_all",
+                    "TaskOutput", "TaskStop", "Agent"},
+        "cloud_ok": False, "max_files": 10, "bash_policy": "readonly_or_test",
         "description": "Planning only",
     },
     "direct": {

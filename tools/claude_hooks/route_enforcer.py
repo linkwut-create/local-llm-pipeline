@@ -529,10 +529,21 @@ def should_trigger_committee(task_id: str) -> bool:
     if not session_file.exists():
         return False
     s = json.loads(session_file.read_text(encoding="utf-8"))
-    if s.get("route_json_exists"):
+    plan_exists = s.get("plan_json_exists")
+    route_exists = s.get("route_json_exists")
+    if not plan_exists:
         return False
-    if s.get("plan_json_exists"):
+    if not route_exists:
         return True
+    tasks_dir = _tasks_dir()
+    plan_file = tasks_dir / task_id / "plan.json"
+    route_file = tasks_dir / task_id / "route.json"
+    if plan_file.exists() and route_file.exists():
+        try:
+            if plan_file.stat().st_mtime > route_file.stat().st_mtime:
+                return True
+        except OSError:
+            pass
     return False
 
 
