@@ -250,7 +250,7 @@
 ### Config File: tools/local_llm_profiles.json
 - **Format**: JSON
 - **Schema**: 每个 profile 至少包含 `model`, `risk_level`, `use_for`
-- **Allowed risk_level values** (as of v0.12.0): `"low"`, `"medium"`, `"medium-high"`, `"high"`, `"experimental"`
+- **Allowed risk_level values** (as of v0.13.0): `"low"`, `"medium"`, `"medium-high"`, `"high"`, `"experimental"`
 - **Allowed _backend_class values** (as of v0.13.0): `"ollama"`, `"ollama_heavy_manual"`, `"ollama_mtp_pending"`, `"openai-compatible"`, `"llamacpp_unconfigured"`, `"unavailable"`, `"placeholder"`
 - **Validation**: `py -3 tools/validate_configs.py`
 - **Compatibility**: 现有 profile 名不能删除或改名；只能增 profile；只能增字段

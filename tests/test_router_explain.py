@@ -310,17 +310,17 @@ def test_privacy_credential_mention():
 
 def test_profile_diff_review():
     p = ProfileMapper.recommend("review-diff", "medium")
-    assert p == "diff_reviewer_llamacpp", f"Expected diff_reviewer_llamacpp, got {p}"
+    assert p == "diff_reviewer", f"Expected diff_reviewer, got {p}"
 
 
 def test_profile_bug_fix():
     p = ProfileMapper.recommend("draft-fix", "medium")
-    assert p == "code_worker_llamacpp", f"Expected code_worker_llamacpp, got {p}"
+    assert p == "code_worker", f"Expected code_worker, got {p}"
 
 
 def test_profile_simple_query():
     p = ProfileMapper.recommend("summarize-file", "low")
-    assert p == "gemma4_26b_llamacpp", f"Expected gemma4_26b_llamacpp, got {p}"
+    assert p == "fast_summary_light", f"Expected fast_summary_light, got {p}"
 
 
 def test_profile_governance_docs():
@@ -453,7 +453,7 @@ def test_engine_multi_service_feature():
     d = engine.analyze("add rate limiting to API gateway across 3 services")
     assert d.task_type == "draft-feature"
     assert d.risk_level == "medium"
-    assert d.recommended_local_profile == "code_worker_llamacpp"
+    assert d.recommended_local_profile == "code_worker"
     assert d.flash_escalation_condition is not None
 
 
@@ -789,7 +789,7 @@ def test_engine_output_includes_tier_fields():
     engine = RouterEngine()
     d = engine.analyze("summarize this file for me")
     assert d.recommended_execution_route == "flash_direct"
-    assert d.recommended_model == "deepseek-v4-flash"
+    assert d.recommended_model == "flash"
     assert d.cost_tier == "cheap"
     assert d.context_overhead_warning is None
 
@@ -798,7 +798,7 @@ def test_engine_output_pro_fields():
     engine = RouterEngine()
     d = engine.analyze("prepare release v2.3 for production deployment")
     assert d.recommended_execution_route == "claude_code_pro"
-    assert d.recommended_model == "deepseek-v4-pro"
+    assert d.recommended_model == "pro"
     assert d.cost_tier == "expensive"
 
 
@@ -807,7 +807,7 @@ def test_engine_output_code_modification_warning():
     engine = RouterEngine()
     d = engine.analyze("fix null pointer exception in login handler")
     assert d.recommended_execution_route == "claude_code_pro"
-    assert d.recommended_model == "deepseek-v4-pro"
+    assert d.recommended_model == "pro"
     assert d.cost_tier == "expensive"
     assert "Code modification" in d.context_overhead_warning
 
@@ -817,7 +817,7 @@ def test_engine_output_subagent_for_review():
     engine = RouterEngine()
     d = engine.analyze("review current diff for bugs")
     assert d.recommended_execution_route == "flash_subagent"
-    assert d.recommended_model == "deepseek-v4-flash"
+    assert d.recommended_model == "flash"
     assert d.cost_tier == "moderate"
     assert "90k tokens" in d.context_overhead_warning
 
@@ -856,7 +856,7 @@ def test_tiering_signals_in_output():
 def test_tiering_policy_no_api_calls():
     """TieringPolicy.resolve is pure function — no API calls, no I/O.
 
-    Note: "deepseek-v4-flash" / "deepseek-v4-pro" appear as string literals
+    Note: "flash" / "pro" appear as string literals
     (recommended model names), not as API calls. That's expected and safe.
     """
     import inspect

@@ -32,7 +32,14 @@
         "generate-test-plan",
         "generate-test-draft",
         "extract-todos",
-        "find-related-files"
+        "find-related-files",
+        "draft-fix",
+        "draft-feature",
+        "draft-commit-message",
+        "draft-pr-summary",
+        "draft-changelog-entry",
+        "draft-refactor",
+        "suggest-improvements"
       ],
       "candidates": [
         "qwen3-coder-30b",
@@ -90,7 +97,8 @@
       "use_for": [
         "architecture-review",
         "risk-analysis",
-        "logic-check"
+        "logic-check",
+        "failure-mode-analysis"
       ],
       "candidates": [
         "deepseek-r1-32b-distill",
@@ -128,7 +136,8 @@
       "max_output_tokens": 16384,
       "use_for": [
         "translate",
-        "multilingual"
+        "multilingual",
+        "translate-text"
       ],
       "candidates": [
         "glm-4.7-flash",
@@ -166,7 +175,8 @@
       "max_output_tokens": 16384,
       "use_for": [
         "documentation",
-        "governance"
+        "governance",
+        "rewrite-text"
       ],
       "candidates": [
         "qwen3-coder-30b",
