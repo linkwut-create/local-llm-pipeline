@@ -399,7 +399,7 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
         except Exception:
             pass
 
-    # 6b. Backend-aware + GPU-aware: prefer llama.cpp for speed, Ollama for stability
+    # 6b. Backend-aware + GPU-aware: prefer llama.cpp/LiteLLM for speed, Ollama for legacy
     try:
         profiles_path = SCRIPT_DIR / "local_llm_profiles.json"
         pd6 = json.loads(profiles_path.read_text(encoding="utf-8"))
@@ -421,10 +421,10 @@ def _resolve_starting_profile(task: str, info: dict, user_profile: str | None = 
                 # Check endpoint health + any model is loaded (name may differ from profile)
                 if (loaded.get("llamacpp")  # at least 1 model loaded
                         and _profile_is_healthy("gemma4_26b_llamacpp")):
-                    ollama_name = profile
+                    fallback_name = profile
                     profile = "gemma4_26b_llamacpp"
                     index = chain.index(profile)
-                    print(f"MCP: backend-preference — {ollama_name} -> {profile} (llama.cpp, 0.4s)", file=sys.stderr)
+                    print(f"MCP: backend-preference — {fallback_name} -> {profile} (llama.cpp, 0.4s)", file=sys.stderr)
 
             # If current profile's model is NOT loaded, check neighbors
             elif p_model and p_model not in all_loaded:
@@ -498,7 +498,7 @@ _LOADED_MODELS_CACHE: tuple[float, dict[str, set[str]]] = (0.0, {})
 
 
 def _get_loaded_models() -> dict[str, set[str]]:
-    """Query both Ollama /api/ps and llama.cpp /v1/models for loaded models.
+    """Query both Ollama /api/ps (legacy) and llama.cpp /v1/models (primary) for loaded models.
 
     Returns {"ollama": {model_names}, "llamacpp": {model_names}}.
     Cached for 30 seconds.
@@ -814,7 +814,7 @@ DEBATE_FAST_PER_ROUND_TIMEOUT = 1000
 
 TOOLS = {
     "local_check": {
-        "description": "Run local LLM environment health check. Returns Ollama connectivity, model availability, and profile recommendations. Fast (~5s), no LLM call. Use before other local tools to verify the environment is ready.",
+        "description": "Run local LLM environment health check. Returns LiteLLM connectivity, model availability, and profile recommendations. Fast (~5s), no LLM call. Use before other local tools to verify the environment is ready.",
         "inputSchema": {
             "type": "object",
             "properties": {},
