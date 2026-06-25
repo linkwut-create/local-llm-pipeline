@@ -223,7 +223,7 @@ class TestLocalRepoMapLedger:
 
 
 class TestMCPToolCount:
-    def test_tool_count_is_12(self):
+    def test_tool_count_is_13(self):
         handlers = mcp_server.TOOL_HANDLERS
         assert len(handlers) == 13, \
             f"Expected 13 tools, got {len(handlers)}: {list(handlers.keys())}"

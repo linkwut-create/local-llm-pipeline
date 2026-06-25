@@ -40,7 +40,7 @@ def test_tool_registered_in_HANDLERS():
     assert callable(mcp.TOOL_HANDLERS["local_classify_test_failure"])
 
 
-def test_tool_count_is_12():
+def test_tool_count_is_13():
     assert len(mcp.TOOLS) == 13
 
 

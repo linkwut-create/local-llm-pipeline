@@ -177,14 +177,14 @@ def test_build_prompt_no_mcp_required():
 # ── G. D-C MCP integration ────────────────────────────────────────────
 
 def test_mcp_tool_exists_in_source():
-    """D-C: local_classify_test_failure IS in MCP TOOLS (tool count now 12)."""
+    """D-C: local_classify_test_failure IS in MCP TOOLS (tool count now 13)."""
     mcp_path = SCRIPT_DIR / "local_llm_mcp_server.py"
     text = mcp_path.read_text(encoding="utf-8")
     assert 'local_classify_test_failure' in text, \
         "D-C must add local_classify_test_failure to MCP server"
 
 
-def test_mcp_tool_count_12():
+def test_mcp_tool_count_13():
     """D-C: MCP TOOLS count is now 13 (12 + local_route_explain)."""
     import importlib
     mcp = importlib.import_module("local_llm_mcp_server")

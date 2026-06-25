@@ -153,9 +153,9 @@ def test_mcp_server_no_hardcoded_v4_flash():
         )
 
 
-# --- 10. MCP tool count remains 12 ---
+# --- 10. MCP tool count remains 13 ---
 
-def test_mcp_tool_count_twelve():
+def test_mcp_tool_count_thirteen():
     from local_llm_mcp_server import TOOLS  # noqa: E402
 
     assert len(TOOLS) == 13, f"MCP tool count must be 13, got {len(TOOLS)}"
